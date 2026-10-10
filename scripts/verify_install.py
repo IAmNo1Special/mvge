@@ -83,7 +83,11 @@ from typing import Any
 # where a stranger's first contact happens. Overridable because a flaky upstream
 # model is not a packaging failure and should not read as one.
 DEFAULT_PROVIDER = "opencode"
-DEFAULT_MODEL = "opencode/space-bunny-free"
+# Mirrors `mvgeos_core.constants.DEFAULT_MODEL`. Kept as a literal rather than
+# imported because this script runs against the *published* wheel from a clean
+# machine, not against the checkout, so an import would tie the gate to source
+# that is not what a stranger installs.
+DEFAULT_MODEL = "opencode/step-5-preview-free"
 
 # The Realm Rune and the Mvge a Summoner installs before their first task, named
 # exactly as the README names them.

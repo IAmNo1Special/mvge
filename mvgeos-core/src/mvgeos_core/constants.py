@@ -35,7 +35,25 @@ DEFAULT_AGENT_NAME = "default-mvge"
 #: Pick a free tier deliberately. This slug is what a first-time Summoner runs,
 #: so a saturated endpoint here is a broken quickstart rather than a slow one --
 #: which is exactly how the previous default failed.
-DEFAULT_MODEL = "opencode/space-bunny-free"
+#:
+#: ``step-5-preview-free`` replaces ``space-bunny-free`` for that reason. Both
+#: are free and both are on the ``opencode`` Realm, so ``DEFAULT_REALM`` and the
+#: no-credential bargain are unchanged; only the endpoint behind the slug moves.
+#: ``space-bunny-free`` returned 429 on the documented first run with nothing of
+#: ours running, which is a provider-side limit on one endpoint rather than on
+#: our usage. It stays in the catalog: a Summoner who chose it explicitly still
+#: gets it, and ``-m`` over it keeps working.
+#:
+#: What is *not* claimed here is that the replacement cannot saturate. Nothing
+#: measures that -- it needs repeated authenticated requests, and no credential
+#: is available to this change. What is measured is weaker and is why this slug
+#: rather than a guess: it exists in the live Zen catalog, it is priced $0/$0
+#: against a 1,000,000-token window, it reports tool calls and reasoning, and it
+#: is the model that served the session that made this change. The honest
+#: statement is "a different endpoint, chosen for evidence", not "a route around
+#: saturation". Only a repeated clean-machine run settles the second claim, and
+#: ``verify_install``'s task is what would settle it.
+DEFAULT_MODEL = "opencode/step-5-preview-free"
 
 #: Environment variable that relocates the global ``.agents`` layer. The
 #: default is ``~/.agents``; setting this moves every global-layer read and
