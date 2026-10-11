@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.30] - 2026-10-11
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (c2b1f3d)
+
+- **release:** v0.6.30 (96f960d)
+
+
+### Features
+
+- **core:** default to openrouter/free, and require the key it needs (369fdcb)
+
+
 ## [0.6.29] - 2026-10-11
 
 
