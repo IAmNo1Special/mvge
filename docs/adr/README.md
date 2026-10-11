@@ -2,6 +2,8 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0019 | [`space-bunny-free` Is the Only Free Zen Endpoint That Answers a Stranger](0019-space-bunny-free-is-the-only-free-zen-endpoint-that-answers.md) | Accepted | 2026-10-10 |
+| 0018 | [The Default Free Endpoint Is `step-5-preview-free`](0018-default-free-endpoint-is-step-5-preview.md) | Superseded by ADR 0019 | 2026-10-10 |
 | 0017 | [Project-Scoped Skills Are a Supported Layer](0017-project-scoped-skills-are-a-supported-layer.md) | Accepted | 2026-10-10 |
 | 0016 | [A Sandbox Allow-List Is a Privilege Budget, Not a Wish List](0016-sandbox-privilege-is-a-budget-not-a-list.md) | Accepted | 2026-10-05 |
 | 0015 | [OpenCode Zen as the Default Realm](0015-opencode-zen-default-realm.md) | Accepted | 2026-10-05 |
