@@ -268,6 +268,62 @@ def test_default_realm_agrees_with_the_shipped_catalog() -> None:
     assert default.realm == DEFAULT_REALM
 
 
+def test_the_default_model_can_actually_answer_a_stranger() -> None:
+    """The default must be an endpoint that answers, not just a catalog entry.
+
+    This is the guard ADR 0019 exists to be. ADR 0018 moved the default to
+    `opencode/step-5-preview-free` on the strength of a catalogue check -- the
+    slug existed, was priced $0/$0, carried a 1,000,000-token window, and
+    reported tool calls, reasoning and structured output. Every one of those was
+    true and none of them was whether the endpoint would answer. It did not:
+
+        FreeTierError: OpenCode's free tier can only be used from within OpenCode
+
+    `verify-install`'s step 5 caught it, which is the only reason it did not
+    ship. The four steps before it passed, so the failure was the request and
+    not the packaging -- and the request is the one thing a default exists to
+    make.
+
+    The check is offline here and that is deliberate. The suite makes no network
+    calls, and a default that can only be validated by hitting the provider on
+    every test run would be either flaky or skipped. What is asserted is the
+    negative: the default is not on the list of Zen free endpoints *measured* to
+    refuse a stranger. That list is the regression, frozen.
+
+    The list is a dated snapshot because it is a snapshot. If Zen starts serving
+    these slugs to strangers -- or starts refusing `space-bunny-free` -- the
+    honest fix is to re-measure and update this table and the default in the
+    same change. A table nobody revisits becomes the thing ADR 0018 was: a
+    confident answer to a question nobody still asks. The date is in the test on
+    purpose, so staleness is visible rather than silent.
+
+    Measured 2026-10-11, one anonymous request each, against
+    `https://opencode.ai/zen/v1/models`.
+    """
+    refused_by_zen_free_tier = {
+        # FreeTierError: can only be used from within OpenCode.
+        "opencode/step-5-preview-free",
+        "opencode/longcat-2.5-preview-free",
+        "opencode/mimo-v2.6-flash-free",
+        "opencode/jev-1.13-free",
+        "opencode/muse-spark-1.3-contributor-free",
+        "opencode/muse-spark-1.2-contributor-free",
+        "opencode/nemotron-3-ultra-free",
+        "opencode/nemotron-3.5-lightning-free",
+        "opencode/ling-3.1-flash-free",
+        # Different failures, same consequence for a default.
+        "opencode/exo-free",  # ModelDeprecated
+        "opencode/ling-3.0-flash-fin-free",  # upstream unavailable
+    }
+    assert DEFAULT_MODEL not in refused_by_zen_free_tier, (
+        f"{DEFAULT_MODEL} is a Zen free endpoint measured to refuse a request "
+        "that does not originate inside OpenCode. It may resolve in the catalog "
+        "and be priced at zero and still be unusable as a default, which is "
+        "exactly the regression ADR 0019 records. If Zen now serves it to "
+        "strangers, re-measure and update this table and the default together."
+    )
+
+
 def test_the_default_model_is_free() -> None:
     """The default is what a first-time Summoner runs.
 
