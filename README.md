@@ -147,7 +147,7 @@ Successfully installed mvge 'coding_mvge' to ~/.agents/agents/coding_mvge
 
 $ uvx mvgeos info --agent-name coding_mvge
 Agent: coding_mvge
-Model: opencode/step-5-preview-free
+Model: opencode/space-bunny-free
 
 Spells
   bash        builtin

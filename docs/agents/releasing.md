@@ -438,7 +438,7 @@ sandbox that leaks is a red gate rather than a quiet one. Pass `--no-sandbox`
 to run without it.
 
 The gate follows the engine's own defaults rather than naming a model of its
-own: `opencode/step-5-preview-free` on the `opencode` Realm, billed at zero. That
+own: `opencode/space-bunny-free` on the `opencode` Realm, billed at zero. That
 is the Realm and model a new Summoner reaches first, so it is the one worth
 testing. `--max-tokens` is still capped to keep the turn short. Override any of
 it when a specific failure needs a different target:

@@ -200,7 +200,7 @@ def test_a_paid_model_on_zen_still_refuses_and_names_its_own_variable() -> None:
 def test_the_default_model_runs_with_no_credential_at_all() -> None:
     """The shipped default must start on a machine with no credentials.
 
-    ``DEFAULT_MODEL`` is ``opencode/step-5-preview-free`` and Zen's free tier
+    ``DEFAULT_MODEL`` is ``opencode/space-bunny-free`` and Zen's free tier
     answers a request carrying no ``Authorization`` header (ADR-0015). The
     refusal this replaces was a pure loss: the Summoner was told to run a setup
     step for a credential that could not change the outcome.

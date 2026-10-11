@@ -275,19 +275,6 @@
       "opencode"
     ],
     [
-      "opencode/step-5-preview-free",
-      "Step 5 Preview Free (OpenCode Zen)",
-      1000000,
-      [
-        "max_tokens",
-        "temperature",
-        "tool_choice",
-        "tools",
-        "top_p"
-      ],
-      "opencode"
-    ],
-    [
       "nvidia/nemotron-3-nano-30b-a3b:free",
       "NVIDIA: Nemotron 3 Nano 30B A3B (free)",
       256000,
