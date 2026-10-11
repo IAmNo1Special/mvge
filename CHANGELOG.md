@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.29] - 2026-10-11
+
+
+### Bug Fixes
+
+- **core:** fail the suite if the default cannot answer a stranger (7ac251d)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (6c55c21)
+
+- **deps:** bump multidict from 6.7.1 to 6.9.1 (2ae8195)
+
+- **release:** v0.6.29 (1f2c7dc)
+
+
+### Documentation
+
+- **adr:** record the measurement that overturned ADR 0018 (4d2bece)
+
+
 ## [0.6.28] - 2026-10-11
 
 
