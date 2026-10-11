@@ -1,11 +1,11 @@
 [project]
 name = "mvgeos"
-version = "0.6.28"
+version = "0.6.29"
 description = "MvgeOS — a Python-based AI coding agent"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "mvgeos-cli==0.6.28",
+    "mvgeos-cli==0.6.29",
 ]
 
 [project.scripts]
