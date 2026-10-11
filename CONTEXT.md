@@ -157,7 +157,7 @@ Both accept a `signal` that is currently ignored, reserved so the abort work doe
 
 ## Default Model
 
-The system-wide default model across all MvgeOS packages and test suites is `opencode/space-bunny-free` (`DEFAULT_MODEL` in `mvgeos_core.constants`, with the serving Realm recorded as `DEFAULT_REALM` in `mvgeos_provider.realms`).
+The system-wide default model across all MvgeOS packages and test suites is `opencode/step-5-preview-free` (`DEFAULT_MODEL` in `mvgeos_core.constants`, with the serving Realm recorded as `DEFAULT_REALM` in `mvgeos_provider.realms`).
 
 It is a free OpenCode Zen endpoint, chosen because the previous default — an OpenRouter free endpoint — was at capacity on three of three clean-machine runs of the documented first task, which made the quickstart's promise false. Resolving it needs the `opencode-realm` Rune and an `OPENCODE_API_KEY`; the CLI offers to install the Rune when it is missing. See ADR-0015.
 

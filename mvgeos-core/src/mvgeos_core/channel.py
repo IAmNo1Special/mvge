@@ -59,7 +59,7 @@ class Model:
         - ``is_free``, set by whoever authored the catalog entry.
         - A ``:free`` suffix. OpenRouter's convention.
         - A ``-free`` suffix, but only for a Realm that uses it. OpenCode Zen
-          spells its free tier this way (``space-bunny-free``), and treating the
+          spells its free tier this way (``step-5-preview-free``), and treating the
           suffix as universal would let a paid model be called free on the
           strength of a name -- which is the one mistake a cost guard must not
           make. Gate it on the Realm rather than guessing from the id.

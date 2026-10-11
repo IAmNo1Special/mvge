@@ -424,7 +424,7 @@ Config at `.agents/.mvgeos/`:
 
 ```json
 {
-  "model": "opencode/space-bunny-free",
+  "model": "opencode/step-5-preview-free",
   "max_tokens": 4096,
   "temperature": 0.7,
   "contemplation_level": "medium",
