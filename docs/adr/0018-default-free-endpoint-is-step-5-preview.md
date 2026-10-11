@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (amends 0015's model, not its Realm)
+Superseded by ADR 0019 — the endpoint chosen here cannot serve a
+clean-machine request, which is the only job a default has. Kept rather than
+deleted because the reasoning is what a reader needs in order not to repeat it.
 
 ## Date
 

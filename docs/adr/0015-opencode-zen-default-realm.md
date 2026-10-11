@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (model amended by ADR 0018; Realm unchanged)
+Accepted
 
 ## Context
 

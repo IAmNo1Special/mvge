@@ -198,8 +198,7 @@ class TestMvgeApiKeyAndEnvLoading:
     ) -> None:
         """The shipped default must start on a machine with no credentials.
 
-        ``DEFAULT_MODEL`` is what MvgeOS boots on -- ``step-5-preview-free`` as of
-        the default moving off a saturated endpoint -- and Zen's
+        ``opencode/space-bunny-free`` is the model MvgeOS boots on, and Zen's
         free tier answers a request with no ``Authorization`` header at all
         (ADR-0015). Requiring a key for it is a dead end -- there is nothing to
         go set, so the Summoner is told to run a setup step that cannot help.

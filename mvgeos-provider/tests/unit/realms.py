@@ -106,20 +106,9 @@ def test_an_uncatalogued_slug_falls_back_to_its_prefix() -> None:
 
     catalogued = {m.id for m in list_models()}
     assert "opencode/glm-5" not in catalogued
-    # Every Zen model that ships is free, which is what makes the fallback the
+    # The only Zen model that ships is the free one, so today the fallback is the
     # sole way to name a credential-requiring model on an anonymous-free Realm.
-    # Stated as a property over the Realm rather than as a count: two free Zen
-    # models ship as of the default moving to `step-5-preview-free`, and a count
-    # would have failed on the second one arriving while still being free. The
-    # default is pinned too, so the Realm cannot ship free models with no free
-    # default among them.
-    shipped_zen = [m for m in list_models() if m.realm == "opencode"]
-    assert shipped_zen, "no opencode-Realm model ships, so the Realm has no entry"
-    assert all(m.free for m in shipped_zen), (
-        "a paid opencode-Realm model ships, so a credential-requiring model on an "
-        "anonymous-free Realm is no longer reachable only through the fallback"
-    )
-    assert DEFAULT_MODEL in {m.id for m in shipped_zen}
+    assert {m.id for m in list_models() if m.realm == "opencode"} == {DEFAULT_MODEL}
 
 
 def test_the_serving_realm_agrees_with_the_catalog_for_every_shipped_model() -> None:
