@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-provider"
-version = "0.6.29"
+version = "0.6.30"
 description = "Provider abstraction protocol, model registry, and retry policies (OpenRouter realm ships as a marketplace rune)"
 requires-python = ">=3.13"
 license = "MIT"
@@ -8,7 +8,7 @@ dependencies = [
     # Explicit floors: uv_build does not substitute the workspace version, so
     # bare names ship as unbounded Requires-Dist. Bumped in lockstep by ci.yml.
     "httpx>=0.27",
-    "mvgeos-core==0.6.29",
+    "mvgeos-core==0.6.30",
 ]
 
 [tool.uv.sources]
