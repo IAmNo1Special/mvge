@@ -130,10 +130,12 @@ def test_agent_service_loads_env_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Verify AgentService loads .env from the project directory."""
-    # The default realm's variable, because what is under test is that the
-    # project .env is loaded at all -- not which realm is selected.
+    # The default Realm's variable. Since ADR-0020 the default is the OpenRouter
+    # router, so this is the variable `load_api_key_for_realm` reads -- the test
+    # is that the project .env is loaded at all, and the default Realm is what
+    # decides which variable that is.
     (tmp_path / ".env").write_text(
-        "OPENCODE_API_KEY=sk-zen-from-dotenv\n", encoding="utf-8"
+        "OPENROUTER_API_KEY=sk-or-from-dotenv\n", encoding="utf-8"
     )
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
@@ -145,7 +147,7 @@ def test_agent_service_loads_env_file(
     ):
         service = AgentService(project_path=tmp_path, api_key=None)
 
-    assert service._api_key == "sk-zen-from-dotenv"
+    assert service._api_key == "sk-or-from-dotenv"
 
 
 def test_get_or_create_agent_with_factory(app_state: AppState) -> None:

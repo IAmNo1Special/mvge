@@ -2,11 +2,12 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0020 | [No Free Tier Answers a Stranger](0020-no-free-tier-answers-a-stranger.md) | Accepted | 2026-10-11 |
 | 0019 | [`space-bunny-free` Is the Only Free Zen Endpoint That Answers a Stranger](0019-space-bunny-free-is-the-only-free-zen-endpoint-that-answers.md) | Accepted | 2026-10-10 |
 | 0018 | [The Default Free Endpoint Is `step-5-preview-free`](0018-default-free-endpoint-is-step-5-preview.md) | Superseded by ADR 0019 | 2026-10-10 |
 | 0017 | [Project-Scoped Skills Are a Supported Layer](0017-project-scoped-skills-are-a-supported-layer.md) | Accepted | 2026-10-10 |
 | 0016 | [A Sandbox Allow-List Is a Privilege Budget, Not a Wish List](0016-sandbox-privilege-is-a-budget-not-a-list.md) | Accepted | 2026-10-05 |
-| 0015 | [OpenCode Zen as the Default Realm](0015-opencode-zen-default-realm.md) | Accepted | 2026-10-05 |
+| 0015 | [OpenCode Zen as the Default Realm](0015-opencode-zen-default-realm.md) | Accepted (premise falsified by ADR 0020; Realm and Contract stand) | 2026-10-05 |
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted (amended 2026-10-10: decision 4, see ADR 0017) | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |
 | 0012 | [Deepened Mvge Turn-Driving Module](0012-deepened-mvge-turn-driving-module.md) | Accepted — migration incomplete, see note | 2026-09-12 |

@@ -77,24 +77,44 @@ import time
 from typing import Any
 
 # The Realm and model the engine defaults to, and the cheapest thing on it. Zen
-# serves its free tier with no credential at all and bills it at zero, so a
-# release gate costs nothing and needs no key -- which matters more than the
-# money: a gate that needs a secret cannot run on a fork, and a fork is exactly
-# where a stranger's first contact happens. Overridable because a flaky upstream
-# model is not a packaging failure and should not read as one.
-DEFAULT_PROVIDER = "opencode"
-DEFAULT_MODEL = "opencode/space-bunny-free"
+# The default moved to OpenRouter's Free Models Router on 2026-10-11, and this
+# is the part of that decision which is not free: the gate now needs a
+# credential.
+#
+# It needs one because the alternative does not exist. OpenCode closed its free
+# tier to callers outside OpenCode -- every slug on the live Zen catalogue began
+# answering `FreeTierError: OpenCode's free tier can only be used from within
+# OpenCode`, including the one this file used to run -- and OpenRouter's `:free`
+# slugs answer `401` and always have. ADR-0020 records the measurement.
+#
+# The earlier claim, that the gate "costs nothing and needs no key ... a fork is
+# exactly where a stranger's first contact happens", was true while Zen served
+# anonymously and is now false. It is left here as the reason the change was not
+# made sooner: the cheap gate is gone, not a preference.
+#
+# What keeps the gate honest now is that the credential is *required*. A run
+# without `OPENROUTER_API_KEY` exits 2 rather than silently skipping the task,
+# because a green gate that never called a model is a lie, and that is the one
+# failure this file exists to prevent. Forks get the key as a secret of their
+# own; `docs/agents/releasing.md` records how.
+DEFAULT_PROVIDER = "openrouter"
+DEFAULT_MODEL = "openrouter/free"
 
 # The Realm Rune and the Mvge a Summoner installs before their first task, named
 # exactly as the README names them.
-REALM_RUNE = "opencode-realm"
+REALM_RUNE = "openrouter-realm"
 MVGE = "coding_mvge"
 
 # Realms that bill, and so refuse a request with no credential. Recorded as an
 # exception list rather than an exemption list so a new Realm defaults to
 # needing one: the cost of that mistake is a confusing failure, and the cost of
 # the opposite is a request sent with an empty Authorization header.
-REALMS_REQUIRING_CREDENTIAL = frozenset({"openrouter"})
+#
+# `openrouter` is here because it is the default now. `opencode` is here too,
+# and as of ADR-0020 not because Zen bills but because Zen refuses free models
+# from outside OpenCode, which is the same observable outcome by a different
+# route: an unauthenticated request does not get served.
+REALMS_REQUIRING_CREDENTIAL = frozenset({"opencode", "openrouter"})
 
 # The environment variable each Realm reads its key from.
 #
@@ -663,9 +683,12 @@ def main() -> int:
         print(
             f"verify_install failed: the {arguments.provider!r} Realm needs a "
             f"credential and {api_key_env} is not set. The default "
-            f"({DEFAULT_PROVIDER!r}) serves a free tier keyless and needs "
-            f"neither, so the cheaper gate is to drop --provider. A green "
-            f"gate that never called a model would be a lie.",
+            f"({DEFAULT_PROVIDER!r}) needs one too, as of ADR-0020 -- no free "
+            "tier answers an unauthenticated request any more, so there is no "
+            "cheaper gate to fall back to. Set the key, or pass --help-only to "
+            "check packaging without calling a model. Returning non-zero rather "
+            "than skipping, because a green gate that never called a model is a "
+            "lie.",
             file=sys.stderr,
         )
         return 2

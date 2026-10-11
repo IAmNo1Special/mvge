@@ -70,15 +70,27 @@ REALMS_WITHOUT_CREDENTIAL: Final[frozenset[str]] = frozenset({"ollama"})
 #: field could not be read at either of them. On a clean machine the Realm this
 #: exempts is not installed yet, so there is nothing there to ask.
 #:
-#: ``opencode`` is measured, not assumed: Zen's free tier answers a request
-#: carrying no ``Authorization`` header with 200 and ``"cost": "0"`` (ADR-0015).
+#: **Empty, and empty is the accurate value.** ``opencode`` was here on the
+#: strength of ADR-0015's measurement that Zen's free tier answers a request
+#: carrying no ``Authorization`` header. On 2026-10-11 that stopped being true:
+#: every free slug on the live Zen catalogue began answering
+#: ``FreeTierError: OpenCode's free tier can only be used from within OpenCode``,
+#: including ``space-bunny-free``, which had answered a real completion hours
+#: earlier the same day. OpenRouter's ``:free`` slugs answer ``401`` and always
+#: have. So there is no Realm left whose free tier is anonymous (ADR 0020).
 #:
-#: This is deliberately *not* a Realm-wide exemption. Zen also serves keyed paid
-#: models, and a Realm-wide one would attempt them anonymously and fail at the
-#: host with a message about the model rather than about the missing credential.
+#: The table is left in place rather than deleted because the exemption is a real
+#: concept and a Realm can offer it again; a Realm added here must be one that
+#: answers a request carrying no ``Authorization`` header, measured, not inferred
+#: from its free tier existing. Re-add it with the measurement that justifies it.
+#:
+#: This is deliberately *not* a Realm-wide exemption when it is non-empty. Zen
+#: also serves keyed paid models, and a Realm-wide one would attempt them
+#: anonymously and fail at the host with a message about the model rather than
+#: about the missing credential.
 #: The pair of them -- this table and the model's own ``is_free`` -- is what
 #: ``mvgeos_provider.model_registry.model_requires_credential`` combines.
-REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"opencode"})
+REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset()
 
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
@@ -104,7 +116,7 @@ REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
 #: ``test_default_realm_agrees_with_the_shipped_catalog`` in
 #: ``mvgeos-provider/tests/unit/realms.py``. That test is the point: changing
 #: ``DEFAULT_MODEL`` without this is the drift it exists to catch.
-DEFAULT_REALM: Final[str] = "opencode"
+DEFAULT_REALM: Final[str] = "openrouter"
 
 
 def realm_for_model_id(model_id: str) -> str:

@@ -6,14 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from mvgeos_core import MissingApiKeyError
-from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.spells import (
     MvgeSpell,
     SpellResult,
     SpellStatus,
 )
 from mvgeos_provider.base import Realm
-from mvgeos_provider.realms import realm_for_model_id
 from mvgeos_provider.registry import RealmRegistry
 from pydantic import BaseModel
 
@@ -196,29 +194,29 @@ class TestMvgeApiKeyAndEnvLoading:
     async def test_a_realm_that_needs_no_credential_initializes_without_one(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The shipped default must start on a machine with no credentials.
+        """A Realm with no credential concept must still start with no key.
 
-        ``opencode/space-bunny-free`` is the model MvgeOS boots on, and Zen's
-        free tier answers a request with no ``Authorization`` header at all
-        (ADR-0015). Requiring a key for it is a dead end -- there is nothing to
-        go set, so the Summoner is told to run a setup step that cannot help.
+        This used to run against the shipped default while Zen's free tier was
+        anonymous. It is not anonymous any more (ADR-0020), so the property is
+        now asserted against ``ollama`` -- the Realm that genuinely has no
+        credential -- rather than against a default that requires one. Keeping
+        the no-credential path covered matters: it is what a local daemon Rune
+        depends on, and it is the one Realm where a key is meaningless.
 
         A stub Realm is registered so the assertion is on reaching the end of
-        ``initialize`` rather than on which error stopped the way. That matters:
-        whether a Realm factory exists for ``opencode`` is process-wide state
-        another test sets, so an assertion naming the successor error would be
-        green or red depending on what ran first.
+        ``initialize`` rather than on which error stopped the way.
         """
         for var in self.API_KEY_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
 
-        realm = realm_for_model_id(DEFAULT_MODEL)
         registry = RealmRegistry()
-        registry.register_realm_factory(realm, lambda **kwargs: MagicMock(spec=Realm))
+        registry.register_realm_factory(
+            "ollama", lambda **kwargs: MagicMock(spec=Realm)
+        )
 
         environment = MvgeEnvironment.resolve(
             config_dir=tmp_path,
-            overrides={"model": DEFAULT_MODEL},
+            overrides={"model": "ollama/llama3"},
         )
         agent = Mvge(
             api_key="",
@@ -302,13 +300,13 @@ class TestMvgeApiKeyAndEnvLoading:
         monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
         monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
 
-        # The default model is served by the `opencode` Realm, so that is the
+        # The default model is served by the `openrouter` Realm, so that is the
         # Realm whose variable is read. What is under test is that a `.env`
-        # beside the caller is loaded at all -- an OpenRouter key here would
+        # beside the caller is loaded at all -- an OpenCode key here would
         # only have been honoured by falling back across Realms.
         env_file = tmp_path / ".env"
         env_file.write_text(
-            "OPENCODE_API_KEY=sk-zen-test-from-env-file\n", encoding="utf-8"
+            "OPENROUTER_API_KEY=sk-openrouter-test-from-env-file\n", encoding="utf-8"
         )
 
         fake_caller_file = tmp_path / "caller.py"
@@ -319,7 +317,7 @@ class TestMvgeApiKeyAndEnvLoading:
             mock_stack.return_value = [None, frame_mock]
 
             agent = Mvge()
-            assert agent._api_key == "sk-zen-test-from-env-file"
+            assert agent._api_key == "sk-openrouter-test-from-env-file"
 
 
 class TestSpellDirectoryDiscovery:

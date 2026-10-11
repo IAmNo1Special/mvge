@@ -232,7 +232,7 @@ async def test_no_realm_registered_no_tty_installs_without_asking() -> None:
         code = await _run_agent(
             incantation="Create a file named hello.txt",
             model_id="opencode/space-bunny-free",
-            api_key="",
+            api_key="sk-or-v1-test-key",
             temperature=None,
             max_tokens=None,
             contemplation_level=None,
@@ -318,7 +318,7 @@ async def test_no_realm_registered_retries_once_then_reports() -> None:
         code = await _run_agent(
             incantation="Create a file named hello.txt",
             model_id="opencode/space-bunny-free",
-            api_key="",
+            api_key="sk-or-v1-test-key",
             temperature=None,
             max_tokens=None,
             contemplation_level=None,
