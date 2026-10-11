@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.28] - 2026-10-11
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (5d1bf6d)
+
+- **release:** v0.6.28 (e384361)
+
+
+### Continuous Integration
+
+- **publish:** wait for the index before claiming a release is installable (5a204b3)
+
+
+### Documentation
+
+- **release:** record the 2026-10-10 token bridge and what still gates releases (98069b6)
+
+
+### Features
+
+- **core:** default to a free Zen endpoint that is not the one saturating (8d05ada)
+
+
+### Tests
+
+- **ci:** compile the python embedded in workflow heredocs (32fc2f3)
+
+- **ci:** syntax-check every workflow run block as bash (b823865)
+
+- **ci:** syntax-check every workflow run block as bash (ffb2f8d)
+
+
 ## [0.6.27] - 2026-10-10
 
 
