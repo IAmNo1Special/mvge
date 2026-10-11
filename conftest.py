@@ -26,8 +26,15 @@ import pytest
 
 #: Every variable the engine reads as a credential, sourced from the
 #: ``os.environ.get`` calls in ``mvgeos-*/src`` rather than guessed.
+#:
+#: ``OPENCODE_API_KEY`` belongs here and was missing until 2026-10-11. Its
+#: absence let one test's key leak into the next: the suite passed locally while
+#: failing in CI, because a test that set ``OPENCODE_API_KEY`` left it set and
+#: the following test read it. Isolation that is incomplete is worse than none,
+#: because it hides exactly the ordering-dependent bugs this fixture is for.
 CREDENTIAL_ENV_VARS = (
     "OPENROUTER_API_KEY",
+    "OPENCODE_API_KEY",
     "MVGEOS_API_KEY",
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",

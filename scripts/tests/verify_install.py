@@ -26,6 +26,7 @@ import json
 import os
 import pathlib
 import subprocess
+import sys
 
 import pytest
 import verify_install
@@ -33,7 +34,6 @@ from mvgeos_core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
 from mvgeos_provider.realms import (
     DEFAULT_REALM,
     REALM_API_KEY_ENV,
-    free_suffix_for_realm,
     rune_for_realm,
 )
 
@@ -128,17 +128,68 @@ def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
     assert arguments.model == CORE_DEFAULT_MODEL
 
 
-def test_the_default_gate_costs_nothing_and_needs_no_credential() -> None:
-    """The whole point of the default: a release gate with no account and no key.
+def test_the_default_gate_requires_a_credential_and_says_so() -> None:
+    """The gate needs a key now, and the assertion is that it cannot pretend otherwise.
 
-    If the default Realm ever moved behind a credential this assertion fails
-    rather than the gate quietly becoming one that needs a secret.
+    It used to assert the opposite -- that the default Realm costs nothing and
+    needs no key. That was true while Zen served its free tier anonymously and
+    is measured false now (ADR 0020): every free slug on the live Zen catalogue
+    refuses a request that does not originate inside OpenCode, and OpenRouter's
+    `:free` slugs answer 401. There is no credential-free default left to assert.
+
+    So the invariant is inverted rather than deleted. The gate must *require*
+    `OPENROUTER_API_KEY` and exit non-zero without it, because the failure this
+    file exists to prevent is a green gate that never called a model. A default
+    that quietly stopped calling one is how that would happen.
     """
-    assert (
-        verify_install.DEFAULT_PROVIDER
-        not in verify_install.REALMS_REQUIRING_CREDENTIAL
+    assert verify_install.DEFAULT_PROVIDER in verify_install.REALMS_REQUIRING_CREDENTIAL
+
+    assert REALM_API_KEY_ENV[verify_install.DEFAULT_PROVIDER] == "OPENROUTER_API_KEY"
+    assert verify_install.DEFAULT_MODEL.startswith(
+        f"{verify_install.DEFAULT_PROVIDER}/"
     )
-    assert verify_install.DEFAULT_MODEL.endswith(free_suffix_for_realm(DEFAULT_REALM))
+
+    # And it is free. A router id like `openrouter/free` does not carry the
+    # `:free` suffix, so the source of truth is the shipped catalog's free
+    # bucket rather than the spelling. Asserting the suffix here would be the
+    # mistake this test exists to catch: a name that looks free is not
+    # evidence, the catalog is.
+    catalogued = {
+        entry[0]
+        for bucket in ("free", "paid")
+        for entry in json.loads(
+            (
+                pathlib.Path(verify_install.__file__).resolve().parent.parent
+                / "mvgeos-provider"
+                / "src"
+                / "mvgeos_provider"
+                / "models.json"
+            ).read_text()
+        )[bucket]
+    }
+    assert verify_install.DEFAULT_MODEL in catalogued, (
+        f"{verify_install.DEFAULT_MODEL} is not in the shipped catalog at all; "
+        "a default the catalog has never heard of cannot be resolved, let "
+        "alone run"
+    )
+
+
+def test_the_gate_exits_non_zero_without_the_credential(monkeypatch, capsys) -> None:
+    """A missing key is a failure, not a skip.
+
+    The cheapest way for this gate to start lying is to treat a missing
+    credential as "nothing to check here" and exit zero. Asserted directly
+    rather than by reading the branch.
+    """
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setattr(sys, "argv", ["verify_install.py", "--version", "0.0.0"])
+    code = verify_install.main()
+    assert code == 2, (
+        "the gate returned "
+        f"{code} with no credential; it must exit 2 so a run that never called "
+        "a model cannot report green"
+    )
+    assert "OPENROUTER_API_KEY" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

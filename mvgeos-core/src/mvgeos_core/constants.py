@@ -35,7 +35,21 @@ DEFAULT_AGENT_NAME = "default-mvge"
 #: Pick a free tier deliberately. This slug is what a first-time Summoner runs,
 #: so a saturated endpoint here is a broken quickstart rather than a slow one --
 #: which is exactly how the previous default failed.
-DEFAULT_MODEL = "opencode/space-bunny-free"
+#:
+#: ``openrouter/free`` is OpenRouter's Free Models Router: it only ever routes to
+#: a free endpoint and picks a different one when one saturates. A concrete free
+#: slug cannot do that -- it moves the outage to whichever endpoint is saturated
+#: next, which is what has happened twice on the opencode Realm.
+#:
+#: It requires ``OPENROUTER_API_KEY``, and that is a real change to the first
+#: run rather than a hidden one. OpenCode closed its free tier to callers
+#: outside OpenCode on 2026-10-11 (ADR 0020), so no anonymous free endpoint is
+#: left anywhere. The quickstart gains a credential step for that reason, and
+#: ``test_the_default_model_requires_a_documented_credential`` holds this Realm's
+#: env var, the shipped catalog and the README to each other.
+#:
+#: Kept free by construction; never point this at a paid id.
+DEFAULT_MODEL = "openrouter/free"
 
 #: Environment variable that relocates the global ``.agents`` layer. The
 #: default is ``~/.agents``; setting this moves every global-layer read and

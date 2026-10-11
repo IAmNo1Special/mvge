@@ -13,9 +13,10 @@ MvgeOS is an operating system for AI agents, written in Python. A **Mvge** — t
 agent — casts **Spells** (tools) against models served by **Realms** (providers).
 Conversations persist as **Tomes**. Capabilities extend through **Runes**.
 
-No account to create. No telemetry in the engine. One default model *is* baked in,
-and it runs with no credential at all — so your first task needs no key. To use
-another provider, bring the key for the Realm you want.
+No account to create. No telemetry in the engine. One default model *is* baked
+in, and it is free — but it needs an `OPENROUTER_API_KEY`, because as of
+2026-10-11 no free tier anywhere answers an unauthenticated request (ADR-0020).
+To use another provider, bring the key for the Realm you want.
 
 ## Install
 
@@ -36,12 +37,15 @@ uvx mvgeos --help
 
 ## Run one task
 
-Three commands. From nothing to a file on disk, with no account, no key, and no
-configuration:
+Three commands, after one line of setup. From a free OpenRouter key to a file
+on disk:
 
 ```bash
+# 0. the key — the default free tier needs one since ADR-0020
+export OPENROUTER_API_KEY="sk-or-..."
+
 # 1. the Realm — how MvgeOS reaches a model
-uvx mvgeos rune install opencode-realm --confirm-python-deps
+uvx mvgeos rune install openrouter-realm --confirm-python-deps
 
 # 2. the Mvge — carries the Spells
 uvx mvgeos mvge install coding_mvge
@@ -50,9 +54,16 @@ uvx mvgeos mvge install coding_mvge
 uvx mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
 ```
 
-**There is no credential step, and that is not an omission.** The default Realm
-serves a free model with no key at all, so the first task runs as the third
-command. To use a provider you already pay for instead, see
+**Step 0 is new since 2026-10-11, and it is a provider change, not a design
+choice.** MvgeOS used to run with no credential at all: OpenCode Zen served its
+free tier to anyone. It closed that on 2026-10-11 — every free slug on its
+catalogue now answers `FreeTierError: OpenCode's free tier can only be used from
+within OpenCode` — and OpenRouter's `:free` slugs have always required a key
+(ADR-0020). There is no credential-free default left, so the first run has a
+setup step. The model itself is still **free**; the key is what identifies you
+to a provider that no longer serves anonymous callers.
+
+To use a provider you already pay for instead, see
 [Bring your own key](#bring-your-own-key).
 
 Commands 1 and 2 both succeed, unedited, on a machine with an empty `$HOME`.

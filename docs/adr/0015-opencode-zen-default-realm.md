@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (premise falsified by ADR 0020; Realm and Contract stand)
 
 ## Context
 

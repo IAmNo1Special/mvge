@@ -26,6 +26,7 @@ from mvgeos_provider.realms import (
     REALM_BASE_URLS,
     REALM_FREE_SUFFIXES,
     REALM_RUNES,
+    REALMS_WITH_ANONYMOUS_FREE_TIER,
     api_key_env_for_realm,
     free_suffix_for_realm,
     realm_for_model_id,
@@ -106,9 +107,18 @@ def test_an_uncatalogued_slug_falls_back_to_its_prefix() -> None:
 
     catalogued = {m.id for m in list_models()}
     assert "opencode/glm-5" not in catalogued
-    # The only Zen model that ships is the free one, so today the fallback is the
-    # sole way to name a credential-requiring model on an anonymous-free Realm.
-    assert {m.id for m in list_models() if m.realm == "opencode"} == {DEFAULT_MODEL}
+    # Every model the shipped catalog carries on the `opencode` Realm is free.
+    # The `opencode` Realm has no anonymous free tier any more (ADR-0020), so
+    # the credential decision no longer hangs on this, but the property is
+    # still asserted: shipping a paid opencode model would let someone
+    # accidentally bill through a Realm whose free tier is the safer choice.
+    shipped_zen = [m for m in list_models() if m.realm == "opencode"]
+    assert shipped_zen, "no opencode-Realm model ships, so the Realm has no entry"
+    assert all(m.free for m in shipped_zen), "a paid opencode-Realm model ships"
+    assert DEFAULT_MODEL not in {m.id for m in shipped_zen}, (
+        "the default is now openrouter/free; if this is opencode again, "
+        "DEFAULT_REALM in realms.py is not being kept in step with DEFAULT_MODEL"
+    )
 
 
 def test_the_serving_realm_agrees_with_the_catalog_for_every_shipped_model() -> None:
@@ -201,17 +211,24 @@ def test_a_realm_not_in_either_table_still_requires_a_credential() -> None:
     assert model_requires_credential(None) is True
 
 
-def test_a_realm_whose_free_tier_is_anonymous_exempts_only_its_free_models() -> None:
-    """The whole point of consulting the model rather than the Realm.
+def test_no_realm_has_an_anonymous_free_tier_any_more() -> None:
+    """The anonymous-free set is empty, and that emptiness is measured.
 
-    Zen serves its free tier with no credential -- measured, a request carrying
-    no ``Authorization`` header is answered 200 with ``"cost": "0"`` (ADR-0015).
-    It also serves keyed paid models, and those must still be refused: an
-    exemption wide enough to cover them would attempt a paid model anonymously
-    and fail at the host with a message about the model rather than about the
-    missing credential.
+    ADR-0015 exempted `opencode` because Zen's free tier answered a request
+    carrying no `Authorization` header. Measured 2026-10-11 (ADR-0020): every
+    free slug on the live Zen catalogue refuses with ``FreeTierError: OpenCode's
+    free tier can only be used from within OpenCode``, and OpenRouter's ``:free``
+    slugs answer ``401``. There is no Realm left whose free tier is anonymous.
+
+    The set is asserted empty rather than deleted, because the exemption is a
+    real concept a Realm can earn back -- and re-earning it must come with a
+    measurement, which is what this assertion points at.
     """
-    assert model_requires_credential("opencode/space-bunny-free") is False
+    assert frozenset() == REALMS_WITH_ANONYMOUS_FREE_TIER, (
+        "a Realm was added to the anonymous-free set. That is only correct if "
+        "it has been measured to answer a request with no Authorization header "
+        "as of the date the ADR records -- see ADR-0020 for what that looks like"
+    )
 
 
 def test_a_paid_model_on_zen_still_requires_a_credential() -> None:
@@ -238,15 +255,29 @@ def test_a_realm_with_no_credential_at_all_is_exempt_for_every_model() -> None:
     assert model_requires_credential("ollama/some-model-nobody-has-catalogued") is False
 
 
-def test_the_default_model_serves_without_a_credential() -> None:
-    """The shipped default must not be the thing that refuses to start.
+def test_the_default_model_requires_a_documented_credential() -> None:
+    """The default now needs a key, and the env var for it must be documented.
 
-    This is the assertion that ties the exemption to the model MvgeOS boots on.
-    It reads ``DEFAULT_MODEL`` rather than naming a Realm, so if either the
-    default model or ``DEFAULT_REALM`` moves to a Realm and model that does need
-    a key, this fails and the failure is correct.
+    This used to assert the default needs *no* credential. That was true while
+    Zen served anonymously and is measured false now (ADR-0020): no free tier
+    answers an unauthenticated request any more. The invariant is inverted, not
+    deleted, because the failure being guarded is the same one in both
+    directions -- a default that cannot be reached is as broken as one that is
+    free, and which way it broke should be a decision on the record.
+
+    The second assertion is the part that earns the test: the default must name
+    a Realm whose credential this repository actually documents, so that a
+    reader who is told to set a key is told *which* key.
     """
-    assert model_requires_credential(DEFAULT_MODEL) is False
+    assert model_requires_credential(DEFAULT_MODEL) is True
+
+    realm = realm_for_model_id(DEFAULT_MODEL)
+    assert realm in REALM_API_KEY_ENV, (
+        f"the default {DEFAULT_MODEL} resolves to the {realm!r} Realm, which has "
+        "no documented credential variable, so a reader told to authenticate "
+        "would be told to set nothing"
+    )
+    assert REALM_API_KEY_ENV[realm], f"{realm!r} maps to an empty env var name"
 
 
 # ---------------------------------------------------------------------------
