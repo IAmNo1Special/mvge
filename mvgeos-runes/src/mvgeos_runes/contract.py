@@ -7,9 +7,14 @@ with ten import errors, and nothing in this repository failed -- because the
 marketplace only runs when someone pushes to it.
 
 This module is the rule, in one place, so both repositories can check against
-it. It is deliberately **inclusive**: every module below is load-bearing today,
-which is the honest finding rather than something to hide. Its value is that
-it is now a *declaration*:
+it. It is deliberately **inclusive**, and it names two different kinds of
+entry:
+
+* entries a Rune imports today, which are load-bearing on the strength of it;
+* entries no Rune currently imports but which describe an import path the
+  engine permits, so that writing one is declared rather than surprising.
+
+Its value is that it is now a *declaration*:
 
 * removing a line here is a visible decision, and the consequence lands in the
   marketplace's own CI on the next push rather than as a surprise import error;
@@ -17,10 +22,14 @@ it is now a *declaration*:
   previous check could not produce -- it only looked at package roots, so a
   Rune subclassing ``mvgeos_provider.sse.SSEStreamingRealm`` passed cleanly.
 
-One entry is a leak the architecture review identified and is pulling out:
-``mvgeos_provider.sse``. It stays only because removing it without first moving
-its published consumers would break the marketplace on the next push -- which
-is exactly the failure this module exists to make visible instead of silent.
+``mvgeos_provider.sse`` is the second kind. The Realm seam moved to
+``mvgeos_provider.realm_seam`` and both marketplace Realms now import
+``SSEChunk``, ``SSEStreamingRealm`` and ``retry_realm_request`` from the
+package root, so no Rune imports this submodule today. It is declared because
+such an import is a permitted path, not because anything takes it. An earlier
+draft of this docstring described it as a leak held back by an unmigrated
+consumer; that was true when it was written and stopped being true when the
+seam moved.
 
 The other leak the review named, ``mvgeos_core.telemetry``, is closed by
 ADR 0021: the vocabulary now lives in the ``opentelemetry-bridge`` Rune that was
@@ -80,6 +89,9 @@ RUNE_IMPORTABLE_MODULES = frozenset(
         "mvgeos_provider",
         "mvgeos_provider.base",
         "mvgeos_provider.registry",
+        # The implementation module. No Rune imports it -- the Realm seam above
+        # is the published path -- but subclassing SSEStreamingRealm from its
+        # defining module is permitted, and declaring it keeps that a choice.
         "mvgeos_provider.sse",
         "mvgeos_provider.retry",
         "mvgeos_provider.realm_seam",
