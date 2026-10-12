@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 from mvgeos_agent import Mvge
+from mvgeos_agent.agent_name import resolve_active_agent_name
 from mvgeos_agent.auth import load_api_key_for_realm
 from mvgeos_agent.commands import (
     CommandAction,
@@ -227,13 +228,18 @@ class AgentService:
                     "Set OPENROUTER_API_KEY, pass --api-key, or configure "
                     "an agent_factory."
                 )
+            # Which Mvge the desktop embeds is the engine's resolution, made
+            # once, not a name this service knows. The GUI admits no
+            # --agent-name of its own, so it asks for the installed default
+            # and gets whatever Mvge the resolver adopts.
+            agent_name = resolve_active_agent_name()
             env = MvgeEnvironment.resolve(
-                agent_name="coding_mvge",
+                agent_name=agent_name,
                 project_dir=self._project_path,
             )
             self._agent = Mvge(
                 api_key=self._api_key,
-                name="coding_mvge",
+                name=agent_name,
                 tome_dir=state.tome_service.tome_dir,
                 tome_resume=state.active_tome_id,
                 tome_factory=state.tome_service.factory,

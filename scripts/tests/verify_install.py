@@ -114,6 +114,24 @@ def test_the_rune_name_matches_the_engine(realm: str) -> None:
     assert verify_install.realm_rune_for_realm(realm) == rune_for_realm(realm)
 
 
+def test_the_harness_owns_the_only_two_marketplace_copies() -> None:
+    """The release gate's two artifact names are the engine's only forced copies.
+
+    They are forced because the gate runs under a bare ``python3`` before any
+    sync, so it cannot ask the catalog what to install. What is *not* forced is
+    anything else: the engine discovers installed artifacts, so no package may
+    decide which Mvge runs by naming one.
+
+    This is the counterpart to a check that cannot live here. Enumerating every
+    artifact the marketplace publishes would mean naming all of them in the
+    engine -- leakage by the act of guarding against it. The marketplace's own
+    suite owns that check; what this pins is the smaller, local invariant that
+    the two copies are the ones the gate actually resolves.
+    """
+    assert rune_for_realm(verify_install.DEFAULT_PROVIDER) == verify_install.REALM_RUNE
+    assert verify_install.MVGE
+
+
 def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
     """What CI actually runs, with no flags, must be the Realm the engine defaults to.
 

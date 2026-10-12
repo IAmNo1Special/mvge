@@ -100,8 +100,18 @@ from typing import Any
 DEFAULT_PROVIDER = "openrouter"
 DEFAULT_MODEL = "openrouter/free"
 
-# The Realm Rune and the Mvge a Summoner installs before their first task, named
-# exactly as the README names them.
+# The Realm Rune the default Realm needs, and the Mvge a Summoner installs before
+# their first task -- named exactly as the README names them.
+#
+# These are the ONLY two marketplace artifact names anywhere in this
+# repository, and they are the engine knowing something about the marketplace
+# rather than the other way round. They cannot be imported: the harness runs
+# under a bare python3 before any sync, so the workspace it ships beside is not
+# on the path. That is the whole reason they are copies, and
+# `test_the_only_marketplace_names_are_the_two_declared_here` is what keeps it
+# from becoming a third one -- a name that drifts into a package, a default, or
+# a GUI is a coupling nobody chose, and it is the kind this whole seam exists to
+# prevent.
 REALM_RUNE = "openrouter-realm"
 MVGE = "coding_mvge"
 

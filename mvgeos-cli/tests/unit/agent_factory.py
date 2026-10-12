@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -35,14 +34,20 @@ def test_validate_api_key_invalid() -> None:
         validate_api_key("invalid-key")
 
 
-def test_default_agent_factory_fallback_to_coding_mvge(tmp_path: Path) -> None:
+def test_default_agent_factory_hands_the_name_through_verbatim() -> None:
+    """The CLI no longer answers "which Mvge" -- it forwards the name.
+
+    A remap here was a second answerer to a question `Mvge` already owns, and
+    it is what kept a marketplace artifact's slug in this package. `Mvge`
+    resolves once, in its constructor, from the agents actually installed.
+    """
     with (
         patch("mvgeos_cli.agent_factory.Path.is_dir", return_value=True),
         patch("mvgeos_cli.agent_factory.Mvge") as mock_mvge,
     ):
         default_agent_factory(name=DEFAULT_AGENT_NAME)
         mock_mvge.assert_called_once()
-        assert mock_mvge.call_args.kwargs["name"] == "coding_mvge"
+        assert mock_mvge.call_args.kwargs["name"] == DEFAULT_AGENT_NAME
 
 
 def test_default_agent_factory_custom_name() -> None:

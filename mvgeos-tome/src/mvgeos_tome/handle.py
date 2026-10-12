@@ -1341,9 +1341,16 @@ class TomeHandleFactory:
     def export_atif_trajectory(
         self,
         tome_id: str,
-        agent_name: str = "coding_mvge",
+        agent_name: str,
     ) -> dict[str, Any]:
-        """Export session trajectory conforming to ATIF."""
+        """Export session trajectory conforming to ATIF.
+
+        ``agent_name`` is required because a Tome does not record it:
+        ``TomeMetadata`` carries the model and the Contemplation level, never
+        the Mvge that produced the transcript. Defaulting it here would mean
+        inventing a fact this module cannot know -- and the name it once
+        invented belonged to a marketplace artifact.
+        """
         resolved = self._resolve_tome_id(tome_id)
         if resolved is None and Path(tome_id).is_file():
             # Explicit file paths are authoritative: operate on the file as

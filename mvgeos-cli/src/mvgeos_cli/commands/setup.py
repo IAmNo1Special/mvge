@@ -9,7 +9,7 @@ from typing import Any
 
 import typer
 import typer._click as _click
-from mvgeos_agent.config_manager import validate_agent_name
+from mvgeos_agent.agent_name import validate_agent_name
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.layers import resolve_rune_paths
 from mvgeos_runes.loader import check_python_dep_installed

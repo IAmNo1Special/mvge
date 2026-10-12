@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider.model_registry import CatalogRefresh, RefreshStatus
 from typer.testing import CliRunner
 
@@ -35,10 +36,10 @@ class TestConfigCommands:
         }
         mock_manager_cls.return_value = mock_mgr
 
-        result = runner.invoke(config_app, ["show", "--agent-name", "test-agent"])
+        result = runner.invoke(config_app, ["show", "--agent-name", DEFAULT_AGENT_NAME])
         assert result.exit_code == 0
         assert "test-model" in result.stdout
-        mock_manager_cls.assert_called_once_with(agent_name="test-agent")
+        mock_manager_cls.assert_called_once_with(agent_name=DEFAULT_AGENT_NAME)
 
     @patch("mvgeos_cli.commands.config.ConfigManager")
     def test_config_show_default_agent(self, mock_manager_cls: MagicMock) -> None:
@@ -58,7 +59,8 @@ class TestConfigCommands:
         mock_manager_cls.return_value = mock_mgr
 
         result = runner.invoke(
-            config_app, ["set", "model", "new-model", "--agent-name", "test-agent"]
+            config_app,
+            ["set", "model", "new-model", "--agent-name", DEFAULT_AGENT_NAME],
         )
         assert result.exit_code == 0
         assert "Set model = new-model" in result.stdout
@@ -72,7 +74,13 @@ class TestConfigCommands:
 
         result = runner.invoke(
             config_app,
-            ["set", "spells_enabled", '["bash", "read"]', "--agent-name", "test-agent"],
+            [
+                "set",
+                "spells_enabled",
+                '["bash", "read"]',
+                "--agent-name",
+                DEFAULT_AGENT_NAME,
+            ],
         )
         assert result.exit_code == 0
         mock_mgr.set.assert_called_once_with("spells_enabled", ["bash", "read"])
@@ -87,7 +95,8 @@ class TestConfigCommands:
         mock_manager_cls.return_value = mock_mgr
 
         result = runner.invoke(
-            config_app, ["set", "temperature", "invalid", "--agent-name", "test-agent"]
+            config_app,
+            ["set", "temperature", "invalid", "--agent-name", DEFAULT_AGENT_NAME],
         )
         assert result.exit_code == 1
         assert "Invalid temperature value: expected float" in result.output
@@ -103,7 +112,7 @@ class TestConfigCommands:
         mock_manager_cls.return_value = mock_mgr
 
         result = runner.invoke(
-            config_app, ["get", "model", "--agent-name", "test-agent"]
+            config_app, ["get", "model", "--agent-name", DEFAULT_AGENT_NAME]
         )
         assert result.exit_code == 0
         assert "test-model" in result.stdout
@@ -114,7 +123,9 @@ class TestConfigCommands:
         mock_mgr = MagicMock()
         mock_manager_cls.return_value = mock_mgr
 
-        result = runner.invoke(config_app, ["reset", "--agent-name", "test-agent"])
+        result = runner.invoke(
+            config_app, ["reset", "--agent-name", DEFAULT_AGENT_NAME]
+        )
         assert result.exit_code == 0
         assert "Configuration reset to defaults" in result.stdout
         mock_mgr.reset.assert_called_once()
@@ -124,13 +135,13 @@ class TestConfigCommands:
         runner = CliRunner()
         mock_mgr = MagicMock()
         mock_mgr.agent_config_path = Path(
-            "/home/user/.agents/agents/test-agent/config.json"
+            f"/home/user/.agents/agents/{DEFAULT_AGENT_NAME}/config.json"
         )
         mock_manager_cls.return_value = mock_mgr
 
-        result = runner.invoke(config_app, ["path", "--agent-name", "test-agent"])
+        result = runner.invoke(config_app, ["path", "--agent-name", DEFAULT_AGENT_NAME])
         assert result.exit_code == 0
-        assert "test-agent" in result.stdout
+        assert DEFAULT_AGENT_NAME in result.stdout
         assert "config.json" in result.stdout
 
 

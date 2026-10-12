@@ -723,7 +723,7 @@ class TestExplicitPathOperations:
     def test_export_atif_trajectory_explicit_path(self, tmp_path: Path) -> None:
         factory, target = self._foreign(tmp_path)
 
-        data = factory.export_atif_trajectory(str(target))
+        data = factory.export_atif_trajectory(str(target), "test-agent")
 
         assert data["trajectory_id"] == "dotheaderid"
         assert len(data["steps"]) == 2

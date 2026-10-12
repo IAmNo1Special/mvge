@@ -6,15 +6,11 @@ from pathlib import Path
 import pytest
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
-from mvgeos_agent.config_manager import (
-    ConfigLayer,
-    ConfigManager,
-    is_known_agent,
-    validate_agent_name,
-)
+from mvgeos_agent.agent_name import is_known_agent, validate_agent_name
+from mvgeos_agent.config_manager import ConfigLayer, ConfigManager
 
 
-def _make_mgr(tmp_path: Path, agent_name: str = "test-agent") -> ConfigManager:
+def _make_mgr(tmp_path: Path, agent_name: str = DEFAULT_AGENT_NAME) -> ConfigManager:
     """Create a ConfigManager with isolated paths for testing."""
     return ConfigManager(
         agent_name=agent_name,
@@ -34,7 +30,7 @@ class TestConfigManagerDefaults:
     def test_defaults_can_be_overridden(self, tmp_path: Path) -> None:
         custom_defaults = {"model": "custom-model", "max_tokens": 100}
         mgr = ConfigManager(
-            agent_name="test-agent",
+            agent_name=DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             defaults=custom_defaults,
             agent_config_base=tmp_path / "agent_configs",
@@ -135,7 +131,7 @@ class TestConfigManagerPrecedence:
     def test_deep_merge_nested_dicts(self, tmp_path: Path) -> None:
         """Deep merge preserves sibling keys from lower layers."""
         mgr = ConfigManager(
-            agent_name="test-agent",
+            agent_name=DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             defaults={
                 "settings": {"a": 1, "b": 2},
@@ -333,13 +329,13 @@ class TestMvgeConfigResilience:
             "contemplation_budget": [1, 2],
         }
         mgr = ConfigManager(
-            agent_name="test-agent",
+            agent_name=DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             defaults=custom_defaults,
             agent_config_base=tmp_path / "agent_configs",
         )
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             config_manager=mgr,
         )

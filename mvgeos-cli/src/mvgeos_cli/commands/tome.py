@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from mvgeos_agent.agent_name import resolve_active_agent_name
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.layers import sessions_dir
 from mvgeos_runes.codecs import load_session_codecs
@@ -136,16 +137,23 @@ def _render_tome_export(
     format: str,
     factory: TomeHandleFactory | None = None,
     tome_ref: str | None = None,
+    agent_name: str | None = None,
 ) -> str:
     """Render tome metadata and entries as JSON, Markdown, or ATIF trajectory.
 
     ``tome_ref`` is the original locator (id or explicit path) the user gave;
     it is threaded through so explicit paths keep resolving to the pointed-at
     file instead of being re-resolved through the header id.
+
+    ``agent_name`` is resolved by the command from the engine's agent-name
+    module -- a Tome never records it, so the CLI supplies the Mvge this
+    invocation is running rather than letting the export invent one.
     """
     if format in ("atif", "trajectory"):
         if factory is not None:
-            data = factory.export_atif_trajectory(tome_ref or meta.id)
+            data = factory.export_atif_trajectory(
+                tome_ref or meta.id, agent_name or resolve_active_agent_name()
+            )
             return json.dumps(data, indent=2)
         steps = []
         for e in entries:
@@ -161,7 +169,7 @@ def _render_tome_export(
         return json.dumps(
             {
                 "trajectory_id": meta.id,
-                "agent_name": "coding_mvge",
+                "agent_name": resolve_active_agent_name(),
                 "model": meta.model or "",
                 "created_at": meta.created_at,
                 "steps": steps,

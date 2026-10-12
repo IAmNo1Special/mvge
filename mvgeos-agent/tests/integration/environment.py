@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from mvgeos_core.channel import Model
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import BeforeMvgeStartData, SigilHook
 
@@ -118,7 +119,7 @@ async def test_agent_initialization_without_rune_omits_steering() -> None:
         (global_dir / "AGENTS.md").write_text("Global dev standard.", encoding="utf-8")
 
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=proj_dir,
             global_dir=global_dir,
             config_dir=tmp_path / "config",
@@ -143,7 +144,7 @@ async def test_rune_can_contribute_steering_via_before_mvge_start() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             config_dir=tmp_path / "config",
         )

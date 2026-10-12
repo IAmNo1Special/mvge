@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_runes.types import RuneManifest
 from typer.testing import CliRunner
 
@@ -108,7 +109,7 @@ def test_collect_rune_dirs_with_manifest() -> None:
             "mvgeos_cli.commands.setup.resolve_rune_paths",
             return_value=[runes_dir],
         ):
-            results = collect_rune_dirs("coding-mvge", None)
+            results = collect_rune_dirs(DEFAULT_AGENT_NAME, None)
             assert len(results) == 1
             manifest, path = results[0]
             assert manifest.name == "my_rune"
@@ -132,7 +133,7 @@ def test_collect_rune_dirs_skips_disabled() -> None:
             "mvgeos_cli.commands.setup.resolve_rune_paths",
             return_value=[runes_dir],
         ):
-            results = collect_rune_dirs("coding-mvge", None)
+            results = collect_rune_dirs(DEFAULT_AGENT_NAME, None)
             assert results == []
 
 
@@ -405,7 +406,7 @@ def test_setup_install_command_piped_stdin_abort() -> None:
 
 def test_install_missing_deps_no_runes() -> None:
     with patch("mvgeos_cli.commands.setup.collect_rune_dirs", return_value=[]):
-        assert install_missing_deps("coding-mvge") == 0
+        assert install_missing_deps(DEFAULT_AGENT_NAME) == 0
 
 
 def test_install_missing_deps_no_declared_deps() -> None:
@@ -416,7 +417,7 @@ def test_install_missing_deps_no_declared_deps() -> None:
         "mvgeos_cli.commands.setup.collect_rune_dirs",
         return_value=[(manifest, Path("/tmp/r"))],
     ):
-        assert install_missing_deps("coding-mvge") == 0
+        assert install_missing_deps(DEFAULT_AGENT_NAME) == 0
 
 
 def test_install_missing_deps_all_installed() -> None:
@@ -430,7 +431,7 @@ def test_install_missing_deps_all_installed() -> None:
         ),
         patch("mvgeos_cli.commands.setup.check_python_dep", return_value=True),
     ):
-        assert install_missing_deps("coding-mvge") == 0
+        assert install_missing_deps(DEFAULT_AGENT_NAME) == 0
 
 
 def test_setup_no_subcommand_defaults_to_check() -> None:

@@ -542,10 +542,10 @@ class TestMvgeEnvironmentResolve:
     def test_resolve_defaults(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=config_dir
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=config_dir
         )
 
-        assert env.agent_name == "test-agent"
+        assert env.agent_name == DEFAULT_AGENT_NAME
         assert env.model_id == DEFAULT_MODEL
         assert env.temperature == 0.7
         assert env.max_tokens == 4096
@@ -565,7 +565,7 @@ class TestMvgeEnvironmentResolve:
             "queue_mode": "all",
         }
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             config_dir=config_dir,
             overrides=overrides,
@@ -585,7 +585,7 @@ class TestMvgeEnvironmentResolve:
         (agents_dir / "SYSTEM.md").write_text("Custom Project System Prompt")
 
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=config_dir
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=config_dir
         )
 
         assert env.resolved_prompt.source == PromptSource.PROJECT_MD
@@ -593,7 +593,9 @@ class TestMvgeEnvironmentResolve:
 
     def test_resolve_is_frozen(self, tmp_path: Path) -> None:
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "agent_config"
+            DEFAULT_AGENT_NAME,
+            project_dir=tmp_path,
+            config_dir=tmp_path / "agent_config",
         )
         with pytest.raises(dataclasses.FrozenInstanceError):
             env.temperature = 0.5  # type: ignore[misc]
@@ -603,7 +605,7 @@ class TestMvgeEnvironmentAssemble:
     @pytest.mark.asyncio
     async def test_without_runner_returns_base_prompt(self, tmp_path: Path) -> None:
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=tmp_path / "cfg"
         )
         assembled = await env.assemble_system_prompt(base_prompt="You are Mvge.")
         assert "You are Mvge." in assembled
@@ -613,7 +615,7 @@ class TestMvgeEnvironmentAssemble:
     async def test_emits_before_mvge_start_once(self, tmp_path: Path) -> None:
         runner = _mock_runner()
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=tmp_path / "cfg"
         )
 
         await env.assemble_system_prompt(runner=runner)
@@ -626,7 +628,7 @@ class TestMvgeEnvironmentAssemble:
     async def test_sigil_payload_carries_agent_inputs(self, tmp_path: Path) -> None:
         runner = _mock_runner()
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=tmp_path / "cfg"
         )
 
         await env.assemble_system_prompt(
@@ -643,7 +645,7 @@ class TestMvgeEnvironmentAssemble:
         assert payload.spell_names == ["bash", "read"]
         assert payload.config_dir == "/cfg/test-agent"
         assert payload.custom_prompt == "Custom body"
-        assert payload.agent_name == "test-agent"
+        assert payload.agent_name == DEFAULT_AGENT_NAME
         assert payload.cwd == "/proj"
 
     @pytest.mark.asyncio
@@ -656,7 +658,7 @@ class TestMvgeEnvironmentAssemble:
         runner = _mock_runner()
         runner.emit_chain = AsyncMock(side_effect=injector)
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=tmp_path / "cfg"
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=tmp_path / "cfg"
         )
 
         result = await env.assemble_system_prompt(runner=runner)
@@ -673,12 +675,12 @@ class TestMvgeEnvironmentSnapshot:
     def test_mvge_environment_build_snapshot(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
         env = MvgeEnvironment.resolve(
-            "test-agent", project_dir=tmp_path, config_dir=config_dir
+            DEFAULT_AGENT_NAME, project_dir=tmp_path, config_dir=config_dir
         )
         snapshot = env.build_snapshot()
 
         assert isinstance(snapshot, RuntimeSnapshot)
-        assert snapshot.agent_name == "test-agent"
+        assert snapshot.agent_name == DEFAULT_AGENT_NAME
         assert snapshot.model == env.model_id
         assert snapshot.prompt is not None
         assert snapshot.prompt.source == PromptSource.BUILTIN.value
@@ -718,13 +720,13 @@ class TestMvgeEnvironmentSnapshot:
             "rune_paths": [str(tmp_path / "runes")],
         }
         mgr = ConfigManager(
-            agent_name="test-agent",
+            agent_name=DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             defaults=custom_defaults,
             agent_config_base=tmp_path / "agent_configs",
         )
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             config_manager=mgr,
         )
@@ -850,7 +852,7 @@ class TestSteeringDecoupled:
         (global_dir / "AGENTS.md").write_text("Global system rule", encoding="utf-8")
 
         env = MvgeEnvironment.resolve(
-            "test-agent",
+            DEFAULT_AGENT_NAME,
             project_dir=tmp_path,
             global_dir=global_dir,
         )
@@ -867,11 +869,11 @@ class TestSigilPayload:
     def test_resolve_accepts_active_spells_dir(self, tmp_path: Path) -> None:
         spells_dir = tmp_path / "spells"
         spells_dir.mkdir()
-        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+        env = MvgeEnvironment.resolve(DEFAULT_AGENT_NAME, active_spells_dir=spells_dir)
         assert env.active_spells_dir == spells_dir
 
     def test_resolve_defaults_active_spells_dir_to_none(self) -> None:
-        env = MvgeEnvironment.resolve("test-agent")
+        env = MvgeEnvironment.resolve(DEFAULT_AGENT_NAME)
         assert env.active_spells_dir is None
 
     def test_build_sigil_payload_populates_rehydration_fields(
@@ -879,7 +881,7 @@ class TestSigilPayload:
     ) -> None:
         spells_dir = tmp_path / "spells"
         spells_dir.mkdir()
-        env = MvgeEnvironment.resolve("test-agent", active_spells_dir=spells_dir)
+        env = MvgeEnvironment.resolve(DEFAULT_AGENT_NAME, active_spells_dir=spells_dir)
 
         payload = env.build_sigil_payload(
             base_prompt="Be helpful.",
@@ -893,7 +895,7 @@ class TestSigilPayload:
         assert payload.spell_names == ["bash"]
         assert payload.config_dir == str(tmp_path / "config")
         assert payload.custom_prompt == "Custom."
-        assert payload.agent_name == "test-agent"
+        assert payload.agent_name == DEFAULT_AGENT_NAME
         assert payload.cwd == str(tmp_path)
         assert payload.spells_dir == spells_dir.as_posix()
         expected_system_path = (
@@ -906,7 +908,7 @@ class TestSigilPayload:
         self, tmp_path: Path
     ) -> None:
         """§4.4: payload coverage includes the spells_dir=None case."""
-        env = MvgeEnvironment.resolve("test-agent")
+        env = MvgeEnvironment.resolve(DEFAULT_AGENT_NAME)
         assert env.active_spells_dir is None
 
         payload = env.build_sigil_payload(
@@ -920,7 +922,7 @@ class TestSigilPayload:
     def test_build_sigil_payload_explicit_dir_beats_environment(
         self, tmp_path: Path
     ) -> None:
-        env = MvgeEnvironment.resolve("test-agent")
+        env = MvgeEnvironment.resolve(DEFAULT_AGENT_NAME)
         assert env.active_spells_dir is None
         override = tmp_path / "other-spells"
         override.mkdir()

@@ -8,7 +8,6 @@ from mvgeos_agent import Mvge
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
-from mvgeos_core.layers import agent_dir
 from mvgeos_provider.model_registry import model_requires_credential
 
 from mvgeos_cli.dynamic_commands import cli_project_dir
@@ -53,14 +52,17 @@ def default_agent_factory(
     force_fork_resume: bool = False,
     **kwargs: Any,
 ) -> MvgeAgent:
-    """Default agent factory using Mvge."""
-    resolved_name = name
-    if resolved_name == DEFAULT_AGENT_NAME and agent_dir("coding_mvge").is_dir():
-        resolved_name = "coding_mvge"
+    """Default agent factory using Mvge.
 
+    The agent name is handed through verbatim. Which Mvge an invocation runs
+    is `Mvge`'s decision, made once in its constructor from the name it was
+    given and the agents actually installed. A remap here would be a second
+    answerer to a question the engine already has a module for, and it is
+    what kept one marketplace artifact's slug in this package.
+    """
     return Mvge(
         api_key=api_key or None,
-        name=resolved_name,
+        name=name,
         spells=kwargs.get("spells"),
         custom_system_prompt=custom_system_prompt,
         extension_dir=extension_dir,

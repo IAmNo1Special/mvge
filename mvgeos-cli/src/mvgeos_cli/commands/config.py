@@ -4,7 +4,8 @@ import asyncio
 import json
 
 import typer
-from mvgeos_agent.config_manager import ConfigManager, validate_agent_name
+from mvgeos_agent.agent_name import validate_agent_name
+from mvgeos_agent.config_manager import ConfigManager
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider.model_registry import CatalogRefresh, RefreshStatus
 from mvgeos_provider.registry import refresh_catalog

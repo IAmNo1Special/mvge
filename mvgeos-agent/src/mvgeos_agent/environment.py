@@ -32,12 +32,8 @@ from mvgeos_runes.types import (
     SpellDefinition,
 )
 
-from mvgeos_agent.config_manager import (
-    ConfigLayer,
-    ConfigManager,
-    ConfigValue,
-    validate_agent_name,
-)
+from mvgeos_agent.agent_name import validate_agent_name
+from mvgeos_agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvgeos_agent.snapshot import RuntimeSnapshot, assemble_snapshot
 
 logger = logging.getLogger(__name__)

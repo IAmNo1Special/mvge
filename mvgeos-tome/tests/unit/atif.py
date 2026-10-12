@@ -148,7 +148,7 @@ def test_export_and_replay_atif_trajectory(tmp_path: Path) -> None:
     assert steps[3].content == "2+2 is 4."
 
     # Test export
-    exported = factory.export_atif_trajectory("tome_replay_1")
+    exported = factory.export_atif_trajectory("tome_replay_1", "test-agent")
     assert exported["trajectory_id"] == "tome_replay_1"
     assert exported["model"] == "anthropic/claude-opus-4.6"
     assert len(exported["steps"]) == 4

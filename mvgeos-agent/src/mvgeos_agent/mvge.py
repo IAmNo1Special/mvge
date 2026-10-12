@@ -40,7 +40,6 @@ from mvgeos_core.invocations import (
 from mvgeos_core.layers import (
     ResolvedLayer,
     Scope,
-    agent_dir,
     agents_dir,
     sessions_dir,
 )
@@ -74,6 +73,7 @@ from mvgeos_runes.types import (
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeMetadata, TomeVersionError
 
+from mvgeos_agent.agent_name import resolve_active_agent_name
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
@@ -425,7 +425,12 @@ class Mvge:
         # is known -- reading a credential before that would mean reading a
         # Realm-blind one, which is the bug this ordering exists to prevent.
         self._api_key = api_key or ""
-        self._name = name
+        # Which Mvge runs is decided once, here, and every later consumer --
+        # spells, rune extras, the environment, `name` -- reads the answer.
+        # Deciding it again downstream is the second precedence pass ADR-0014
+        # was written to end, and it is what let one marketplace artifact's
+        # slug into five engine packages.
+        self._name = resolve_active_agent_name(name)
         self._caller_dir = caller_dir
 
         agents_root = str(agents_dir())
@@ -437,7 +442,7 @@ class Mvge:
 
         self._plan_mode = False
 
-        agent_rune_extras = discover_agent_rune_extras(name, caller_dir)
+        agent_rune_extras = discover_agent_rune_extras(self._name, caller_dir)
 
         self._custom_system_prompt = custom_system_prompt
         self._extension_dir = extension_dir
@@ -451,8 +456,8 @@ class Mvge:
 
         if environment is None:
             environment = MvgeEnvironment.resolve(
-                name,
-                config_dir=resolve_config_dir(name),
+                self._name,
+                config_dir=resolve_config_dir(self._name),
                 caller_dir=caller_dir,
                 extension_dir=extension_dir,
                 runes_paths=list(runes_paths) if runes_paths is not None else None,
@@ -552,6 +557,9 @@ class Mvge:
         of raising (used by reload); ``None`` keeps strict construction
         behavior.
         """
+        # The agent scope was resolved once in __init__. Resolving it again
+        # here would be a second precedence pass; reading the answer already
+        # taken is what keeps agent and spells pointing at the same Mvge.
         name = self._name
         caller_dir = self._caller_dir
         spells_arg = self._spells_arg
@@ -570,11 +578,6 @@ class Mvge:
                 if config_spells.is_dir():
                     discovered = _from_dir(config_spells)
                     active_dir = config_spells
-                elif name == DEFAULT_AGENT_NAME:
-                    fallback_dir = agent_dir("coding_mvge") / "spells"
-                    if fallback_dir.is_dir():
-                        discovered = _from_dir(fallback_dir)
-                        active_dir = fallback_dir
                 filter_set = set(spells_arg)
                 return (
                     [s for s in discovered if getattr(s, "name", "") in filter_set],
