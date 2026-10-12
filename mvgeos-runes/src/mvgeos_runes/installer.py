@@ -11,16 +11,22 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import httpx
 from mvgeos_core.layers import extensions_dir, global_agents_dir
 
+from mvgeos_runes.catalog import (
+    DEFAULT_MARKETPLACE_URL,
+    RUNES_SECTION,
+    fetch_catalog,
+    resolve_artifact,
+    section_of,
+)
 from mvgeos_runes.deps import install_python_deps
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MARKETPLACE_URL = (
-    "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
-)
+# Re-exported because every caller of this module has always spelled it this
+# way, and the rune installer's public signature names it as its default.
+__all__ = ["DEFAULT_MARKETPLACE_URL", "install_rune", "uninstall_rune"]
 
 # Allowlist for install/uninstall directory names. Anything outside this set
 # (path separators, "..", URL-encoded tricks) is rejected before it can reach
@@ -182,11 +188,13 @@ def fetch_marketplace_runes(
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
     timeout: float = 15.0,
 ) -> dict[str, Any]:
-    """Fetch available runes from the marketplace index."""
+    """Fetch available runes from the marketplace index.
+
+    Where the catalog lives and how it is fetched is ``mvgeos_runes.catalog``'s
+    decision, not this one. This reads its ``runes`` section.
+    """
     try:
-        response = httpx.get(marketplace_url, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
+        catalog = fetch_catalog(marketplace_url, timeout=timeout)
     except Exception as exc:
         logger.warning(
             "Failed to fetch marketplace runes from '%s': %s",
@@ -194,12 +202,7 @@ def fetch_marketplace_runes(
             exc,
         )
         return {}
-
-    if isinstance(data, dict):
-        runes = data.get("runes", {})
-        if isinstance(runes, dict):
-            return runes
-    return {}
+    return dict(section_of(catalog, RUNES_SECTION))
 
 
 def list_installed_runes(
@@ -361,22 +364,10 @@ def install_rune(
             dest = _dest_within_target(target, name)
             _install_tree(staged, dest)
     else:
-        try:
-            response = httpx.get(marketplace_url, timeout=15.0)
-            response.raise_for_status()
-            marketplace_data = response.json()
-        except Exception as exc:
-            raise ValueError(
-                f"Failed to fetch marketplace index from '{marketplace_url}': {exc}"
-            ) from exc
-
-        runes = (
-            marketplace_data.get("runes", {})
-            if isinstance(marketplace_data, dict)
-            else {}
+        rune_entry = resolve_artifact(
+            stripped_source, section=RUNES_SECTION, marketplace_url=marketplace_url
         )
-        rune_entry = runes.get(stripped_source)
-        git_url = rune_entry.get("git") if isinstance(rune_entry, dict) else None
+        git_url = rune_entry.get("git")
         if not git_url or not isinstance(git_url, str):
             raise ValueError(f"Rune '{stripped_source}' not found in marketplace.")
 

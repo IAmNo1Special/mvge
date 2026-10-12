@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import base64
 import contextlib
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -12,15 +10,19 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import httpx
 from mvgeos_core.layers import agents_dir
+from mvgeos_runes.catalog import (
+    DEFAULT_MARKETPLACE_URL,
+    MVGES_SECTION,
+    fetch_catalog,
+    local_catalog_candidate,
+    resolve_artifact,
+    section_of,
+)
 from mvgeos_runes.deps import confirm_python_deps_install
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MARKETPLACE_URL = (
-    "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
-)
 
 # Allowlist for install/uninstall directory names. Anything outside this set
 # (path separators, "..", URL-encoded tricks) is rejected before it can reach
@@ -97,92 +99,17 @@ def _clear_dest(dest: Path) -> None:
             dest.unlink()
 
 
-def _local_marketplace_candidate(subpath: str) -> Path | None:
-    """Find a local checkout of a marketplace subpath (clone fallback)."""
-    for base in (
-        os.environ.get("MVGEOS_MARKETPLACE_DIR"),
-        str(Path.home() / "Desktop" / "mvgeos-marketplace"),
-    ):
-        if base:
-            cand = Path(base).expanduser() / subpath.strip().strip("/\\")
-            if cand.is_dir():
-                return cand
-    return None
-
-
-def _fetch_marketplace_data(
-    marketplace_url: str = DEFAULT_MARKETPLACE_URL,
-    timeout: float = 15.0,
-) -> dict[str, Any]:
-    """Fetch marketplace index data with fallbacks for CDN caching and branch delays."""
-    first_error: Exception | None = None
-    data: Any = None
-    try:
-        response = httpx.get(marketplace_url, timeout=timeout)
-        response.raise_for_status()
-        data = response.json()
-    except Exception as exc:
-        first_error = exc
-
-    if isinstance(data, dict):
-        mvges = data.get("mvges") or data.get("agents")
-        if isinstance(mvges, dict) and mvges:
-            return data
-
-    # Fallback 1: If URL has /main/, try /HEAD/ (bypasses Fastly branch caching)
-    if "/main/" in marketplace_url:
-        head_url = marketplace_url.replace("/main/", "/HEAD/")
-        try:
-            head_resp = httpx.get(head_url, timeout=timeout)
-            head_resp.raise_for_status()
-            head_data = head_resp.json()
-            if isinstance(head_data, dict):
-                head_mvges = head_data.get("mvges") or head_data.get("agents")
-                if isinstance(head_mvges, dict) and head_mvges:
-                    return head_data
-        except Exception:
-            pass
-
-    # Fallback 2: GitHub Contents API for official marketplace
-    if (
-        "githubusercontent.com" in marketplace_url
-        and "mvgeos-marketplace" in marketplace_url
-    ):
-        try:
-            api_url = (
-                "https://api.github.com/repos/IAmNo1Special/mvgeos-marketplace"
-                "/contents/index.json"
-            )
-            api_resp = httpx.get(
-                api_url,
-                headers={"Accept": "application/vnd.github.v3+json"},
-                timeout=timeout,
-            )
-            api_resp.raise_for_status()
-            api_json = api_resp.json()
-            if isinstance(api_json, dict) and "content" in api_json:
-                decoded = base64.b64decode(api_json["content"]).decode("utf-8")
-                api_data = json.loads(decoded)
-                if isinstance(api_data, dict):
-                    api_mvges = api_data.get("mvges") or api_data.get("agents")
-                    if isinstance(api_mvges, dict) and api_mvges:
-                        return api_data
-        except Exception:
-            pass
-
-    if first_error is not None and not isinstance(data, dict):
-        raise first_error
-
-    return data if isinstance(data, dict) else {}
-
-
 def fetch_marketplace_mvges(
     marketplace_url: str = DEFAULT_MARKETPLACE_URL,
     timeout: float = 15.0,
 ) -> dict[str, Any]:
-    """Fetch available mvges (agents) from the marketplace index."""
+    """Fetch available mvges (agents) from the marketplace index.
+
+    Where the catalog lives and how it is fetched is ``mvgeos_runes.catalog``'s
+    decision. This reads its ``mvges`` section.
+    """
     try:
-        data = _fetch_marketplace_data(marketplace_url, timeout=timeout)
+        catalog = fetch_catalog(marketplace_url, timeout=timeout)
     except Exception as exc:
         logger.warning(
             "Failed to fetch marketplace mvges from '%s': %s",
@@ -190,12 +117,7 @@ def fetch_marketplace_mvges(
             exc,
         )
         return {}
-
-    if isinstance(data, dict):
-        mvges = data.get("mvges") or data.get("agents") or {}
-        if isinstance(mvges, dict):
-            return mvges
-    return {}
+    return dict(section_of(catalog, MVGES_SECTION))
 
 
 def list_installed_mvges(
@@ -322,29 +244,10 @@ def install_mvge(
             _clear_dest(dest)
             shutil.copytree(staged, dest)
     else:
-        try:
-            marketplace_data = _fetch_marketplace_data(marketplace_url, timeout=15.0)
-        except Exception as exc:
-            raise ValueError(
-                f"Failed to fetch marketplace index from '{marketplace_url}': {exc}"
-            ) from exc
-
-        mvges = (
-            marketplace_data.get("mvges") or marketplace_data.get("agents") or {}
-            if isinstance(marketplace_data, dict)
-            else {}
+        mvge_entry = resolve_artifact(
+            stripped_source, section=MVGES_SECTION, marketplace_url=marketplace_url
         )
-        mvge_entry = mvges.get(stripped_source)
-        if not mvge_entry and isinstance(mvges, dict):
-            for alt in (
-                stripped_source.replace("-", "_"),
-                stripped_source.replace("_", "-"),
-            ):
-                if alt in mvges:
-                    mvge_entry = mvges[alt]
-                    break
-
-        git_url = mvge_entry.get("git") if isinstance(mvge_entry, dict) else None
+        git_url = mvge_entry.get("git")
         if not git_url or not isinstance(git_url, str):
             raise ValueError(f"Mvge '{stripped_source}' not found in marketplace.")
 
@@ -364,7 +267,7 @@ def install_mvge(
                     )
                     staged_path = Path(tmp_dir) / str(subpath).strip().strip("/\\")
                 except (subprocess.CalledProcessError, OSError):
-                    candidate = _local_marketplace_candidate(subpath)
+                    candidate = local_catalog_candidate(subpath)
                     if candidate is None:
                         raise
                     staged_path = candidate
