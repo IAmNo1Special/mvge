@@ -228,7 +228,5 @@ def check_tree(root: object, *, relative_to: object = None) -> list[Violation]:
                 )
             )
             continue
-        violations.extend(
-            check_source(source, location=str(path.relative_to(origin)))
-        )
+        violations.extend(check_source(source, location=str(path.relative_to(origin))))
     return violations

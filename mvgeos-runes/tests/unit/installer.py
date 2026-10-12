@@ -155,7 +155,7 @@ def test_install_rune_marketplace_not_found(tmp_path: Path) -> None:
 
     with (
         patch("httpx.get", return_value=mock_resp),
-            pytest.raises(ValueError, match="unknown-rune"),
+        pytest.raises(ValueError, match="unknown-rune"),
     ):
         install_rune("unknown-rune", target_dir=tmp_path)
 

@@ -187,9 +187,7 @@ def declared_hooks(cls: type) -> set[str]:
     name the declaration carries that the class no longer has anywhere in its
     MRO, which is what the contract test asserts against.
     """
-    return {
-        hook.name for hook in REALM_SEAM_HOOKS if hasattr(cls, hook.name)
-    }
+    return {hook.name for hook in REALM_SEAM_HOOKS if hasattr(cls, hook.name)}
 
 
 def abstract_hooks(cls: type) -> frozenset[str]:

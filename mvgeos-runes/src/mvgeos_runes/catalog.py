@@ -90,9 +90,7 @@ def fetch_catalog(
             continue
 
         catalog = _decode_contents_api(payload) if is_contents_api else payload
-        if isinstance(catalog, dict) and _has_a_section(
-            catalog, marketplace_url
-        ):
+        if isinstance(catalog, dict) and _has_a_section(catalog, marketplace_url):
             return catalog
 
     if first_error is not None:
@@ -134,9 +132,7 @@ def resolve_artifact(
 
     if not isinstance(entry, dict):
         available = ", ".join(sorted(entries)) or "(the index is empty)"
-        raise ValueError(
-            f"'{name}' not found in marketplace. Available: {available}."
-        )
+        raise ValueError(f"'{name}' not found in marketplace. Available: {available}.")
     return entry
 
 
