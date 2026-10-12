@@ -35,6 +35,7 @@ from mvgeos_provider.registry import (
     refresh_catalog,
     refresh_models,
 )
+from mvgeos_provider.retry import retry_realm_request
 from mvgeos_provider.sse import SSEChunk, SSEStreamingRealm
 
 __all__ = [
@@ -68,6 +69,7 @@ __all__ = [
     "realm_for_model_id",
     "refresh_catalog",
     "refresh_models",
+    "retry_realm_request",
     "rune_for_realm",
     "serving_realm_for_model",
 ]
