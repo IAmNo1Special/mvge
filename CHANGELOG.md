@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-12
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (39edefb)
+
+- run the formatter over the files it was never run on (5fa14b9)
+
+- **release:** v0.7.0 (d54370d)
+
+
+### Documentation
+
+- **provider:** declare the Realm seam (2e6e4d8)
+
+- correct the record to match the code (c56cff4)
+
+
+### Refactoring
+
+- **agent:** resolve which Mvge runs in one module (149faa5)
+
+- **runes:** own the catalog in one module (b802422)
+
+- **core:** remove the telemetry module **BREAKING CHANGE** (d38c55b)
+
+
+### Tests
+
+- **runes:** prove the marketplace contract check can fail (079a51f)
+
+
 ## [0.6.30] - 2026-10-11
 
 
