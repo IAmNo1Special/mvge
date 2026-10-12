@@ -118,7 +118,7 @@ Rune/Extension manifests at `~/.agents/extensions/`.
 
 **Prompt & Agent Architecture**:
 Follows the Two-Layer Invariant Scaffolding Pattern (ADR 0009). Layer 1 (persona) is defined in colocated `system_prompt/SYSTEM.md`. Layer 2 (spells, environment, UTC date/time, PowerShell rules, `<project_context>`, and self-modification pointers) is dynamically rendered by `MvgeEnvironment`.
-Agents use zero-config auto-discovery: `root_mvge = Mvge(name="coding_mvge")` auto-discovers spells from `spells/`, `.env`, and colocated assets (`system_prompt/`, `skills/`, `runes/`).
+Agents use zero-config auto-discovery: an Mvge named for its own directory auto-discovers spells from `spells/`, `.env`, and colocated assets (`system_prompt/`, `skills/`, `runes/`). Naming no agent at all adopts the single installed one (`resolve_active_agent_name`).
 
 **`_build_spells()` interface**: must use `self._runner` (not `self._state.rune_runner`) and return all spell types (rune spells from enabled runes only + builtin/discovered spells). **Watcher cleanup**: watchers are owned by `RuneLifecycle` — stop them via `lifecycle.shutdown()` (BaseMvge.close() does this; never reference a singular `_watcher`).
 

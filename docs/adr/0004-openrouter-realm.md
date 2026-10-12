@@ -30,7 +30,7 @@ MvgeOS needs at least one provider (realm) to be functional. OpenRouter provides
 
 ## Decision
 
-MVP includes only the OpenRouter provider (`OpenRouterRealm`). The `Realm` protocol defines the streaming interface that all providers must implement. The `Model` type holds provider/model identification and configuration. A `models.json` file in the config directory holds the model catalog.
+MVP includes only the OpenRouter provider (`OpenRouterRealm`). The Realm seam is declared in `mvgeos_provider.realm_seam`, which lists every member a Realm supplies and — for each — whether the engine calls it, whether a Realm may override it, and whether it is engine machinery it should not touch. The `Realm` base (`mvgeos_provider.base`) is the minimal contract: `stream`, `complete`, `close`, plus `is_router`. `SSEStreamingRealm` is the implementation a RealM speakers of the Chat Completions dialect subclass, and it declares the required pair as `@abstractmethod`. The `Model` type holds provider/model identification and configuration. A `models.json` file in the config directory holds the model catalog.
 
 ## Consequences
 
@@ -38,3 +38,13 @@ MVP includes only the OpenRouter provider (`OpenRouterRealm`). The `Realm` proto
 - Provider abstraction (Realm protocol) is implemented first, enabling future providers
 - Model configuration is externalized to `models.json`
 - Authentication via API key stored in `~/.agents/.mvgeos/auth/`
+
+
+## Amendment — 2026-10-11
+
+Amended in the same commit that published `mvgeos_provider.realm_seam` and moved
+the two shipped Realm runes onto a package-root import. The Realm seam is now
+declared rather than implicit, and a member the engine never calls
+(`_prepare_request_url_and_headers`) is marked as a Rune convention so a Realm
+author can find it. `mvgeos-provider/tests/unit/realm_seam.py` holds the
+declaration to the implementation.

@@ -76,7 +76,7 @@ We adopt the **Two-Layer Invariant Scaffolding Pattern** and **Colocated Zero-Co
 
 ## Consequences
 
-- **Zero Boilerplate**: Defining an agent requires only `root_mvge = Mvge(name="coding_mvge")`.
+- **Zero Boilerplate**: Defining an agent requires only naming the Mvge the caller wrote — `root_mvge = Mvge(name="my_mvge")`. The engine resolves the active Mvge from the name it is given and the agents installed; it names no published artifact, so the catalog can rename or add a Mvge without a release here. Colocated discovery is what makes the boilerplate zero, not the spelling of one name.
 - **Autonomous Self-Modification**: The agent can inspect and self-modify spells, skills, and runes by reading colocated `AGENTS.md` authoring contracts.
 - **Robust Tool Discovery**: Python callables, async functions, and structured `MvgeSpell` objects are transparently coerced and schema-validated.
 - **Clean Invariant Separation**: Agent authors focus exclusively on domain guidelines and persona; runtime environment, shell rules, tool schemas, and project context are managed invariantly by the engine.

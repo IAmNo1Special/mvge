@@ -56,7 +56,7 @@ in-repo sites that disagreed:
 | Site | Divergence |
 | --- | --- |
 | `RuneLifecycle.resolve_paths` | Infers `Scope` by substring-matching the path string; still recognised the dead `.mvgeos/{agent}/runes` and `.mvgeos/runes` forms. |
-| `Mvge.__init__` | Appended colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules. |
+| `Mvge.__init__` | ~~Appended colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules.~~ **Deleted 2026-10-11**: `resolve_active_agent_name` answers which Mvge runs, once, and `discover_agent_rune_extras` reads that answer. |
 | `dynamic_commands.get_extension_dirs` | Used the ambient `Path.cwd()` and probed the non-standard `<cwd>/extensions`. Rune *CLI command* discovery, so the same divergence class as Rune loading. |
 
 A fourth site, `approval-rune/gate.py:71`

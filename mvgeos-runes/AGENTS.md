@@ -29,7 +29,7 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | `RuneRunner` | Extension host: registers sigils/spells/commands/shortcuts/providers |
 | `RuneAPI` | Facade handed to rune factories |
 | `RuneFactory` | `Callable[[RuneAPI], None \| Awaitable[None]]` |
-| `SigilHook` | Enum of 22 lifecycle hook names |
+| `SigilHook` | Enum of 23 lifecycle hook names |
 | `RuneWatcher` | watchdog-based hot reload |
 | `SpellDefinition` | Definition of a spell provided by a rune |
 | `SkillManifest` | Parsed metadata for an agentskills.io skill |
@@ -58,7 +58,7 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 
 ## Rune Discovery Paths
 
-Runes are user-installed extensions (not built-in). They are loaded from three scopes (in precedence order):
+Runes are usually user-installed, but a built-in one can ship inside an Mvge: `discover_agent_rune_extras` declares a colocated `runes/`, the agent config dir's `runes/` and `extensions/`, and a `runes/` inside an importable agent package. Each declares its own scope rather than being inferred from a path. Loaded from three standard scopes (in precedence order):
 
 1. **User**: `~/.agents/extensions/`
 2. **Agent**: `~/.agents/agents/{agent_name}/extensions/`
@@ -76,7 +76,7 @@ Runes are user-installed extensions (not built-in). They are loaded from three s
 ## Architecture
 
 - Each Rune is a directory containing `manifest.json` + a Python entry file exposing `rune_factory`
-- `RuneRunner.load_rune_loads()` calls each factory with a fresh `RuneAPI`
+- `RuneRunner.refresh_runes(extensions_dirs)` re-executes every Rune and is the hot-reload path; `load_rune_loads()` calls each factory with a fresh `RuneAPI`
 - Sigils are emitted four ways: `emit_async` (fire-all), `emit_chain` (thread value), `emit_first` (first non-None), `emit_block` (handler can veto)
 - `RuneWatcher` uses watchdog per rune directory with 0.5s debounce
 

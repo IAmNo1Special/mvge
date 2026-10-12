@@ -8,6 +8,10 @@ MvgeOS is an operating system for AI agents: a Mvge (agent) casts Spells (tools)
 An autonomous agent that acts on behalf of a Summoner by casting Spells against models served by Realms.
 _Avoid_: Agent (as a spoken term), assistant, bot
 
+**Active Mvge**:
+The Mvge an invocation runs, decided once per `Mvge` by `mvgeos_agent.agent_name.resolve_active_agent_name`. Three rules, each a reason not to guess: a requested name with an agent-scope directory is that Mvge; `DEFAULT_AGENT_NAME` ("default-mvge") means the Summoner asked for no particular Mvge and adopts the single installed one when there is exactly one; any other name is a request and survives even unbacked, so a typo surfaces where it is actionable. The engine discovers installed Mvges and never names a published artifact — see ADR-0014 decisions 3 and 5.
+_Avoid_: default agent, boilerplate
+
 **Spell**:
 A tool a Mvge can cast during a run.
 _Avoid_: Tool (as a spoken term), function, action
@@ -63,7 +67,7 @@ An extension: a packaged unit that hooks into a Mvge's lifecycle and can registe
 _Avoid_: Extension (as an internal domain/persona term; use Rune internally and Extension at protocol boundaries), plugin, addon, Skill
 
 **Skill**:
-A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.agents/skills`, `USER:~/.agents/skills`, `AGENT:~/.agents/.mvgeos/{agent}/skills`): a directory named `^[a-z0-9]+(-[a-z0-9]+)*$` (1-64 chars, must match `name` in frontmatter) containing `SKILL.md` (YAML frontmatter `name`/`description` 1-1024 chars + markdown instructions) and per WikiSkill `PURPOSE.md` (`Origin` + `Patterns Addressed` + `Evolution History`). Disclosed progressively (catalog → full instructions → resources), never executed directly. Distinct from Rune (executable extension) and Spell (executable tool).
+A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.agents/skills`, `USER:~/.agents/skills`, `AGENT:~/.agents/agents/{agent}/skills` (returned by `agent_skills_dir`). There is no `SKILL_SCOPES` constant in the engine — the scopes are enumerated by the skills-bridge Rune, which also adds a fourth, `PLUGINS`, that no engine module knows about.): a directory named `^[a-z0-9]+(-[a-z0-9]+)*$` (1-64 chars, must match `name` in frontmatter) containing `SKILL.md` (YAML frontmatter `name`/`description` 1-1024 chars + markdown instructions) and per WikiSkill `PURPOSE.md` (`Origin` + `Patterns Addressed` + `Evolution History`). Disclosed progressively (catalog → full instructions → resources), never executed directly. Distinct from Rune (executable extension) and Spell (executable tool).
 _Avoid_: Tool, Spell, Rune, plugin
 
 **Skill Evolution Store**:
@@ -79,7 +83,7 @@ The Rune at `~/.agents/agents/coding_mvge/runes/skill_evolution/` that is our im
 _Avoid_: knowledge_skill, wiki_skill, WikiSkill (as a spoken term for the rune)
 
 **Channeling**:
-Streaming a response from a Realm — the act of receiving tokens incrementally. The protocol method is `channel()` (formerly `stream()`); the renderer is `ChannelRenderer`.
+Streaming a response from a Realm — the act of receiving tokens incrementally. The protocol method is `stream()`; the renderer is `StreamRenderer`. (`channel` survives only as the module holding the vocabulary — `mvgeos_core/channel.py`, which carries `Model`, `ChannelConfig`, `RealmResponse`, and `StopReason`.)
 _Avoid_: Streaming, stream (as a spoken term)
 
 **Sigil**:
@@ -157,9 +161,7 @@ Both accept a `signal` that is currently ignored, reserved so the abort work doe
 
 ## Default Model
 
-The system-wide default model across all MvgeOS packages and test suites is `opencode/space-bunny-free` (`DEFAULT_MODEL` in `mvgeos_core.constants`, with the serving Realm recorded as `DEFAULT_REALM` in `mvgeos_provider.realms`).
-
-It is a free OpenCode Zen endpoint, chosen because the previous default — an OpenRouter free endpoint — was at capacity on three of three clean-machine runs of the documented first task, which made the quickstart's promise false. Resolving it needs the `opencode-realm` Rune and an `OPENCODE_API_KEY`; the CLI offers to install the Rune when it is missing. See ADR-0015.
+The system-wide default model across all MvgeOS packages and test suites is `openrouter/free` (`DEFAULT_MODEL` in `mvgeos_core.constants`, with the serving Realm recorded as `DEFAULT_REALM` in `mvgeos_provider.realms`). Resolving it needs an `OPENROUTER_API_KEY`, and no Realm answers a stranger without a credential — `REALMS_WITH_ANONYMOUS_FREE_TIER` is empty. See ADR-0015 through ADR-0020 for how the default moved and why each alternative failed.
 
 ## Operational Capabilities
 
