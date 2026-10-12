@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0021 | [The GenAI Attribute Vocabulary Belongs to the Rune That Uses It](0021-the-genai-attribute-vocabulary-belongs-to-the-rune-that-uses-it.md) | Accepted | 2026-10-12 |
 | 0020 | [No Free Tier Answers a Stranger](0020-no-free-tier-answers-a-stranger.md) | Accepted | 2026-10-11 |
 | 0019 | [`space-bunny-free` Is the Only Free Zen Endpoint That Answers a Stranger](0019-space-bunny-free-is-the-only-free-zen-endpoint-that-answers.md) | Accepted | 2026-10-10 |
 | 0018 | [The Default Free Endpoint Is `step-5-preview-free`](0018-default-free-endpoint-is-step-5-preview.md) | Superseded by ADR 0019 | 2026-10-10 |

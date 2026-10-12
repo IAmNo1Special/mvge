@@ -68,7 +68,6 @@ def test_core_package_importable_without_leaf_side_effects() -> None:
                 "import mvgeos_core.sandbox\n"
                 "import mvgeos_core.spell_schema\n"
                 "import mvgeos_core.spells\n"
-                "import mvgeos_core.telemetry\n"
                 "import mvgeos_core.truncate\n"
                 "first_party = ('mvgeos_agent', 'mvgeos_provider', 'mvgeos_tome',\n"
                 "    'mvgeos_runes', 'mvgeos_cli', 'mvgeos_gui', 'coding_mvge')\n"

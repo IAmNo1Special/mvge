@@ -17,12 +17,14 @@ it is now a *declaration*:
   previous check could not produce -- it only looked at package roots, so a
   Rune subclassing ``mvgeos_provider.sse.SSEStreamingRealm`` passed cleanly.
 
-Two entries are leaks the architecture review identified and are pulling out:
-``mvgeos_provider.sse`` (the Realm seam belongs outside the SSE module's
-implementation) and ``mvgeos_core.telemetry``. They stay only because removing
-them without first moving their published consumers would break the marketplace
-on the next push -- which is exactly the failure this module exists to make
-visible instead of silent.
+One entry is a leak the architecture review identified and is pulling out:
+``mvgeos_provider.sse``. It stays only because removing it without first moving
+its published consumers would break the marketplace on the next push -- which
+is exactly the failure this module exists to make visible instead of silent.
+
+The other leak the review named, ``mvgeos_core.telemetry``, is closed by
+ADR 0021: the vocabulary now lives in the ``opentelemetry-bridge`` Rune that was
+its only consumer, and the engine module is gone.
 
 Declaration is only meaningful for imports from a package root, since
 ``__all__`` describes a namespace rather than a submodule.
@@ -74,14 +76,6 @@ RUNE_IMPORTABLE_MODULES = frozenset(
         "mvgeos_core.spell_schema",
         "mvgeos_core.truncate",
         "mvgeos_core.sandbox",
-        # Declared, but only until the engine's own telemetry module stops
-        # existing. The engine ships no telemetry of its own -- README says so
-        # outright -- and ``opentelemetry-bridge`` is the sole consumer of these
-        # attribute builders. They are engine-published because the alternative
-        # is one Rune carrying a private copy, and the copy cannot be held in
-        # step with the engine tags it names. Migrating them out is a decision
-        # about who owns the GenAI attribute vocabulary, not about this seam.
-        "mvgeos_core.telemetry",
         # A Realm is a Rune's product, so its seam is published.
         "mvgeos_provider",
         "mvgeos_provider.base",
