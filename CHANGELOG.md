@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-10-14
+
+
+### Bug Fixes
+
+- **gui,cli:** one owner for the active turn (60dde8a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (3ba6ffe)
+
+- **release:** v0.7.2 (3abb448)
+
+
 ## [0.7.1] - 2026-10-14
 
 
