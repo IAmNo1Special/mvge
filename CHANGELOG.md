@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-10-14
+
+
+### Bug Fixes
+
+- **verify:** wait for the release to reach the PyPI index before probing (2022939)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (ce4a885)
+
+- **release:** v0.7.1 (785167b)
+
+
+### Documentation
+
+- **runes:** correct the contract module's own account of mvgeos_provider.sse (3f2b2a8)
+
+
 ## [0.7.0] - 2026-10-12
 
 
