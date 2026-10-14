@@ -526,3 +526,105 @@ def test_a_working_bwrap_is_usable(monkeypatch) -> None:
     monkeypatch.setattr(verify_install.subprocess, "run", works)
 
     assert verify_install.sandbox_usable() == (True, "")
+
+
+def _index_html(*versions: str) -> str:
+    """A minimal PyPI simple-index page listing ``versions`` of mvgeos."""
+    return "\n".join(
+        '<a href="https://files.pythonhosted.org/packages/xx/'
+        f'mvgeos-{version}-py3-none-any.whl">mvgeos-{version}-py3-none-any.whl</a>'
+        for version in versions
+    )
+
+
+class _IndexResponse:
+    """The part of urlopen's return the harness reads: a context manager with a body."""
+
+    def __init__(self, body: str) -> None:
+        self._body = body.encode("utf-8")
+
+    def __enter__(self) -> _IndexResponse:
+        return self
+
+    def __exit__(self, *exc: object) -> bool:
+        return False
+
+    def read(self) -> bytes:
+        return self._body
+
+
+def _serve_index(monkeypatch: pytest.MonkeyPatch, bodies: list[str]) -> None:
+    """Point the harness's index reads at ``bodies``, one per request."""
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> _IndexResponse:
+        return _IndexResponse(bodies.pop(0))
+
+    monkeypatch.setattr(verify_install.urllib.request, "urlopen", fake_urlopen)
+
+
+def test_version_on_index_finds_the_released_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The index lists the version once it has propagated."""
+    _serve_index(monkeypatch, [_index_html("0.6.24", "0.6.25")])
+
+    assert verify_install.version_on_index("0.6.25") is True
+
+
+def test_version_on_index_does_not_match_a_version_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """0.6.2 must not match 0.6.25 -- the match is on the full filename stem."""
+    _serve_index(monkeypatch, [_index_html("0.6.25")])
+
+    assert verify_install.version_on_index("0.6.2") is False
+
+
+def test_an_unreachable_index_reads_as_not_yet_visible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A transient network failure is "not visible yet", not a crash.
+
+    Only URLError is caught: a bug in the check itself must fail loudly
+    rather than turn into a ten-minute wait.
+    """
+
+    def dead(*_args: object, **_kwargs: object) -> None:
+        raise verify_install.urllib.error.URLError("connection refused")
+
+    monkeypatch.setattr(verify_install.urllib.request, "urlopen", dead)
+
+    assert verify_install.version_on_index("0.6.25") is False
+
+
+def test_wait_returns_as_soon_as_the_version_appears(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 2026-10-11 case: missing on the first poll, present on the second."""
+    _serve_index(monkeypatch, [_index_html("0.6.24"), _index_html("0.6.24", "0.6.25")])
+    sleeps: list[float] = []
+    monkeypatch.setattr(verify_install.time, "sleep", sleeps.append)
+
+    assert (
+        verify_install.wait_for_version_on_index("0.6.25", timeout=600, interval=60)
+        is True
+    )
+    assert sleeps == [60]
+
+
+def test_wait_gives_up_after_the_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A version that never lands is a clear failure, not an endless wait."""
+    _serve_index(monkeypatch, [_index_html("0.6.24")] * 20)
+    now = [0.0]
+    monkeypatch.setattr(verify_install.time, "monotonic", lambda: now[0])
+
+    def advance(seconds: float) -> None:
+        now[0] += seconds
+
+    monkeypatch.setattr(verify_install.time, "sleep", advance)
+
+    assert (
+        verify_install.wait_for_version_on_index("0.6.25", timeout=600, interval=60)
+        is False
+    )
+    assert now[0] >= 600
