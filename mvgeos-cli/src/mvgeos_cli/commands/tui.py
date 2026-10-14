@@ -288,6 +288,10 @@ class TuiApp:
         self.dispatcher = CliCommandDispatcher(agent, registry, out=self._out)
         self._busy = False
         self._task: asyncio.Task[Any] | None = None
+        # Slash commands run on their own handle: sharing _task with the
+        # turn let a slash typed during a busy turn hijack Ctrl-C and let
+        # the turn's finally clobber the slash handle.
+        self._slash_task: asyncio.Task[Any] | None = None
         self._branch = get_git_branch()
         self.transcript = TranscriptControl(sink)
 
@@ -365,6 +369,8 @@ class TuiApp:
         def _interrupt(event: Any) -> None:
             if self._task is not None and not self._task.done():
                 self._task.cancel()
+            elif self._slash_task is not None and not self._slash_task.done():
+                self._slash_task.cancel()
             else:
                 event.app.exit()
 
@@ -404,7 +410,9 @@ class TuiApp:
         if not text:
             return False
         if text.startswith("/"):
-            self._task = asyncio.get_event_loop().create_task(self._handle_slash(text))
+            self._slash_task = asyncio.get_event_loop().create_task(
+                self._run_slash(text)
+            )
             return True
         self.sink.write(f"> {text}\n")
         self.application.invalidate()
@@ -436,8 +444,20 @@ class TuiApp:
             self.renderer.finish()
         finally:
             self._busy = False
-            self._task = None
+            # Only clear the handle this turn set: a newer turn's task must
+            # never be clobbered by a stale finally.
+            if self._task is asyncio.current_task():
+                self._task = None
             self.application.invalidate()
+
+    async def _run_slash(self, text: str) -> None:
+        """Run a slash command, releasing only this slash's handle."""
+        task = asyncio.current_task()
+        try:
+            await self._handle_slash(text)
+        finally:
+            if self._slash_task is task:
+                self._slash_task = None
 
     async def _handle_slash(self, text: str) -> None:
         should_exit = await self.dispatcher.dispatch(text, out=self._out)

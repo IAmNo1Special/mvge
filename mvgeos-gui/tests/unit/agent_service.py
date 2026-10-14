@@ -1079,15 +1079,22 @@ async def test_run_prompt_exception_handling(
     assert "Model rejected" in msg.content
 
 
-def test_agent_service_cancel_method(agent_service: AgentService) -> None:
-    """Verify cancel() cancels active task."""
+def test_agent_service_cancel_method(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Verify cancel() cancels the active turn's task and releases the slot."""
+    msg = ChatMessage(role="assistant")
+    turn = agent_service._turns.start(msg, app_state)
     mock_task = MagicMock()
-    agent_service._active_task = mock_task
-    agent_service._is_running = True
+    mock_task.done.return_value = False
+    turn.task = mock_task
+    assert agent_service.is_running is True
 
     agent_service.cancel()
+
     mock_task.cancel.assert_called_once()
     assert agent_service.is_running is False
+    assert agent_service._turns.active is None
 
 
 # --- Skill tracking tests ---
@@ -1248,7 +1255,6 @@ def test_mark_skill_invoked_no_state_is_safe(
     agent_service: AgentService, app_state: AppState
 ) -> None:
     """Verify mark_skill_invoked is a no-op without an active state."""
-    agent_service._active_state = None
     agent_service.mark_skill_invoked("/skills/review/SKILL.md")
     assert app_state.active_skills == []
 
@@ -1641,7 +1647,8 @@ class TestSubagentLifecycleObservability:
         """
         msg = ChatMessage(role="assistant", is_streaming=True)
         app_state.messages.append(msg)
-        agent_service._is_running = True
+        # A main-agent turn is in flight while the subagent events arrive.
+        agent_service._turns.start(msg, app_state)
 
         # 1. Subagent AGENT_START
         start_ev = MvgeEvent(
@@ -1712,7 +1719,7 @@ class TestSubagentLifecycleObservability:
         agent_service.handle_event(agent_end_ev, msg, app_state)
         assert task.status == TaskStatus.COMPLETE
         assert task.progress == 100.0
-        assert agent_service._is_running is True
+        assert agent_service.is_running is True
 
 
 # ---------------------------------------------------------------------------
@@ -2484,3 +2491,77 @@ async def test_missing_key_error_names_openrouter_api_key(
 
     assert "OPENROUTER_API_KEY" in msg.content
     assert "OPENROUTERAPIKEY" not in msg.content
+
+
+@pytest.mark.asyncio
+async def test_stop_then_send_does_not_clobber_new_turn(
+    agent_service: AgentService, app_state: AppState
+) -> None:
+    """Stop-then-send is a state transition, not a race.
+
+    The second turn claims the slot while the first turn is still in
+    flight, so the first turn's cancellation -- and its ``finally`` --
+    land *after* the handover. The stale ``finally`` must not release the
+    new turn's slot, events must keep routing to the new turn, and the
+    cancellation suffix must land on the first turn's transcript only.
+    """
+    entered_first = asyncio.Event()
+    release_second = asyncio.Event()
+
+    async def fake_run(prompt: str) -> None:
+        if prompt == "first":
+            entered_first.set()
+            await asyncio.sleep(60)  # blocked until the handover cancels it
+        else:
+            await asyncio.wait_for(release_second.wait(), timeout=5)
+        return None
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(side_effect=fake_run)
+    mock_agent.on = MagicMock()
+    agent_service._agent = mock_agent
+
+    msg1 = ChatMessage(role="assistant", is_streaming=True)
+    msg2 = ChatMessage(role="assistant", is_streaming=True)
+
+    task1 = asyncio.create_task(agent_service.run_prompt("first", app_state, msg1))
+    await asyncio.wait_for(entered_first.wait(), timeout=5)
+    turn1 = agent_service._turns.active
+    assert turn1 is not None
+
+    # Send while the first turn is in flight. start() stops the first turn,
+    # so its cancellation and its finally land after the handover.
+    task2 = asyncio.create_task(agent_service.run_prompt("second", app_state, msg2))
+    for _ in range(100):
+        if agent_service._turns.active is not turn1:
+            break
+        await asyncio.sleep(0)
+    turn2 = agent_service._turns.active
+    assert turn2 is not None
+    assert turn2 is not turn1
+
+    # Let the first turn's cancellation and finally run while the second
+    # turn is still in flight.
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    # The stale finally must not have released the new turn's slot...
+    assert agent_service._turns.active is turn2
+    # ...so events still route to the second turn instead of the void.
+    delivered: list[int] = []
+    agent_service._turns.subscribe(lambda turn, event: delivered.append(turn.id))
+    event = MvgeEvent(type=MvgeEventType.MESSAGE_UPDATE, data={"text": "hi"})
+    assert agent_service._turns.route(event) is True
+    assert delivered == [turn2.id]
+
+    release_second.set()
+    await asyncio.wait_for(asyncio.gather(task1, task2), timeout=5)
+
+    assert mock_agent.run.await_count == 2
+    assert agent_service._turns.active is None
+    assert agent_service.is_running is False
+    assert msg1.is_streaming is False
+    assert msg2.is_streaming is False
+    assert app_state.is_channeling is False
+    assert "Cancelled by summoner" in msg1.content
+    assert "Cancelled by summoner" not in msg2.content

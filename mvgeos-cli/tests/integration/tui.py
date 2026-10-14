@@ -420,8 +420,8 @@ class TestTuiApp:
         app = self._app(agent)
         app._buffer.text = "/new"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         assert agent.closed is True
         assert agent.initialize_calls == 1
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
@@ -433,8 +433,8 @@ class TestTuiApp:
         app = self._app(agent)
         app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Model switched" in plain
@@ -450,8 +450,8 @@ class TestTuiApp:
         app.registry = EmptyRegistry()
         app._buffer.text = "/model bogus"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         assert agent._model_id == "nvidia/nemotron-3-ultra-550b-a55b:free"
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Unknown model" in plain
@@ -466,8 +466,8 @@ class TestTuiApp:
         app = self._app(agent)
         app._buffer.text = "/model nvidia/nemotron-3-ultra-550b-a55b:free"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "bad model" in plain
 
@@ -477,8 +477,8 @@ class TestTuiApp:
         app = self._app(agent)
         app._buffer.text = "/refresh-models"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "Models refreshed" in plain
 
@@ -489,8 +489,8 @@ class TestTuiApp:
         app.application.exit = lambda *a, **k: exits.append(1)  # type: ignore[method-assign]
         app._buffer.text = "/quit"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         assert exits == [1]
 
     @pytest.mark.asyncio
@@ -503,8 +503,8 @@ class TestTuiApp:
         app = self._app(agent)
         app._buffer.text = "/new"
         app._on_accept(app._buffer)
-        assert app._task is not None
-        await app._task
+        assert app._slash_task is not None
+        await app._slash_task
         plain = "\n".join((e.text or "").plain for e in app.sink._entries)
         assert "no api key" in plain
 
@@ -687,3 +687,35 @@ async def test_run_tui_no_console_buffer(
     captured = capsys.readouterr()
     assert "TUI mode requires a Win32 console screen buffer" in captured.out
     mock_agent.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_slash_during_busy_does_not_hijack_turn_task(self) -> None:
+        """A slash typed during a busy turn keeps its own handle.
+
+        The turn's task handle must stay intact so Ctrl-C still cancels the
+        running turn instead of the slash command.
+        """
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        class SlowAgent(FakeAgent):
+            async def run(self, text: str) -> None:
+                entered.set()
+                await release.wait()
+
+        app = self._app(SlowAgent())
+        app.application.exit = lambda *a, **k: None  # type: ignore[method-assign]
+        app._buffer.text = "hi"
+        assert app._on_accept(app._buffer) is True
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        turn_task = app._task
+        assert turn_task is not None
+
+        app._buffer.text = "/quit"
+        assert app._on_accept(app._buffer) is True
+        assert app._slash_task is not None
+        assert app._task is turn_task
+
+        release.set()
+        await asyncio.wait_for(asyncio.gather(turn_task, app._slash_task), timeout=5)
+        assert app._busy is False

@@ -151,8 +151,7 @@ async def test_artifact_event_populates_state_and_message(user: User) -> None:
     state.messages.append(msg)
 
     service = AgentService(project_path=Path("C:/demo/project"))
-    service._active_message = msg
-    service._active_state = state
+    service._turns.start(msg, state)
 
     event = MvgeEvent(
         type=MvgeEventType.ARTIFACT_CREATED,
