@@ -7,11 +7,11 @@ from pathlib import Path
 
 import typer
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from mvgeos_cli.agent_name import resolve_agent_name
 from mvgeos_cli.commands.build import _assemble
 from mvgeos_cli.console import clip_text, format_error, get_console, is_utf8_stream
 
@@ -227,8 +227,9 @@ def _render_diagnostics(
 
 @info_app.callback(invoke_without_command=True)
 def info(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
@@ -251,6 +252,9 @@ def info(
     source provenance, runes per scope with enabled state, config values
     with provenance layers, loaded skills with source, and diagnostics.
     """
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     try:
         snapshot = asyncio.run(_assemble(agent_name, extension_dir))
     except ValueError as exc:

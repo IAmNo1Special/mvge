@@ -6,10 +6,10 @@ import json
 import typer
 from mvgeos_agent.agent_name import validate_agent_name
 from mvgeos_agent.config_manager import ConfigManager
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_provider.model_registry import CatalogRefresh, RefreshStatus
 from mvgeos_provider.registry import refresh_catalog
 
+from mvgeos_cli.agent_name import resolve_agent_name
 from mvgeos_cli.console import format_error, get_console
 
 console = get_console()
@@ -36,13 +36,17 @@ def _get_manager(agent_name: str, allow_create: bool = False) -> ConfigManager:
 
 @config_app.command("show")
 def config_show(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name (defaults to the canonical agent)",
     ),
 ) -> None:
     """Display current configuration with provenance."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     mgr = _get_manager(agent_name)
     merged = mgr.load()
     output = {
@@ -54,15 +58,19 @@ def config_show(
 
 @config_app.command("set")
 def config_set(
+    ctx: typer.Context,
     key: str = typer.Argument(..., help="Config key to set"),
     value: str = typer.Argument(..., help="Value to set"),
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name (defaults to the canonical agent)",
     ),
 ) -> None:
     """Set a configuration value in the agent-scope file."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     mgr = _get_manager(agent_name)
 
     try:
@@ -81,14 +89,18 @@ def config_set(
 
 @config_app.command("get")
 def config_get(
+    ctx: typer.Context,
     key: str = typer.Argument(..., help="Config key to get"),
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name (defaults to the canonical agent)",
     ),
 ) -> None:
     """Get a configuration value with provenance."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     mgr = _get_manager(agent_name)
     val = mgr.get(key)
     output = json.dumps({"value": val.value, "layer": val.layer.value}, default=str)
@@ -97,13 +109,17 @@ def config_get(
 
 @config_app.command("reset")
 def config_reset(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name (defaults to the canonical agent)",
     ),
 ) -> None:
     """Reset agent-scope configuration to defaults."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     mgr = _get_manager(agent_name)
     mgr.reset()
     console.print("[green]Configuration reset to defaults[/green]")
@@ -111,13 +127,17 @@ def config_reset(
 
 @config_app.command("path")
 def config_path(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name (defaults to the canonical agent)",
     ),
 ) -> None:
     """Show the agent-scope config file path."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     mgr = _get_manager(agent_name)
     console.print(str(mgr.agent_config_path))
 
