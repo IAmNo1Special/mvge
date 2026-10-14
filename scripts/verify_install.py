@@ -42,6 +42,14 @@ accept a pin, so neither gate changes.
 This assertion stays regardless. It is the thing that noticed while the pins
 were floors, and it is what will notice if the two ever drift apart again.
 
+On 2026-10-11 the gate failed on a fully-published release a third way: the
+probe ran ``uvx mvgeos==0.6.25`` ~28 seconds after the upload landed and uv
+reported "there is no version of mvgeos==0.6.25" -- PyPI's simple-index CDN
+had not propagated yet. The release was live; the probe was early. The
+harness now waits up to ten minutes for the version to appear on the index
+before measuring anything, so a propagation delay reads as a wait rather
+than a failed release.
+
 "Cold" here is precise, and the distinction matters. The scratch ``HOME`` starts
 empty apart from the credential, and the uv cache is a fresh directory, so the
 measured install is a real download rather than a cache hit.
@@ -74,6 +82,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
 from typing import Any
 
 # The Realm and model the engine defaults to, and the cheapest thing on it. Zen
@@ -207,6 +217,17 @@ RUNTIME_CLOSURE = (
 # Marks the probe's answer so a uv banner, a warning, or a Realm's chatter on
 # stdout cannot be mistaken for it.
 PROBE_MARKER = "MVGEOS-PROBE:"
+
+# How long the gate waits for a fresh release to reach PyPI's simple index,
+# and how often it looks. Measured 2026-10-11: the probe ran
+# `uvx mvgeos==0.6.25` ~28 seconds after the upload landed and uv reported
+# "there is no version of mvgeos==0.6.25" -- the index CDN had not propagated
+# yet. The release was fully live; the probe was early. Ten minutes is
+# generous against a measured sub-minute lag; the poll interval keeps the CI
+# log readable while it waits.
+INDEX_TIMEOUT_SECONDS = 600
+INDEX_POLL_SECONDS = 15
+PYPI_SIMPLE_INDEX = "https://pypi.org/simple/mvgeos/"
 
 # Lines the CLI prints about itself before the model says anything. They are
 # local diagnostics, so counting one as the first token would understate the
@@ -435,6 +456,48 @@ def cast_spells(tome: pathlib.Path) -> list[str]:
                 if isinstance(name, str) and name not in cast:
                     cast.append(name)
     return cast
+
+
+def version_on_index(version: str) -> bool:
+    """Whether PyPI's simple index already lists ``version`` of mvgeos.
+
+    A ``False`` answer is "not visible yet", not "does not exist": the index
+    CDN lags the upload, and a transient network failure reads the same way.
+    Only ``URLError`` is caught -- anything else is a bug in the check, and a
+    bug must fail loudly rather than turn into a ten-minute wait.
+    """
+    try:
+        with urllib.request.urlopen(PYPI_SIMPLE_INDEX, timeout=10) as response:
+            body = response.read().decode("utf-8", "replace")
+    except urllib.error.URLError:
+        return False
+    return f">mvgeos-{version}-" in body
+
+
+def wait_for_version_on_index(
+    version: str,
+    *,
+    timeout: float = INDEX_TIMEOUT_SECONDS,
+    interval: float = INDEX_POLL_SECONDS,
+) -> bool:
+    """Poll the simple index until ``version`` is visible, or give up.
+
+    Returns ``True`` the moment the version appears. Returns ``False`` when
+    ``timeout`` seconds pass without it -- the caller reports that as the
+    failure, because every probe below would fail with the same root cause
+    and a more confusing message.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        if version_on_index(version):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        print(
+            f"  mvgeos=={version} not on the index yet; checking again in "
+            f"{interval:g}s ..."
+        )
+        time.sleep(interval)
 
 
 def run_uvx(
@@ -740,6 +803,21 @@ def main() -> int:
     realm_rune = realm_rune_for_realm(arguments.provider)
     env = clean_env(home, cache, api_key, api_key_env)
     version = arguments.version
+
+    # Every probe below resolves `mvgeos=={version}` from PyPI, and the simple
+    # index lags the upload: on 2026-10-11 the probe ran ~28 seconds after
+    # 0.6.25 landed and uv reported "there is no version of mvgeos==0.6.25".
+    # The release was fully live; the probe was early. Wait for the version
+    # to be visible before measuring anything, so a propagation delay reads
+    # as a wait rather than a failed release.
+    print(f"waiting for mvgeos=={version} to appear on the PyPI index ...")
+    if not wait_for_version_on_index(version):
+        print(
+            f"verify_install failed: mvgeos=={version} did not appear on the "
+            f"PyPI index within {INDEX_TIMEOUT_SECONDS}s",
+            file=sys.stderr,
+        )
+        return 1
 
     failures: list[str] = []
     stamps: list[float] = []
