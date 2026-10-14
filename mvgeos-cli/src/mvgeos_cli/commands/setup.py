@@ -17,6 +17,7 @@ from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
 from typer.core import TyperGroup
 
+from mvgeos_cli.agent_name import resolve_agent_name
 from mvgeos_cli.console import format_error, get_console
 
 console = get_console()
@@ -268,8 +269,9 @@ def collect_rune_dirs(
 
 @setup_app.command("check")
 def setup_check(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
@@ -278,6 +280,9 @@ def setup_check(
     ),
 ) -> None:
     """Check which system dependencies are missing."""
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     try:
         validate_agent_name(agent_name, allow_create=False)
     except ValueError as exc:
@@ -419,8 +424,9 @@ def install_missing_deps(
 
 @setup_app.command("install")
 def setup_install(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
@@ -446,6 +452,9 @@ def setup_install(
     Non-interactive use: pass ``--yes``/``-y`` to skip the confirmation prompt,
     or pipe stdin (``echo y | mvgeos setup install``) when prompted.
     """
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     code = install_missing_deps(
         agent_name=agent_name, extension_dir=extension_dir, yes=yes, dry_run=dry_run
     )

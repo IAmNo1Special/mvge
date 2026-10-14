@@ -8,8 +8,8 @@ from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.mvge import Mvge
 from mvgeos_agent.protocol import AgentFactory, MvgeAgent
 from mvgeos_agent.snapshot import RuntimeSnapshot
-from mvgeos_core.constants import DEFAULT_AGENT_NAME
 
+from mvgeos_cli.agent_name import resolve_agent_name
 from mvgeos_cli.console import format_error, get_console
 
 console = get_console()
@@ -115,8 +115,9 @@ async def _assemble(
 
 @build_app.callback(invoke_without_command=True)
 def build(
-    agent_name: str = typer.Option(
-        DEFAULT_AGENT_NAME,
+    ctx: typer.Context,
+    agent_name: str | None = typer.Option(
+        None,
         "--agent-name",
         help="Agent name for agent-specific rune directory",
     ),
@@ -152,6 +153,9 @@ def build(
     and accumulated diagnostics.  Use ``--format summary`` for a condensed
     view or ``--pretty``/``--no-pretty`` to control JSON indentation.
     """
+    # --agent-name may come from before the subcommand; resolve it
+    # against the group context before anything uses it.
+    agent_name = resolve_agent_name(ctx, agent_name)
     if format not in ("json", "summary"):
         raise typer.BadParameter(
             f"Invalid format '{format}'. Choose from: json, summary"

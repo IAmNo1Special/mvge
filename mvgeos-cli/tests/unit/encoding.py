@@ -73,7 +73,7 @@ def test_info_cp1252_stream_execution() -> None:
         cp1252_stream = io.TextIOWrapper(buf, encoding="cp1252", errors="strict")
 
         with patch.object(sys, "stdout", cp1252_stream):
-            info(agent_name="default-mvge", extension_dir=None, output=None)
+            info(ctx=None, agent_name="default-mvge", extension_dir=None, output=None)
 
         rendered = buf.getvalue().decode("cp1252")
         assert "encoding-agent" in rendered
