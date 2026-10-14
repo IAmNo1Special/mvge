@@ -51,6 +51,7 @@ from mvgeos_gui.models import (
     TaskStatus,
 )
 from mvgeos_gui.services.config_service import API_KEY_REALM, ConfigService
+from mvgeos_gui.services.turn_owner import Turn, TurnOwner, transcript_for
 from mvgeos_gui.transcript import InvocationTranscript
 
 if TYPE_CHECKING:
@@ -143,11 +144,15 @@ class AgentService:
         self._agent_factory = agent_factory
         self._model_registry = model_registry or ModelRegistry()
         self._agent: MvgeAgent | None = None
-        self._active_message: ChatMessage | None = None
-        self._active_transcript: InvocationTranscript | None = None
-        self._active_state: AppState | None = None
-        self._is_running = False
-        self._active_task: asyncio.Task[Any] | None = None
+        # Exactly one owner of "which turn is active". The turn's message,
+        # state, transcript and task live on the Turn, never in separate
+        # fields that a stale finally could clobber.
+        self._turns = TurnOwner()
+        self._turns.subscribe(
+            lambda turn, event: self.handle_event(
+                event, message=turn.message, state=turn.state
+            )
+        )
         self._start_time: float = 0.0
         self._pending_spell_starts: dict[str, float] = {}
         self._invoked_skill_names: set[str] = set()
@@ -193,7 +198,8 @@ class AgentService:
 
     @property
     def is_running(self) -> bool:
-        return self._is_running
+        """Whether a turn currently owns the active slot."""
+        return self._turns.active is not None
 
     def can_create_agent(self) -> bool:
         """Whether get_or_create_agent can run without raising for a key.
@@ -357,7 +363,7 @@ class AgentService:
             for event_type in MvgeEventType:
                 agent.on(
                     event_type,
-                    lambda e: self.handle_event(e),
+                    lambda e: self._turns.route(e),
                 )
             agent._gui_listeners_bound = True
 
@@ -367,11 +373,23 @@ class AgentService:
         message: ChatMessage | None = None,
         state: AppState | None = None,
     ) -> None:
-        """Process an MvgeEvent and update reactive ChatMessage and AppState."""
-        target_message = message or self._active_message
-        target_state = state or self._active_state
-        if target_message is None:
-            return
+        """Process an MvgeEvent and update reactive ChatMessage and AppState.
+
+        Without explicit targets the event is resolved against the active
+        turn. An event arriving with no active turn is dropped with a log
+        line, never silently.
+        """
+        target_message = message
+        target_state = state
+        if target_message is None or target_state is None:
+            active = self._turns.active
+            if active is None:
+                logger.warning("Dropping %s event: no active turn", event.type)
+                return
+            if target_message is None:
+                target_message = active.message
+            if target_state is None:
+                target_state = active.state
         transcript = self._transcript_for(target_message)
 
         data = event.data
@@ -515,7 +533,6 @@ class AgentService:
                     if event.type == MvgeEventType.AGENT_END:
                         target_state.set_mvge_status("idle")
                     target_state.notify()
-                self._is_running = False
 
         elif event.type == MvgeEventType.ARTIFACT_CREATED:
             artifact_data = data.get("artifact", {})
@@ -544,13 +561,8 @@ class AgentService:
                 target_state.notify()
 
     def _transcript_for(self, message: ChatMessage) -> InvocationTranscript:
-        """Bind (or reuse) the InvocationTranscript assembling this message."""
-        if (
-            self._active_transcript is None
-            or self._active_transcript.message is not message
-        ):
-            self._active_transcript = InvocationTranscript.bind(message)
-        return self._active_transcript
+        """Return the transcript assembling this message (bound once per message)."""
+        return transcript_for(message)
 
     def _track_spell_start(
         self,
@@ -648,17 +660,15 @@ class AgentService:
         Returns the structured outcome (``None`` when agent construction
         failed before dispatching).
         """
-        self._is_running = True
-        self._active_message = message
-        self._active_transcript = InvocationTranscript.bind(message)
-        self._active_state = state
+        turn = self._turns.start(message, state)
+        transcript = turn.transcript
 
         try:
             agent = self.get_or_create_agent(state)
         except Exception as e:
             message.is_error = True
             message.error_message = str(e)
-            self._cleanup_slash_turn(state, message)
+            self._cleanup_slash_turn(state, message, turn)
             return None
 
         # Same lazy guarantee as the dispatchability check: a fresh agent's
@@ -687,7 +697,7 @@ class AgentService:
             if not output_text and outcome.should_exit:
                 output_text = "*Session ended.*"
 
-        self._active_transcript.set_text(output_text)
+        transcript.set_text(output_text)
 
         # Synchronize reactive state via structured outcome action and data
         if outcome.action == CommandAction.MODEL_SWITCHED:
@@ -714,17 +724,17 @@ class AgentService:
             if new_level and hasattr(state, "set_contemplation_level"):
                 state.set_contemplation_level(new_level)
 
-        self._cleanup_slash_turn(state, message)
+        self._cleanup_slash_turn(state, message, turn)
         return outcome
 
-    def _cleanup_slash_turn(self, state: AppState, message: ChatMessage) -> None:
+    def _cleanup_slash_turn(
+        self, state: AppState, message: ChatMessage, turn: Turn
+    ) -> None:
         message.is_streaming = False
         state.is_channeling = False
         state.set_mvge_status("idle")
-        self._is_running = False
-        self._active_message = None
-        self._active_state = None
-        self._active_transcript = None
+        # Release the slot only if this turn still owns it.
+        self._turns.finish(turn)
         state.notify()
 
     async def run_prompt(
@@ -739,10 +749,8 @@ class AgentService:
                 await self.dispatch_slash_command(prompt, state, message)
                 return
 
-        self._is_running = True
-        self._active_message = message
-        self._active_transcript = InvocationTranscript.bind(message)
-        self._active_state = state
+        turn = self._turns.start(message, state)
+        transcript = turn.transcript
         self._start_time = time.monotonic()
         self._pending_spell_starts.clear()
         self.reset_skill_tracking()
@@ -752,7 +760,7 @@ class AgentService:
         if not self._api_key:
             message.is_error = True
             message.error_message = "API key required"
-            self._active_transcript.set_text(
+            transcript.set_text(
                 "**Authentication Required**: No OpenRouter API key was found.\n\n"
                 "Please set the `OPENROUTER_API_KEY` environment variable, "
                 "run `mvgeos setup`, or pass `--api-key` when starting `mvgeos-gui`."
@@ -761,10 +769,7 @@ class AgentService:
             state.is_channeling = False
             state.channeling_started_at = None
             state.set_mvge_status("idle")
-            self._is_running = False
-            self._active_message = None
-            self._active_state = None
-            self._active_transcript = None
+            self._turns.finish(turn)
             state.notify()
             return
 
@@ -791,23 +796,29 @@ class AgentService:
                     if not keepalive_stop.is_set():
                         state.notify()
 
-            keepalive_task = asyncio.create_task(_keepalive())
-            # Create the agent run task so it can be cancelled via cancel()
-            self._active_task = asyncio.create_task(agent.run(prompt))
+            # The turn owns its task so cancel() reaches it without touching
+            # any other turn's routing. The keepalive is created inside the
+            # try so every exit path -- including cancellation before the
+            # await -- runs the finally that stops it.
+            keepalive_task: asyncio.Task[None] | None = None
             try:
-                await self._active_task
+                keepalive_task = asyncio.create_task(_keepalive())
+                turn.task = asyncio.create_task(agent.run(prompt))
+                await turn.task
             finally:
                 keepalive_stop.set()
-                with contextlib.suppress(Exception):
+                if keepalive_task is not None:
                     keepalive_task.cancel()
         except asyncio.CancelledError:
             logger.info("Agent run cancelled by summoner")
-            self._active_transcript.append_text("\n\n*(Cancelled by summoner)*")
+            # The turn's own transcript: a newer turn may already own the
+            # slot, and its transcript must not receive this turn's suffix.
+            transcript.append_text("\n\n*(Cancelled by summoner)*")
         except AuthenticationError as exc:
             logger.exception("Authentication failed: %s", exc)
             message.is_error = True
             message.error_message = str(exc)
-            self._active_transcript.set_text(
+            transcript.set_text(
                 "**Authentication Failed (HTTP 401)**: The OpenRouter API key "
                 "is invalid or unauthorized.\n\n"
                 "Please check your `OPENROUTER_API_KEY` environment variable "
@@ -838,7 +849,7 @@ class AgentService:
                         "model via the selector below, or wait for the daily reset."
                     )
                 )
-                self._active_transcript.set_text(
+                transcript.set_text(
                     "**Daily Free Tier Quota Reached**: You have exhausted "
                     f"the daily request limit for free-tier models{quota_str}."
                     f"{reset_info}"
@@ -848,7 +859,7 @@ class AgentService:
                 exc.limit_source == "upstream_rate_limit"
                 or "provider returned error" in str(exc).lower()
             ):
-                self._active_transcript.set_text(
+                transcript.set_text(
                     "**Upstream Provider Overloaded (HTTP 429)**: The upstream model "
                     "host is temporarily unable to process requests.\n\n"
                     f"- **Details**: {exc}\n"
@@ -869,7 +880,7 @@ class AgentService:
                     if str(exc) and str(exc).lower() != "rate limited"
                     else ""
                 )
-                self._active_transcript.set_text(
+                transcript.set_text(
                     "**Rate Limit Exceeded (HTTP 429)**: The model provider is "
                     "temporarily rate-limiting requests.\n\n"
                     "- **Free tier models** (`:free`) frequently experience upstream "
@@ -885,7 +896,7 @@ class AgentService:
             message.is_error = True
             message.error_message = str(exc)
             if not message.content:
-                self._active_transcript.set_text(_upstream_stall_message(str(exc)))
+                transcript.set_text(_upstream_stall_message(str(exc)))
         except NoRealmRegisteredError as exc:
             logger.warning("No realm registered: %s", exc)
             message.is_error = True
@@ -895,7 +906,7 @@ class AgentService:
             # coupled the GUI to the wording of an error string.
             message.missing_rune = exc.rune_name or rune_for_realm(exc.realm)
             if not message.content:
-                self._active_transcript.set_text(
+                transcript.set_text(
                     f"**Missing Realm Extension**: The selected model requires the "
                     f"`{message.missing_rune}` extension to communicate with upstream "
                     f"providers.\n\n"
@@ -909,17 +920,15 @@ class AgentService:
                 # Code-span the exception: raw error text is not markdown and
                 # identifiers like OPENROUTER_API_KEY would otherwise be
                 # mangled by emphasis parsing.
-                self._active_transcript.set_text(f"Execution error: `{exc}`")
+                transcript.set_text(f"Execution error: `{exc}`")
         finally:
             message.is_streaming = False
             state.is_channeling = False
             state.channeling_started_at = None
             state.set_mvge_status("idle")
-            self._is_running = False
-            self._active_message = None
-            self._active_state = None
-            self._active_transcript = None
-            self._active_task = None
+            # Only the turn that still owns the slot releases it: a stale
+            # turn's finally must not clobber the turn that replaced it.
+            self._turns.finish(turn)
             # Adopt the engine-created tome so the session lifecycle commands
             # (rename/fork/export/compact) unlock for this conversation. Only
             # adopts when no tome is active; never steals an existing one.
@@ -931,14 +940,12 @@ class AgentService:
             state.notify()
 
     def cancel(self) -> None:
-        """Cancel active channeling task if running."""
-        if self._active_task is not None:
-            with contextlib.suppress(Exception):
-                self._active_task.cancel()
-            self._active_task = None
-        self._is_running = False
-        self._active_message = None
-        self._active_state = None
+        """Cancel the active turn, if any.
+
+        Delegates to the turn owner: the turn's task is cancelled and the
+        slot released. A turn started afterwards is unaffected.
+        """
+        self._turns.stop()
 
     async def compact_active_tome(self, state: AppState) -> str:
         """Compact the active session's mana pool via the engine.
@@ -1009,7 +1016,8 @@ class AgentService:
         if not path:
             return
         normalized = str(path).replace("\\", "/")
-        target_state = state or self._active_state
+        active = self._turns.active
+        target_state = state or (active.state if active is not None else None)
         if target_state is None:
             return
         for skill in target_state.active_skills:
