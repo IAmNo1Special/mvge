@@ -162,10 +162,9 @@ All `MvgeState` mutation moves behind the Harness seam. `MvgeState` becomes inte
 Remains a separate construction adapter (respects ADR-0009 two-layer split). `Mvge` calls `MvgeEnvironment.resolve()` at construction and passes the resolved prompt/config to Harness.
 
 ### 5. Spell resolution
-- Construction-time validated resolution in `Mvge._build_spells()` (single source of validation, rename, filter).
-- `Mvge.reload_spells()` re-runs `_build_spells()` and refreshes `state.spells` + index; called from Rune watcher reload and manual `load_runes()`.
-- Harness receives `refresh_spells: Callable[[], list[MvgeSpell]]` at construction; each `run()` calls it instead of the append-only merge.
-- Optional `spell_version` counter on `RuneRunner` to skip rebuilds when unchanged.
+- Construction-time validated resolution (single source of validation, rename, filter) as harness-internal spell policy; `Mvge` supplies discovery inputs, not the built set.
+- `SessionLifecycle.reload_spells()` re-runs validated resolution and refreshes the spell cache + index; called from Rune watcher reload and manual `load_runes()`.
+- The per-turn spell read consults `RuneRunner.spell_version`: unchanged version → cache hit (no per-turn rebuild); changed → rebuild cache and index. The legacy append-only merge is deleted.
 
 Preserves all dynamic Rune behavior (adds mid-Tome work; removals now work; validation divergence deleted).
 
@@ -176,7 +175,7 @@ Single dispatch table inside Harness with one fallback rule: 9 `SigilHook` callb
 All four effects (State reduction, event bus, Sigil map, Tome record on `MESSAGE_END`) internal to Harness. Observable surface = `MvgeEvent` stream + returned `MvgeInvocation`s. `tome_service.ledger` reads happen before/after runs, never mid-turn.
 
 ### 8. Model switching
-Pi-shaped: Harness holds `configured_model`/`configured_realm`; each `run()`/`turn` captures a snapshot for the provider call. `set_model_and_realm` updates configured + emits `CONFIG_CHANGE` event + Tome `model_switch` entry; never touches the in-flight Channeling stream. `with_model` provides per-turn override for router-style use.
+Pi-shaped: Harness holds `configured_model`/`configured_realm`; each `run()`/`turn` captures a snapshot for the provider call. `set_model_and_realm` updates configured + emits `CONFIG_CHANGE` event + Tome `model_switch` entry; never touches the in-flight Channeling stream. (Amended 2026-10-14 by issue #164: the per-turn override `with_model` was explicitly dropped — zero adapters justify the seam.)
 
 ### 9. Config change event
 Any config setter (`set_model_and_realm`, future `set_contemplation`, `set_tools`) emits `MvgeEventType.CONFIG_CHANGE { model?, realm?, contemplation?, tools? }` alongside domain-specific events.
@@ -194,7 +193,7 @@ Any config setter (`set_model_and_realm`, future `set_contemplation`, `set_tools
 ### Negative
 - Migration effort: ~15 files touch the old seam (CLI, GUI, tests, installer, runes loader).
 - `Mvge` callers must migrate from `agent._state.xxx` to `agent.harness.snapshot.xxx` or Event stream.
-- `Mvge.reload_spells()` is a new public method; callers using Rune watcher must adopt it.
+- `SessionLifecycle.reload_spells()` is the new seam; callers using Rune watcher must adopt it.
 
 ## Contract
 
@@ -223,8 +222,8 @@ unexported, never in a protocol signature. (Convergence note from the
 false positive, verified against the tree.)
 
 ## Migration Plan (TDD)
-1. Add `ExecutionSnapshot` + `config_change` event + `with_model` to Harness (tests first).
-2. Implement `refresh_spells` hook + `spell_version` + `reload_spells()` in Mvge (tests first).
+1. Add `ExecutionSnapshot` + `config_change` event to Harness (tests first).
+2. Implement `spell_version` consult + `SessionLifecycle.reload_spells()` (tests first).
 3. Collapse `_resolve_spells` → delegation; delete duplicate validation logic.
 4. Move all `MvgeState` mutation behind Harness; make `MvgeState` internal.
 5. Replace `Mvge` with construction adapter; delete aliases/properties.
