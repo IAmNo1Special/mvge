@@ -36,9 +36,9 @@ class TurnDriver(Protocol):
     """Owns the hot path: exactly one turn at a time."""
 
     async def run_turn(self, invocation: SummonerRequest) -> MvgeInvocation: ...
-    def steer(self, text: str) -> None: ...      # enqueue-and-drain, sync
+    def steer(self, text: str) -> None: ...  # enqueue-and-drain, sync
     def follow_up(self, text: str) -> None: ...  # enqueue-and-drain, sync
-    def abort(self) -> None: ...                 # idempotent, sync
+    def abort(self) -> None: ...  # idempotent, sync
     @property
     def turn_in_flight(self) -> bool: ...
 
