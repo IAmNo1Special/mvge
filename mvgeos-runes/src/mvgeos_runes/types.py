@@ -152,7 +152,11 @@ class SessionBeforeForkData:
     """Data passed to SESSION_BEFORE_FORK sigil hook."""
 
     parent_session: str
-    child_session: str
+    # The child session does not exist yet when this hook fires; it is
+    # populated only if the fork completes. entry_id names the entry the
+    # fork starts from.
+    child_session: str | None = None
+    entry_id: str | None = None
 
 
 @dataclass
@@ -170,6 +174,8 @@ class CompactionEndData:
     session_name: str
     original_count: int
     compacted_count: int
+    # Set when summarization failed and no compaction happened.
+    error: str | None = None
 
 
 @dataclass
@@ -277,36 +283,6 @@ SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.PREPARE_NEXT_TURN: PrepareNextTurnData,
     SigilHook.RESOURCES_DISCOVER: ResourcesDiscoverData,
 }
-
-
-def create_sigil_data(hook: SigilHook, data: dict[str, Any] | Any) -> Any:
-    """Create typed sigil data instance from raw dict or pass through if already typed.
-
-    Args:
-        hook: The sigil hook type
-        data: Raw dict data or already-typed data instance
-
-    Returns:
-        Typed data instance if a mapping exists, otherwise the original data
-    """
-    data_class = SIGIL_HOOK_DATA_CLASSES.get(hook)
-    if data_class is None:
-        return data
-
-    # If already an instance of the expected class, return as-is
-    if isinstance(data, data_class):
-        return data
-
-    # If data is a dict, try to construct the typed instance
-    if isinstance(data, dict):
-        try:
-            return data_class(**data)
-        except Exception:
-            # Fall back to raw dict if construction fails
-            return data
-
-    # For other types, return as-is
-    return data
 
 
 #: ``Scope`` is defined in core because the resolver that ranks layers owns

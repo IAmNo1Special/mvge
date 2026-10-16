@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -19,6 +20,7 @@ from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
+    SessionStartData,
     SigilHook,
 )
 from mvgeos_tome.handle import TomeHandleFactory
@@ -67,7 +69,7 @@ def _started_source(factory: MagicMock, runner: MagicMock) -> MvgeTome:
     return source
 
 
-async def _emitted(runner: MagicMock, hook: SigilHook) -> list[dict]:
+async def _emitted(runner: MagicMock, hook: SigilHook) -> list[Any]:
     return [c.args[1] for c in runner.emit_async.await_args_list if c.args[0] == hook]
 
 
@@ -105,13 +107,7 @@ class TestFactories:
         assert isinstance(tome, MvgeTome)
         assert tome.tome_id == _metadata().id
         starts = await _emitted(runner, SigilHook.SESSION_START)
-        assert starts == [
-            {
-                "reason": "startup",
-                "tomeId": _metadata().id,
-                "tomeFile": tome.tome_file,
-            }
-        ]
+        assert starts == [SessionStartData(session_name=_metadata().id)]
 
     @pytest.mark.asyncio
     async def test_create_passes_session_config(self) -> None:
@@ -166,8 +162,7 @@ class TestFactories:
         assert tome.metadata is resumed
         starts = await _emitted(runner, SigilHook.SESSION_START)
         assert len(starts) == 1
-        assert starts[0]["reason"] == "resume"
-        assert starts[0]["tomeId"] == resumed.id
+        assert starts[0].session_name == resumed.id
 
     @pytest.mark.asyncio
     async def test_open_repairs_torn_tail_before_resume(self) -> None:
@@ -277,10 +272,9 @@ class TestFork:
         assert result is not None
         assert result.tome_id == branched_id
         forks = await _emitted(runner, SigilHook.SESSION_SHUTDOWN)
-        assert forks[-1]["reason"] == "fork"
+        assert forks[-1].session_name == source_meta.id
         starts = await _emitted(runner, SigilHook.SESSION_START)
-        assert starts[-1]["reason"] == "fork"
-        assert starts[-1]["tomeId"] == branched_id
+        assert starts[-1].session_name == branched_id
 
     @pytest.mark.asyncio
     async def test_success_hook_order(self) -> None:
@@ -349,10 +343,9 @@ class TestSwitch:
         assert result is not None
         assert result.tome_id == target_meta.id
         shutdowns = await _emitted(runner, SigilHook.SESSION_SHUTDOWN)
-        assert shutdowns[-1]["reason"] == "resume"
-        assert shutdowns[-1]["targetSessionFile"] == str(target_file)
+        assert shutdowns[-1].session_name == source.tome_id
         starts = await _emitted(runner, SigilHook.SESSION_START)
-        assert starts[-1]["reason"] == "resume"
+        assert starts[-1].session_name == target_meta.id
 
     @pytest.mark.asyncio
     async def test_success_hook_order(self) -> None:

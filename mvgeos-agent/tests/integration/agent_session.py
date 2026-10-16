@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 from mvgeos_core.errors import TomeResumeError
@@ -41,8 +42,7 @@ async def test_start_emits_session_start(agent_tome: MvgeTome) -> None:
     await agent_tome.start(reason="startup")
     handler.assert_called_once()
     call_data = handler.call_args[0][0]
-    assert call_data["reason"] == "startup"
-    assert call_data["tomeId"] == agent_tome.tome_id
+    assert call_data.session_name == agent_tome.tome_id
 
 
 @pytest.mark.asyncio
@@ -82,8 +82,7 @@ async def test_shutdown_with_target_file(agent_tome: MvgeTome) -> None:
     await agent_tome.start(reason="startup")
     await agent_tome.shutdown(reason="resume", target_session_file="/path/to/new")
     call_data = handler.call_args[0][0]
-    assert call_data["reason"] == "resume"
-    assert call_data["targetSessionFile"] == "/path/to/new"
+    assert call_data.session_name == agent_tome.tome_id
 
 
 @pytest.mark.asyncio
@@ -219,7 +218,7 @@ def _assert_no_shutdown(seen: list[SigilHook]) -> None:
 async def test_factory_create_starts_session(
     tome_factory: TomeHandleFactory, runner: RuneRunner
 ) -> None:
-    starts: list[dict] = []
+    starts: list[Any] = []
     runner.register_handler(SigilHook.SESSION_START, lambda d: starts.append(d))
 
     tome = await MvgeTome.create(tome_factory, cwd="/custom/dir", runner=runner)
@@ -227,14 +226,14 @@ async def test_factory_create_starts_session(
     assert isinstance(tome, MvgeTome)
     assert tome.metadata.cwd == "/custom/dir"
     assert len(starts) == 1
-    assert starts[0]["reason"] == "startup"
+    assert starts[0].session_name == tome.tome_id
 
 
 @pytest.mark.asyncio
 async def test_factory_open_resumes_session(
     tome_factory: TomeHandleFactory, runner: RuneRunner, agent_tome: MvgeTome
 ) -> None:
-    starts: list[dict] = []
+    starts: list[Any] = []
     runner.register_handler(SigilHook.SESSION_START, lambda d: starts.append(d))
 
     tome = await MvgeTome.open(tome_factory, agent_tome.tome_id, runner=runner)
@@ -242,7 +241,7 @@ async def test_factory_open_resumes_session(
     assert isinstance(tome, MvgeTome)
     assert tome.tome_id == agent_tome.tome_id
     assert len(starts) == 1
-    assert starts[0]["reason"] == "resume"
+    assert starts[0].session_name == agent_tome.tome_id
 
 
 @pytest.mark.asyncio

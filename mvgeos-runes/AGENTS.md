@@ -49,12 +49,13 @@ Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-run
 | `SESSION_START` / `SESSION_SHUTDOWN` | Session lifecycle |
 | `SESSION_BEFORE_SWITCH` / `SESSION_BEFORE_FORK` | Session switch/fork |
 | `COMPACTION_START` / `COMPACTION_END` | Compaction lifecycle |
-| `CONTEXT_TRANSFORM` | Transform invocations before sending to Realm |
+| `CONTEXT_TRANSFORM` | Transform invocations before sending to Realm (handlers receive the invocation list; return the list or `ContextTransformData`) |
 | `AGENT_START` / `AGENT_END` | Agent lifecycle |
 | `BEFORE_MVGE_START` | Before Mvge initialization begins |
-| `INPUT` | When new Summoner input is received |
+| `INPUT` | When new Summoner input is received (transform: handlers receive `InputData` and may rewrite `.content` before it is consumed) |
 | `SHOULD_STOP_AFTER_TURN` | Hook evaluating whether agent loop should halt |
 | `PREPARE_NEXT_TURN` | Modify context or parameters for next turn |
+| `RESOURCES_DISCOVER` | When skills/prompts/resources are discovered |
 
 ## Rune Discovery Paths
 

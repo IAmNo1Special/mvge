@@ -15,6 +15,7 @@ from mvgeos_core.channel import (
     RealmResponse,
     StopReason,
 )
+from mvgeos_core.errors import MaxTurnsExceededError
 from mvgeos_core.event_bus import EventBus
 from mvgeos_core.events import (
     ContemplationLevel,
@@ -33,13 +34,21 @@ from mvgeos_core.spells import (
     SpellResultMessage,
 )
 from mvgeos_runes.rune_runner import RuneRunner
-from mvgeos_runes.types import SigilHook
+from mvgeos_runes.types import (
+    AfterProviderResponseData,
+    BeforeProviderHeadersData,
+    ContextTransformData,
+    InputData,
+    PrepareNextTurnData,
+    SigilHook,
+)
 from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
+from mvgeos_agent.harness.harness import _apply_prepare_next_turn
 from mvgeos_agent.types import MvgeState
 
 
@@ -779,8 +788,8 @@ class TestMvgeHarnessProviderHooks:
         )
         runner = RuneRunner()
 
-        def add_header(data: dict) -> dict:
-            data["X-Custom"] = "value"
+        def add_header(data: BeforeProviderHeadersData) -> BeforeProviderHeadersData:
+            data.headers["X-Custom"] = "value"
             return data
 
         runner.register_handler(SigilHook.BEFORE_PROVIDER_HEADERS, add_header)
@@ -1008,7 +1017,7 @@ class TestMvgeHarnessTomeHooks:
 
             handler.assert_called_once()
             call_data = handler.call_args[0][0]
-            assert call_data["reason"] == "startup"
+            assert call_data.session_name == write.tome_id
 
     @pytest.mark.asyncio
     async def test_tome_shutdown_emitted_when_agent_tome_in_state(
@@ -1668,3 +1677,214 @@ class TestMvgeHarnessExecutionSnapshot:
         snap = harness.snapshot
         assert snap.configured_model == "base-model"
         assert snap.captured_model is None
+
+
+def _sigil_stop_model() -> Model:
+    return Model(
+        id="test-model",
+        name="Test",
+        realm="test",
+        base_url="",
+        api_key="<redacted>",
+    )
+
+
+def _sigil_stop_response(model_obj: Model) -> RealmResponse:
+    return RealmResponse(
+        model=model_obj,
+        invocation=MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Hello"}],
+            stop_reason=StopReason.STOP,
+        ),
+    )
+
+
+class TestSigilPayloadContracts:
+    """Observable proof for the payload-ownership fixes (issue #163)."""
+
+    @pytest.mark.asyncio
+    async def test_input_transform_rewrites_summoner_content(self) -> None:
+        """INPUT is a real transform hook: a rune rewriting the content
+        changes what the turn runs on."""
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="original")],
+        )
+        runner = RuneRunner()
+
+        def rewrite(data: InputData) -> InputData:
+            assert isinstance(data, InputData)
+            data.content = "rewritten by rune"
+            return data
+
+        runner.register_handler(SigilHook.INPUT, rewrite)
+        state.rune_runner = runner
+        model_obj = _sigil_stop_model()
+
+        async def stream(
+            invocations: list[Any] | None = None, signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            yield _sigil_stop_response(model_obj)
+
+        harness = MvgeHarness(state=state)
+        await harness.run(stream, {"id": "test-model"}, "none")
+
+        assert state.invocations[0].content == "rewritten by rune"
+
+    @pytest.mark.asyncio
+    async def test_input_readonly_handler_leaves_content(self) -> None:
+        """A rune that only observes INPUT (the session-title pattern)
+        changes nothing."""
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="original")],
+        )
+        runner = RuneRunner()
+        seen: list[Any] = []
+        runner.register_handler(SigilHook.INPUT, lambda data: seen.append(data))
+        state.rune_runner = runner
+        model_obj = _sigil_stop_model()
+
+        async def stream(
+            invocations: list[Any] | None = None, signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            yield _sigil_stop_response(model_obj)
+
+        harness = MvgeHarness(state=state)
+        await harness.run(stream, {"id": "test-model"}, "none")
+
+        assert len(seen) == 1
+        assert isinstance(seen[0], InputData)
+        assert state.invocations[0].content == "original"
+
+    @pytest.mark.asyncio
+    async def test_prepare_next_turn_accepts_documented_dataclass(self) -> None:
+        """A rune returning PrepareNextTurnData is applied, not discarded.
+
+        The handler sets max_turns=1 on the documented dataclass; the loop
+        honors it on the following turn by raising MaxTurnsExceededError.
+        Under the old code the return was silently discarded and no error
+        was raised.
+        """
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+            followup_queue=[
+                SummonerRequest(role="user", content="one"),
+                SummonerRequest(role="user", content="two"),
+                SummonerRequest(role="user", content="three"),
+            ],
+        )
+        runner = RuneRunner()
+        seen: list[Any] = []
+
+        def on_prepare(data: PrepareNextTurnData) -> PrepareNextTurnData:
+            seen.append(data)
+            data.max_turns = 1
+            return data
+
+        runner.register_handler(SigilHook.PREPARE_NEXT_TURN, on_prepare)
+        state.rune_runner = runner
+        model_obj = _sigil_stop_model()
+
+        async def stream(
+            invocations: list[Any] | None = None, signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            yield _sigil_stop_response(model_obj)
+
+        harness = MvgeHarness(state=state)
+        with pytest.raises(MaxTurnsExceededError):
+            await harness.run(stream, {"id": "test-model"}, "none")
+
+        assert len(seen) == 1
+        assert isinstance(seen[0], PrepareNextTurnData)
+        assert seen[0].system_prompt == "test"
+
+    @pytest.mark.asyncio
+    async def test_context_transform_accepts_documented_dataclass_return(
+        self,
+    ) -> None:
+        """A rune returning ContextTransformData no longer crashes the turn."""
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="original")],
+        )
+        runner = RuneRunner()
+
+        def on_transform(data: list) -> ContextTransformData:
+            assert isinstance(data, list)
+            return ContextTransformData(
+                invocations=[SummonerRequest(role="user", content="transformed")]
+            )
+
+        runner.register_handler(SigilHook.CONTEXT_TRANSFORM, on_transform)
+        state.rune_runner = runner
+        model_obj = _sigil_stop_model()
+        stream_calls: list[list[Any]] = []
+
+        async def stream(
+            invocations: list[Any] | None = None, signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            stream_calls.append(list(invocations or []))
+            yield _sigil_stop_response(model_obj)
+
+        harness = MvgeHarness(state=state)
+        await harness.run(stream, {"id": "test-model"}, "none")
+
+        assert any(
+            getattr(inv, "content", None) == "transformed" for inv in stream_calls[0]
+        )
+
+    @pytest.mark.asyncio
+    async def test_after_provider_response_carries_mana_used(self) -> None:
+        """The AFTER_PROVIDER_RESPONSE payload no longer drops mana_used."""
+
+        state = MvgeState(
+            system_prompt="test",
+            model={"id": "test-model", "name": "Test"},
+            invocations=[SummonerRequest(role="user", content="hi")],
+        )
+        runner = RuneRunner()
+        seen: list[Any] = []
+        runner.register_handler(
+            SigilHook.AFTER_PROVIDER_RESPONSE, lambda data: seen.append(data)
+        )
+        state.rune_runner = runner
+        model_obj = _sigil_stop_model()
+
+        async def stream(
+            invocations: list[Any] | None = None, signal: Any | None = None
+        ) -> AsyncIterator[RealmResponse]:
+            yield _sigil_stop_response(model_obj)
+
+        harness = MvgeHarness(state=state)
+        await harness.run(stream, {"id": "test-model"}, "none")
+
+        assert len(seen) == 1
+        assert isinstance(seen[0], AfterProviderResponseData)
+        assert isinstance(seen[0].mana_used, int)
+
+    @pytest.mark.asyncio
+    async def test_apply_prepare_next_turn_coerces_enums(self) -> None:
+        """The dataclass's wire strings become the loop's enum values."""
+        context = LoopContext(system_prompt="a")
+        data = PrepareNextTurnData(
+            system_prompt="b",
+            contemplation_level="high",
+            queue_mode="one-at-a-time",
+            prompt_source="builtin",
+        )
+        updated = _apply_prepare_next_turn(data, context)
+        assert updated.system_prompt == "b"
+        assert updated.contemplation_level == ContemplationLevel.HIGH
+        assert updated.queue_mode == QueueMode.ONE_AT_A_TIME
+        assert updated.prompt_source == PromptSource.BUILTIN

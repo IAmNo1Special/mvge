@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -12,6 +13,7 @@ from mvgeos_core.events import (
     ExecutionSnapshot,
     MvgeEvent,
     MvgeEventType,
+    PromptSource,
     QueueMode,
 )
 from mvgeos_core.invocations import (
@@ -21,7 +23,14 @@ from mvgeos_core.invocations import (
 from mvgeos_core.loop import EmitSink, LoopCallbacks, LoopContext, StreamFn, run_loop
 from mvgeos_core.spells import MvgeSpell, SpellResultMessage
 from mvgeos_provider.base import Realm
-from mvgeos_runes.types import SigilHook
+from mvgeos_runes.types import (
+    AfterSpellResultData,
+    BeforeProviderHeadersData,
+    ContextTransformData,
+    InputData,
+    PrepareNextTurnData,
+    SigilHook,
+)
 
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.function_spell import RuneSpellWrapper
@@ -32,6 +41,11 @@ from mvgeos_agent.harness.compaction.compaction import (
     should_compact,
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
+from mvgeos_agent.sigil_payloads import (
+    payload_for,
+    payload_for_event,
+    prepare_next_turn_payload,
+)
 from mvgeos_agent.types import MvgeState
 
 logger = logging.getLogger(__name__)
@@ -49,6 +63,46 @@ _EVENT_TO_SIGIL: dict[MvgeEventType, SigilHook] = {
     MvgeEventType.BEFORE_INVOCATION: SigilHook.BEFORE_INVOCATION,
     MvgeEventType.AFTER_INVOCATION: SigilHook.AFTER_INVOCATION,
 }
+
+
+def _transformed_input(result: Any, fallback: Any) -> Any:
+    """Normalize an INPUT chain result back to content.
+
+    Handlers may return the (mutated) InputData, the raw content, or None
+    to keep the current content. Anything else keeps the fallback: a
+    misbehaving rune must not corrupt the turn's input.
+    """
+    if result is None:
+        return fallback
+    if isinstance(result, InputData):
+        return result.content
+    if isinstance(result, (str, list)):
+        return result
+    return fallback
+
+
+def _apply_prepare_next_turn(
+    data: PrepareNextTurnData, context: LoopContext
+) -> LoopContext:
+    """Apply a rune-returned PrepareNextTurnData onto the loop context.
+
+    Raises ValueError on uncoercible enum values; the caller treats that
+    like any other misbehaving-rune result and keeps the context.
+    """
+    return dataclasses.replace(
+        context,
+        system_prompt=data.system_prompt,
+        prompt_source=PromptSource(data.prompt_source),
+        invocations=data.invocations,
+        contemplation_level=ContemplationLevel(data.contemplation_level),
+        max_tokens=data.max_tokens,
+        temperature=data.temperature,
+        spell_timeout_ms=data.spell_timeout_ms,
+        contemplation_budget=data.contemplation_budget,
+        exclude_contemplation=data.exclude_contemplation,
+        max_turns=data.max_turns,
+        queue_mode=QueueMode(data.queue_mode),
+    )
 
 
 class MvgeHarness:
@@ -284,13 +338,24 @@ class MvgeHarness:
         async def transform_context(
             invocations: list[MvgeInvocation],
         ) -> list[MvgeInvocation]:
+            payload = payload_for(
+                SigilHook.CONTEXT_TRANSFORM, invocations=list(invocations)
+            )
+            # The chain carries the raw list: shipped runes take and return
+            # the list itself. A rune returning the documented dataclass is
+            # accepted below instead of crashing at list(result).
             try:
                 result = await runner.emit_chain(
-                    SigilHook.CONTEXT_TRANSFORM, invocations
+                    SigilHook.CONTEXT_TRANSFORM, payload.invocations
                 )
             except Exception:
-                result = invocations
-            current = list(result) if result is not None else invocations
+                result = payload.invocations
+            if isinstance(result, ContextTransformData):
+                current = result.invocations
+            elif isinstance(result, list):
+                current = result
+            else:
+                current = payload.invocations
             if self._callbacks is not None and self._callbacks.transform_context:
                 current = await self._callbacks.transform_context(current)
             return current
@@ -298,11 +363,18 @@ class MvgeHarness:
         async def before_realm_headers(headers: dict[str, str]) -> dict[str, str]:
             try:
                 result = await runner.emit_chain(
-                    SigilHook.BEFORE_PROVIDER_HEADERS, headers
+                    SigilHook.BEFORE_PROVIDER_HEADERS,
+                    payload_for(SigilHook.BEFORE_PROVIDER_HEADERS, headers=headers),
                 )
             except Exception:
-                result = headers
-            current = {**headers, **result} if isinstance(result, dict) else headers
+                result = None
+            if isinstance(result, BeforeProviderHeadersData):
+                incoming: dict[str, str] = result.headers
+            elif isinstance(result, dict):
+                incoming = result
+            else:
+                incoming = {}
+            current = {**headers, **incoming}
             if self._callbacks is not None and self._callbacks.before_realm_headers:
                 current = await self._callbacks.before_realm_headers(current)
             return current
@@ -313,16 +385,40 @@ class MvgeHarness:
                 if blocked:
                     return blocked
             try:
-                return await runner.emit_block(SigilHook.BEFORE_SPELL_CAST, data)
+                return await runner.emit_block(
+                    SigilHook.BEFORE_SPELL_CAST,
+                    payload_for(
+                        SigilHook.BEFORE_SPELL_CAST,
+                        spell_cast=data["spell_cast"],
+                        spell_name=data["spell_name"],
+                    ),
+                )
             except Exception:
                 return None
 
         async def after_spell_result(data: dict[str, Any]) -> dict[str, Any]:
             try:
-                result = await runner.emit_chain(SigilHook.AFTER_SPELL_RESULT, data)
+                result = await runner.emit_chain(
+                    SigilHook.AFTER_SPELL_RESULT,
+                    payload_for(
+                        SigilHook.AFTER_SPELL_RESULT,
+                        spell_name=data["spell_name"],
+                        spell_cast_id=data["spell_cast_id"],
+                        result=data["result"],
+                    ),
+                )
             except Exception:
-                result = data
-            current = result if isinstance(result, dict) else data
+                result = None
+            if isinstance(result, AfterSpellResultData):
+                current = {
+                    "spell_name": result.spell_name,
+                    "spell_cast_id": result.spell_cast_id,
+                    "result": result.result,
+                }
+            elif isinstance(result, dict):
+                current = result
+            else:
+                current = data
             if self._callbacks is not None and self._callbacks.after_spell_result:
                 current = await self._callbacks.after_spell_result(current)
             return current
@@ -335,17 +431,31 @@ class MvgeHarness:
             ):
                 return True
             try:
-                result = await runner.emit_first(SigilHook.SHOULD_STOP_AFTER_TURN, {})
+                result = await runner.emit_first(
+                    SigilHook.SHOULD_STOP_AFTER_TURN,
+                    payload_for(SigilHook.SHOULD_STOP_AFTER_TURN),
+                )
             except Exception:
                 return False
             return bool(result) if isinstance(result, bool) else False
 
         async def prepare_next_turn(context: LoopContext) -> LoopContext:
             try:
-                result = await runner.emit_chain(SigilHook.PREPARE_NEXT_TURN, context)
+                result = await runner.emit_chain(
+                    SigilHook.PREPARE_NEXT_TURN,
+                    prepare_next_turn_payload(context),
+                )
             except Exception:
-                result = context
-            current = result if isinstance(result, LoopContext) else context
+                result = None
+            if isinstance(result, PrepareNextTurnData):
+                try:
+                    current = _apply_prepare_next_turn(result, context)
+                except (TypeError, ValueError, AttributeError):
+                    current = context
+            elif isinstance(result, LoopContext):
+                current = result
+            else:
+                current = context
             if self._callbacks is not None and self._callbacks.prepare_next_turn:
                 current = await self._callbacks.prepare_next_turn(current)
             return current
@@ -375,6 +485,18 @@ class MvgeHarness:
         )
 
     async def _emit(self, event: MvgeEvent) -> None:
+        runner = self._state.rune_runner
+        hook = _EVENT_TO_SIGIL.get(event.type)
+        is_input = event.type == MvgeEventType.INPUT
+        if is_input and runner is not None and hook is not None:
+            # INPUT is a transform hook: runes observe and may rewrite the
+            # Summoner input before it is consumed into state. The chained
+            # content is what gets reduced, recorded and broadcast.
+            chained = await runner.emit_chain(hook, self._sigil_payload(event))
+            event.data["content"] = _transformed_input(
+                chained, event.data.get("content")
+            )
+            hook = None  # already fanned out through the chain
         self._reduce(event)
         self._record_event(event)
 
@@ -382,8 +504,6 @@ class MvgeHarness:
         if bus is not None:
             bus.emit(event.type, event.data)
 
-        runner = self._state.rune_runner
-        hook = _EVENT_TO_SIGIL.get(event.type)
         if runner is not None and hook is not None:
             await runner.emit_async(hook, self._sigil_payload(event))
 
@@ -422,9 +542,10 @@ class MvgeHarness:
         self._state.events.append(event)
 
     def _sigil_payload(self, event: MvgeEvent) -> Any:
-        if event.type == MvgeEventType.AFTER_PROVIDER_RESPONSE:
-            return {"response": event.data.get("response")}
-        return event.data
+        hook = _EVENT_TO_SIGIL.get(event.type)
+        if hook is None:
+            return event.data
+        return payload_for_event(hook, event)
 
     async def _record_invocation(self, event: MvgeEvent) -> None:
         session: MvgeTome | None = self._tome or self._state.agent_tome

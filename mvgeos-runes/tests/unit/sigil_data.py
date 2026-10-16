@@ -22,10 +22,8 @@ from mvgeos_runes.types import (
     SessionShutdownData,
     SessionStartData,
     ShouldStopAfterTurnData,
-    SigilHook,
     TurnEndData,
     TurnStartData,
-    create_sigil_data,
 )
 
 
@@ -181,54 +179,3 @@ class TestSigilDataClasses:
         assert data.reason == "startup"
         assert data.skill_paths == ["/skills/a"]
         assert data.prompt_paths == ["/prompts/p.md"]
-
-
-class TestCreateSigilData:
-    """Test the create_sigil_data factory function."""
-
-    def test_creates_typed_data_from_dict(self) -> None:
-        raw = {"spell_name": "test", "spell_cast_id": "123", "result": "ok"}
-        typed = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, raw)
-        assert isinstance(typed, AfterSpellResultData)
-        assert typed.spell_name == "test"
-        assert typed.spell_cast_id == "123"
-        assert typed.result == "ok"
-
-    def test_passes_through_already_typed_data(self) -> None:
-        original = AfterSpellResultData(
-            spell_name="test", spell_cast_id="123", result="ok"
-        )
-        typed = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, original)
-        assert typed is original
-
-    def test_returns_raw_for_unknown_hook(self) -> None:
-        raw = {"custom": "data"}
-        result = create_sigil_data(SigilHook.INPUT, raw)  # INPUT has a data class
-        # Should fall back to raw dict because content is missing
-        assert result == raw
-
-        # Test with a hook that has no data class (if any)
-        class FakeHook:
-            value = "fake_hook"
-
-        result2 = create_sigil_data(FakeHook(), raw)  # type: ignore[arg-type]
-        assert result2 is raw
-
-    def test_falls_back_to_raw_on_construction_error(self) -> None:
-        # Missing required field
-        raw = {"spell_name": "test"}  # missing spell_cast_id and result
-        typed = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, raw)
-        # Should fall back to raw dict
-        assert typed == raw
-
-    def test_handles_non_dict_data(self) -> None:
-        data = "not a dict"
-        result = create_sigil_data(SigilHook.AFTER_SPELL_RESULT, data)
-        assert result == "not a dict"
-
-    def test_creates_resources_discover_data_from_dict(self) -> None:
-        raw = {"cwd": "/workspace", "reason": "startup", "skill_paths": ["/skills"]}
-        typed = create_sigil_data(SigilHook.RESOURCES_DISCOVER, raw)
-        assert isinstance(typed, ResourcesDiscoverData)
-        assert typed.cwd == "/workspace"
-        assert typed.skill_paths == ["/skills"]
