@@ -199,13 +199,14 @@ Any config setter (`set_model_and_realm`, future `set_contemplation`, `set_tools
 
 Symbols this decision commits to. All of these exist today.
 
-<!-- adr-contract: MvgeHarness, ExecutionSnapshot, LoopCallbacks, CONFIG_CHANGE, refresh_spells, reload_spells, spell_version -->
+<!-- adr-contract: MvgeHarness, ExecutionSnapshot, LoopCallbacks, CONFIG_CHANGE, reload_spells, spell_version, TurnDriver, SessionLifecycle, AgentConfiguration -->
 
-**Not yet contracted — the migration is incomplete.** The §2 strawman
-promised three Harness methods that do not exist; issue #164 re-derived the
-interface and decided each one. They are deliberately absent from the marker
-above so CI stays green while the gap is real; issue #165 implements them
-and moves them into the contract in the same commit.
+**Contracted by #165.** The §2 Split Capabilities interface is implemented:
+`TurnDriver`, `SessionLifecycle`, and `AgentConfiguration` are runtime-checkable
+protocols; `MvgeHarness` implements all three and exposes them via `.driver`,
+`.lifecycle`, and `.configuration`. `refresh_spells` was removed from the
+marker — the harness is now the sole spell builder, consulting
+`RuneRunner.spell_version` directly.
 
 | Decided (issue #164) | Status |
 | --- | --- |

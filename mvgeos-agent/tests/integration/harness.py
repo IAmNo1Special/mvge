@@ -7,7 +7,7 @@ from mvgeos_core.events import ContemplationLevel
 from mvgeos_core.invocations import SummonerRequest
 
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.types import MvgeState
+from mvgeos_agent.harness._state import MvgeState
 
 
 @pytest.mark.asyncio

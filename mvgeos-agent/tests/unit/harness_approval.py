@@ -10,7 +10,7 @@ from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
-from mvgeos_agent.types import MvgeState
+from mvgeos_agent.harness._state import MvgeState
 
 
 def _request() -> ApprovalRequest:

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import copy
 import dataclasses
+import inspect
 import logging
-from collections.abc import Callable
+import re
+from collections.abc import AsyncIterator, Sequence
+from pathlib import Path
 from typing import Any
 
-from mvgeos_core.abort import AbortSignal
+from mvgeos_core.abort import AbortController, AbortSignal
 from mvgeos_core.approval import ApprovalDecision, ApprovalRequest
-from mvgeos_core.channel import Model, MvgeResponse
+from mvgeos_core.channel import ChannelConfig, Model, MvgeResponse, RealmResponse
 from mvgeos_core.events import (
     ContemplationLevel,
     ExecutionSnapshot,
@@ -23,17 +28,35 @@ from mvgeos_core.invocations import (
 from mvgeos_core.loop import EmitSink, LoopCallbacks, LoopContext, StreamFn, run_loop
 from mvgeos_core.spells import MvgeSpell, SpellResultMessage
 from mvgeos_provider.base import Realm
+from mvgeos_provider.registry import RealmRegistry
+from mvgeos_runes.rune_audit import (
+    RuneAuditLog,
+    default_rune_ops_dir,
+    utcnow,
+)
+from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.types import (
     AfterSpellResultData,
     BeforeProviderHeadersData,
     ContextTransformData,
+    Diagnostic,
+    DiagnosticKind,
     InputData,
     PrepareNextTurnData,
     SigilHook,
+    SkillDiagnostic,
 )
+from mvgeos_tome.handle import TomeHandleFactory
 
 from mvgeos_agent.agent_session import MvgeTome
-from mvgeos_agent.function_spell import RuneSpellWrapper
+from mvgeos_agent.environment import MvgeEnvironment
+from mvgeos_agent.function_spell import RuneSpellWrapper, SpellUnion, coerce_spell
+from mvgeos_agent.harness._state import MvgeState
+from mvgeos_agent.harness.capabilities import (
+    AgentConfiguration,
+    SessionLifecycle,
+    TurnDriver,
+)
 from mvgeos_agent.harness.compaction.compaction import (
     DEFAULT_COMPACTION_SETTINGS,
     CompactionSettings,
@@ -41,12 +64,21 @@ from mvgeos_agent.harness.compaction.compaction import (
     should_compact,
 )
 from mvgeos_agent.harness.compaction.compaction_runner import CompactionRunner
+from mvgeos_agent.harness.reload import (
+    _RETIRED_SHUTDOWN_ATTEMPTS,
+    _RETIRED_SHUTDOWN_BACKOFF_SECONDS,
+    ReloadBuilder,
+    ReloadCandidate,
+    _restore_provider_registrations,
+    _snapshot_provider_registrations,
+)
+from mvgeos_agent.protocol import ReloadResult
+from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.sigil_payloads import (
     payload_for,
     payload_for_event,
     prepare_next_turn_payload,
 )
-from mvgeos_agent.types import MvgeState
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +95,64 @@ _EVENT_TO_SIGIL: dict[MvgeEventType, SigilHook] = {
     MvgeEventType.BEFORE_INVOCATION: SigilHook.BEFORE_INVOCATION,
     MvgeEventType.AFTER_INVOCATION: SigilHook.AFTER_INVOCATION,
 }
+
+
+SPELL_NAME_REGEX = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _validate_spell_name(name: Any) -> bool:
+    """Validate spell name conforms to provider identifier standards."""
+    return isinstance(name, str) and bool(SPELL_NAME_REGEX.match(name))
+
+
+def _validate_spell_parameters(parameters: Any) -> bool:
+    """Validate that parameters conform to a JSON Schema object dictionary."""
+    if not isinstance(parameters, dict):
+        return False
+    if not parameters:
+        return True
+
+    schema_type = parameters.get("type")
+    if schema_type is not None and schema_type != "object":
+        return False
+
+    properties = parameters.get("properties")
+    if properties is not None:
+        if not isinstance(properties, dict):
+            return False
+        for prop_name, prop_def in properties.items():
+            if not isinstance(prop_name, str) or not isinstance(prop_def, dict):
+                return False
+
+    required = parameters.get("required")
+    if required is not None:
+        if not isinstance(required, (list, tuple, set)):
+            return False
+        if not all(isinstance(r, str) for r in required):
+            return False
+
+    return True
+
+
+def _validate_spell_signature(spell: Any) -> bool:
+    """Validate that spell.execute matches the MvgeSpell execution contract."""
+    execute_fn = getattr(spell, "execute", None)
+    if not callable(execute_fn):
+        return False
+    try:
+        sig = inspect.signature(execute_fn)
+    except (ValueError, TypeError):
+        return False
+
+    try:
+        sig.bind("dummy_id", {}, signal=None, on_update=None)
+        return True
+    except TypeError:
+        try:
+            sig.bind("dummy_id", {}, signal=None)
+            return True
+        except TypeError:
+            return False
 
 
 def _transformed_input(result: Any, fallback: Any) -> Any:
@@ -105,7 +195,48 @@ def _apply_prepare_next_turn(
     )
 
 
-class MvgeHarness:
+def _commit_candidate_providers(
+    registry: RealmRegistry,
+    live_runner: RuneRunner | None,
+    candidate_runner: RuneRunner,
+) -> None:
+    """Replace rune-owned provider registrations with the candidate's exact state.
+
+    ``RealmRegistry.register_provider()`` merges configs (``dict.update``),
+    so a successful reload must *replace* — not merge — the entries the
+    candidate build touched, and drop entries whose rune is gone.
+    Ownership is determined from the runners: names registered on the
+    live or candidate runner are rune-owned; anything else in the
+    registry is unrelated non-rune state and is left alone.
+    """
+    candidate_providers = candidate_runner.get_registered_providers()
+    candidate_factories = candidate_runner.get_registered_realm_factories()
+    live_provider_names = (
+        set(live_runner.get_registered_providers())
+        if live_runner is not None
+        else set()
+    )
+    live_factory_prefixes = (
+        set(live_runner.get_registered_realm_factories())
+        if live_runner is not None
+        else set()
+    )
+    for name, config in candidate_providers.items():
+        # Replace, not merge: keys the rune dropped must not survive.
+        registry.unregister_provider(name)
+        registry.register_provider(name, dict(config))
+    for name in live_provider_names - set(candidate_providers):
+        # The providing rune is gone; its registration must not survive.
+        registry.unregister_provider(name)
+    for prefix, factory in candidate_factories.items():
+        # Realm factories already replace on register; re-register to
+        # make the candidate's factory the live one.
+        registry.register_realm_factory(prefix, factory)
+    for prefix in live_factory_prefixes - set(candidate_factories):
+        registry.unregister_realm_factory(prefix)
+
+
+class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
     """Session-aware operational owner of the agent loop.
 
     Drives run_loop, reduces events into MvgeState, manages Sigil hooks,
@@ -123,7 +254,18 @@ class MvgeHarness:
         compaction: CompactionRunner | None = None,
         compaction_settings: CompactionSettings = DEFAULT_COMPACTION_SETTINGS,
         callbacks: LoopCallbacks | None = None,
-        refresh_spells: Callable[[], list[MvgeSpell]] | None = None,
+        discovered_spells: Sequence[SpellUnion] | None = None,
+        plan_mode: bool = False,
+        enabled_spells_filter: set[str] | None = None,
+        rune_lifecycle: RuneLifecycle | None = None,
+        provider_registry: RealmRegistry | None = None,
+        environment: MvgeEnvironment | None = None,
+        tome_factory: TomeHandleFactory | None = None,
+        tome_dir: Path | None = None,
+        model_id: str | None = None,
+        api_key: str | None = None,
+        provider_name: str | None = None,
+        reload_builder: ReloadBuilder | None = None,
     ) -> None:
         self._state = state
         self._tome: MvgeTome | None = tome or getattr(self._state, "agent_tome", None)
@@ -135,13 +277,45 @@ class MvgeHarness:
         self._captured_realm: str | None = None
         self._compaction_settings = compaction_settings
         self._callbacks = callbacks
-        self._refresh_spells = refresh_spells
+        self._discovered_spells: Sequence[SpellUnion] = (
+            list(discovered_spells) if discovered_spells is not None else []
+        )
+        self._plan_mode = plan_mode
+        self._enabled_spells_filter = (
+            set(enabled_spells_filter) if enabled_spells_filter is not None else None
+        )
+        # Last RuneRunner.spell_version the spell cache was built from.
+        # Initialized to the live version so pre-populated state.spells
+        # (construction-time build) are the cache until the version moves.
+        runner_for_version = state.rune_runner
+        self._spell_version_seen: int = (
+            runner_for_version.spell_version if runner_for_version is not None else 0
+        )
+        # TurnDriver-owned: exactly one turn at a time.
+        self._abort_controller: AbortController | None = None
+        self._turn_in_flight = False
+        # Turn-boundary reload: a reload requested mid-turn queues here.
+        self._reload_pending = False
+        # SessionLifecycle-owned: session-scoped collaborators.
+        self._rune_lifecycle = rune_lifecycle
+        self._provider_registry = provider_registry
+        self._environment = environment
+        self._tome_factory = tome_factory
+        self._tome_dir = tome_dir
+        self._model_id = model_id
+        self._api_key = api_key
+        self._provider_name = provider_name
+        # SessionLifecycle-owned: reload transaction.
+        self._reload_builder = reload_builder
+        self._reload_lock = asyncio.Lock()
+        self._reload_diagnostics: list[Diagnostic | SkillDiagnostic] = []
+        self._gateway_engaged_rune: str | None = None
 
         self._compaction: CompactionRunner | None
         if compaction is not None:
             self._compaction = compaction
             if getattr(self._compaction, "_emit", None) is None:
-                self._compaction._emit = self._emit
+                self._compaction.rebind(emit=self._emit)
         elif self._realm is not None and self._model is not None:
             self._compaction = CompactionRunner(
                 realm=self._realm,
@@ -170,12 +344,357 @@ class MvgeHarness:
         """The sink that fans an event out to state, bus, Sigils, and Tome."""
         return self._emit
 
-    def switch_tome(self, tome: MvgeTome) -> None:
+    async def switch_tome(self, tome: MvgeTome) -> None:
         """Switch active Tome session reference and update CompactionRunner."""
         self._tome = tome
         self._state.agent_tome = tome
         if self._compaction is not None:
-            self._compaction._tome = tome
+            self._compaction.rebind(tome=tome)
+
+    async def fork_tome(self, entry_id: str | None = None) -> str:
+        """Branch the current Tome and switch to the new branch."""
+        if self._tome is None:
+            raise RuntimeError("Agent not initialized")
+        new_tome = await self._tome.fork(entry_id)
+        if new_tome is None:
+            raise RuntimeError("Failed to fork tome")
+        await self.switch_tome(new_tome)
+        self._state.invocations = new_tome.reconstruct_invocations()
+        self._rebind_runner_context()
+        return new_tome.tome_id
+
+    async def checkout_leaf(self, leaf_id: str) -> None:
+        """Switch the active position in the Tome to a specific leaf."""
+        if self._tome is None:
+            raise RuntimeError("Agent not initialized")
+        if self._state.is_streaming:
+            raise RuntimeError("Cannot checkout leaf while invocation is streaming")
+        self._tome.set_leaf(leaf_id)
+        self._state.invocations = self._tome.reconstruct_invocations()
+
+    async def undo(self) -> str | None:
+        """Revert the most recent summoner invocation."""
+        if self._tome is None:
+            raise RuntimeError("Agent not initialized")
+        if self._state.is_streaming:
+            raise RuntimeError("Cannot undo while invocation is streaming")
+        if self._tome_factory is None:
+            raise RuntimeError("Agent not initialized")
+        target = self._tome_factory.get_parent_summoner_entry(
+            self._tome.tome_id, self._tome.active_leaf_id
+        )
+        if target is None:
+            raise ValueError("Cannot undo: at root invocation")
+        self._tome.set_leaf(target.id)
+        self._state.invocations = self._tome.reconstruct_invocations()
+        return target.id
+
+    async def compact(self) -> str:
+        """Trigger mana pool compaction on the current Tome branch."""
+        if self._tome is None or self._compaction is None:
+            raise RuntimeError("Agent not initialized")
+        if self._state.is_streaming:
+            raise RuntimeError("Cannot compact while invocation is streaming")
+        if not self._state.invocations:
+            return "No invocations to compact"
+        replacement = await self._compaction.force_compact(self._state.invocations)
+        if replacement is not None:
+            self._state.invocations = replacement
+            return "Compaction completed"
+        return "Nothing to compact or compaction skipped"
+
+    async def close(self) -> None:
+        """Teardown the session and release resources."""
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+
+        if self._rune_lifecycle is not None:
+            await self._rune_lifecycle.shutdown()
+            self._rune_lifecycle = None
+            self._state.rune_runner = None
+
+        if self._realm is not None:
+            close_fn = getattr(self._realm, "close", None)
+            if callable(close_fn):
+                res = close_fn()
+                if inspect.isawaitable(res):
+                    await res
+            self._realm = None
+
+        if self._tome is not None:
+            await self._tome.shutdown()
+
+    async def reload(self) -> ReloadResult:
+        """Rebuild the runtime mid-session: runes, prompt, spells.
+
+        The sole engine-owned reload mechanism. A reload requested
+        mid-turn queues until the turn completes; the in-flight turn
+        keeps its LoopContext. Concurrent calls serialize on a lock.
+        """
+        if self._turn_in_flight:
+            self._reload_pending = True
+            return ReloadResult(
+                ok=True,
+                queued=True,
+                message=(
+                    "Reload queued: a turn is in flight; it applies at the "
+                    "next turn boundary."
+                ),
+            )
+        if self._reload_builder is None:
+            return ReloadResult(
+                ok=False, message="Agent not initialized; nothing to reload."
+            )
+        async with self._reload_lock:
+            return await self._reload_locked()
+
+    async def _reload_locked(self) -> ReloadResult:
+        """Execute one reload; the caller holds ``self._reload_lock``."""
+        assert self._reload_builder is not None
+        assert self._provider_registry is not None
+        # Provider registrations are the one shared-mutable step of the
+        # build: snapshot first so any build failure rolls them back.
+        provider_snapshot = _snapshot_provider_registrations(self._provider_registry)
+        try:
+            candidate = await self._reload_builder()
+        except Exception as exc:
+            _restore_provider_registrations(self._provider_registry, provider_snapshot)
+            diagnostic = f"Reload failed: {exc}"
+            logger.exception("Reload failed; last-known-good state preserved")
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=diagnostic,
+                )
+            ]
+            audit_error = self._audit_reload(
+                ok=False, code="reload_failed", message=diagnostic
+            )
+            message = diagnostic + "; last-known-good state preserved."
+            if audit_error is not None:
+                message += f" ({audit_error})"
+            return ReloadResult(ok=False, message=message)
+        old_lifecycle = self._apply_reload_candidate(candidate)
+        # Watcher handover: the candidate lifecycle (already swapped in)
+        # starts its watchers. The retired lifecycle's watchers stop
+        # afterwards, with bounded retry.
+        watcher_error: str | None = None
+        if self._rune_lifecycle is not None:
+            try:
+                await self._rune_lifecycle.start()
+            except Exception as exc:
+                watcher_error = f"watcher re-sync failed: {exc}"
+                logger.exception(
+                    "Reload applied but watcher re-sync failed; "
+                    "file-triggered reloads are paused until the next "
+                    "successful reload"
+                )
+        retired_shutdown_error: str | None = None
+        if old_lifecycle is not None:
+            for attempt in range(_RETIRED_SHUTDOWN_ATTEMPTS):
+                try:
+                    await old_lifecycle.shutdown()
+                    retired_shutdown_error = None
+                    break
+                except Exception as exc:
+                    retired_shutdown_error = f"retired watcher shutdown failed: {exc}"
+                    if attempt == _RETIRED_SHUTDOWN_ATTEMPTS - 1:
+                        logger.exception(
+                            "Retired rune watchers did not shut down "
+                            "cleanly after reload"
+                        )
+                    else:
+                        await asyncio.sleep(_RETIRED_SHUTDOWN_BACKOFF_SECONDS)
+        if watcher_error is not None:
+            # The swap succeeded — the new state IS live — but the
+            # post-swap watcher handover failed. Per the §4.6 audit
+            # pattern the result is a loud failure that states plainly
+            # what is live and what is not.
+            message = f"{candidate.summary}; reload IS live but {watcher_error}."
+            audit_error = self._audit_reload(
+                ok=False,
+                code="watcher_sync_failed",
+                message=message,
+                extra={
+                    "prompt_changed": candidate.prompt_changed,
+                    "spells_changed": candidate.spells_changed,
+                    "rune_diagnostics": len(candidate.rune_diagnostics),
+                    "rehydrate_errors": candidate.rehydrate_errors,
+                    "spell_file_warnings": candidate.spell_file_warnings,
+                },
+            )
+            if audit_error is not None:
+                message += f" ({audit_error})"
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=message,
+                )
+            ]
+            return ReloadResult(ok=False, message=message)
+        audit_error = self._audit_reload(
+            ok=True,
+            code="reload_ok",
+            message=candidate.summary,
+            extra={
+                "prompt_changed": candidate.prompt_changed,
+                "spells_changed": candidate.spells_changed,
+                "rune_diagnostics": len(candidate.rune_diagnostics),
+                "rehydrate_errors": candidate.rehydrate_errors,
+                "spell_file_warnings": candidate.spell_file_warnings,
+                # None unless the retired lifecycle's watchers failed to
+                # stop; the new state is still live in that case.
+                "retired_shutdown_error": retired_shutdown_error,
+            },
+        )
+        if audit_error is not None:
+            # §4.6, normative: an audit append failure turns the result
+            # into audit_failed (ok=False), never a silent ok. The
+            # mutation succeeded — the message states plainly that the
+            # reload IS live but unrecorded.
+            message = (
+                f"audit_failed: {audit_error}; {candidate.summary} — "
+                "the reload IS live but unrecorded."
+            )
+            self._reload_diagnostics = [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=message,
+                )
+            ]
+            return ReloadResult(
+                ok=False,
+                message=message,
+                prompt_changed=candidate.prompt_changed,
+                spells_changed=candidate.spells_changed,
+            )
+        self._reload_diagnostics = [
+            *candidate.rune_diagnostics,
+            *(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=warning,
+                )
+                for warning in candidate.spell_file_warnings
+            ),
+            *(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="engine",
+                    message=error,
+                )
+                for error in candidate.rehydrate_errors
+            ),
+            *(
+                [
+                    Diagnostic(
+                        kind=DiagnosticKind.LOAD_FAILURE,
+                        rune_name="engine",
+                        message=retired_shutdown_error,
+                    )
+                ]
+                if retired_shutdown_error is not None
+                else []
+            ),
+        ]
+        return ReloadResult(
+            ok=True,
+            message=candidate.summary,
+            prompt_changed=candidate.prompt_changed,
+            spells_changed=candidate.spells_changed,
+        )
+
+    def _apply_reload_candidate(
+        self, candidate: ReloadCandidate
+    ) -> RuneLifecycle | None:
+        """Swap in validated reload state.
+
+        Synchronous so the swap cannot interleave with another task.
+        Returns the retired lifecycle so the caller can hand its
+        watchers over to the candidate's after the swap. The live
+        harness is NOT rebuilt: it reads prompt/spells/runner from
+        state per turn, so reference updates are the swap.
+        """
+        old_lifecycle = self._rune_lifecycle
+        self._environment = candidate.environment
+        self._discovered_spells = list(candidate.discovered_spells)
+        self._state.system_prompt = candidate.prompt
+        self._state.spells = candidate.built_spells
+        self._state._spell_index = {s.name: s for s in candidate.built_spells}
+        # Reset the version guard so the next turn sees the fresh cache.
+        runner = candidate.runner
+        self._spell_version_seen = runner.spell_version if runner is not None else 0
+        if candidate.lifecycle is not None and runner is not None:
+            # A genuine candidate: swap the runner with its wiring and
+            # retire the old lifecycle.
+            assert self._provider_registry is not None
+            _commit_candidate_providers(
+                self._provider_registry,
+                self._state.rune_runner,
+                runner,
+            )
+            self._state.rune_runner = runner
+            event_bus = self._state.event_bus
+            if event_bus is not None:
+                runner.on_event(
+                    "mvge_event", lambda ev: event_bus.emit(ev.type, ev.data)
+                )
+            self._gateway_engaged_rune = candidate.gateway_rune
+            self._rune_lifecycle = candidate.lifecycle
+            self._rebind_runner_context()
+        return old_lifecycle
+
+    def _audit_reload(
+        self,
+        *,
+        ok: bool,
+        code: str,
+        message: str,
+        extra: dict[str, Any] | None = None,
+    ) -> str | None:
+        """Append one reload record to the user-scope audit log."""
+        record: dict[str, Any] = dict(extra) if extra else {}
+        record.update(
+            {
+                "timestamp": utcnow(),
+                "rune": "engine",
+                "op": "reload",
+                "outcome": "ok" if ok else "failed",
+                "code": code,
+                "target": None,
+                "message": message,
+            }
+        )
+        try:
+            RuneAuditLog(default_rune_ops_dir()).append_event(record)
+        except Exception as exc:
+            logger.exception("Reload audit append failed")
+            return f"audit append failed: {type(exc).__name__}: {exc}"
+        return None
+
+    def _rebind_runner_context(self) -> None:
+        """Synchronize active session/tome context into the bound RuneRunner."""
+        runner = self._state.rune_runner
+        if runner is not None and self._tome is not None:
+            project_root = runner.context.project_root
+            config_manager = (
+                self._environment.config_manager if self._environment else None
+            )
+            configured = getattr(config_manager, "project_dir", None)
+            if configured is not None:
+                project_root = str(Path(configured).resolve())
+            new_ctx = dataclasses.replace(
+                runner.context,
+                project_root=project_root,
+                session_id=self._tome.tome_id,
+                tome_dir=str(self._tome_dir) if self._tome_dir else "",
+                model_id=self._model_id or "",
+            )
+            runner.bind_context(new_ctx)
 
     def set_model_and_realm(self, model: Model, realm: Realm) -> None:
         """Update model and realm references on harness and compaction runner.
@@ -198,12 +717,9 @@ class MvgeHarness:
                 tome=self._tome,
             )
         else:
-            comp._model = model
-            comp._realm = realm
+            comp.rebind(model=model, realm=realm)
 
         # Emit CONFIG_CHANGE for observers (tests, GUI, CLI)
-        import asyncio
-
         asyncio.create_task(
             self._emit(
                 MvgeEvent(
@@ -227,27 +743,336 @@ class MvgeHarness:
             active_spell_count=len(self._state.spells),
         )
 
+    def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
+        """Set the contemplation level for subsequent turns."""
+        self._state.contemplation_level = level
+        lvl_val = level.value if isinstance(level, ContemplationLevel) else str(level)
+        if self._tome is not None:
+            asyncio.create_task(
+                self._tome.record_custom_async(
+                    "contemplation_switch", {"level": lvl_val}
+                )
+            )
+
+    def ensure_system_prompt(self, prompt: str) -> None:
+        """Set the system prompt if none is set (construction-time)."""
+        if not self._state.system_prompt:
+            self._state.system_prompt = prompt
+
+    async def switch_model(self, model_id: str) -> None:
+        """Switch the model in-flight."""
+        if self._model is not None and self._model.id == model_id:
+            return
+
+        self._model_id = model_id
+        if self._provider_registry is not None:
+            new_model, new_realm = self._provider_registry.resolve(
+                model_id, self._api_key or "", self._provider_name
+            )
+            self._model = new_model
+            self._realm = new_realm
+            self._state.model = dataclasses.asdict(new_model)
+            self.set_model_and_realm(new_model, new_realm)
+            if self._tome is not None:
+                await self._tome.record_custom_async(
+                    "model_switch", {"model": new_model.id}
+                )
+
+    def set_plan_mode(self, enabled: bool) -> None:
+        """Enable or disable plan mode (read-only spells only).
+
+        Refreshes the spell cache immediately; the next turn's
+        LoopContext carries the new spell set. A turn already in
+        flight keeps the LoopContext it was built with.
+        """
+        self._plan_mode = enabled
+        self.reload_spells()
+        if enabled and not self._state.spells:
+            logger.warning(
+                "Plan mode enabled but no spells are marked read-only; "
+                "the agent has no tools available in this mode.",
+            )
+
+    def set_enabled_spells(self, spell_names: Sequence[str] | None) -> None:
+        """Filter which spells are enabled for execution."""
+        self._enabled_spells_filter = (
+            set(spell_names) if spell_names is not None else None
+        )
+        self.reload_spells()
+
+    @property
+    def queue_mode(self) -> QueueMode:
+        return self._state.queue_mode
+
+    @queue_mode.setter
+    def queue_mode(self, mode: QueueMode | str) -> None:
+        if isinstance(mode, str):
+            mode = QueueMode(mode)
+        self._state.queue_mode = mode
+
+    @property
+    def driver(self) -> TurnDriver:
+        """The TurnDriver capability (this harness)."""
+        return self
+
+    @property
+    def lifecycle(self) -> SessionLifecycle:
+        """The SessionLifecycle capability (this harness)."""
+        return self
+
+    @property
+    def configuration(self) -> AgentConfiguration:
+        """The AgentConfiguration capability (this harness)."""
+        return self
+
+    def steer(self, text: str) -> None:
+        """Enqueue steering input; drained at the next turn boundary."""
+        self._state.steer_queue.append(SummonerRequest(role="user", content=text))
+
+    def follow_up(self, text: str) -> None:
+        """Enqueue a follow-up; drained at the next turn boundary."""
+        self._state.followup_queue.append(SummonerRequest(role="user", content=text))
+
+    def abort(self) -> None:
+        """Abort the in-flight turn, if any. Idempotent."""
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+
+    @property
+    def turn_in_flight(self) -> bool:
+        return self._turn_in_flight
+
+    @property
+    def reload_pending(self) -> bool:
+        """Whether a reload is queued for the next turn boundary."""
+        return self._reload_pending
+
+    @property
+    def reload_diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
+        """Diagnostics from the last reload execution."""
+        return list(self._reload_diagnostics)
+
+    def _make_stream_fn(self) -> StreamFn:
+        """Build the provider closure for a turn from captured state.
+
+        The driver owns the Realm: no stream_fn crosses the seam.
+        """
+        state = self._state
+        model = self._model
+        realm = self._realm
+        assert model is not None
+        assert realm is not None
+        spells = [
+            {
+                "type": "function",
+                "function": {
+                    "name": spell.name,
+                    "description": spell.description,
+                    "parameters": spell.parameters,
+                },
+            }
+            for spell in state.spells
+            if spell.parameters
+        ]
+
+        def stream_fn(
+            invocations: list[MvgeInvocation],
+            signal: AbortSignal | None = None,
+        ) -> AsyncIterator[RealmResponse]:
+            return realm.stream(
+                model=model,
+                invocations=invocations,
+                config=ChannelConfig(
+                    model=model,
+                    temperature=(
+                        state.temperature if state.temperature is not None else 0.7
+                    ),
+                    max_tokens=(
+                        state.max_tokens if state.max_tokens is not None else 4096
+                    ),
+                    contemplation_level=(
+                        state.contemplation_level.value
+                        if isinstance(state.contemplation_level, ContemplationLevel)
+                        else str(state.contemplation_level)
+                    ),
+                    contemplation_budget=state.contemplation_budget,
+                    exclude_contemplation=state.exclude_contemplation,
+                    spells=spells,
+                    system_prompt=state.system_prompt,
+                ),
+                signal=signal,
+            )
+
+        return stream_fn
+
+    async def run_turn(self, invocation: SummonerRequest) -> MvgeInvocation:
+        """Run one turn for the given Summoner invocation.
+
+        TurnDriver entry point: appends the invocation, builds the
+        provider closure from the captured Realm, and drives the turn.
+        A reload queued mid-turn applies at the turn boundary.
+        """
+        self._state.invocations.append(invocation)
+        if self._abort_controller is not None:
+            self._abort_controller.abort()
+        self._abort_controller = AbortController()
+        signal = self._abort_controller.signal
+
+        self._turn_in_flight = True
+        try:
+            return await self.run(
+                self._make_stream_fn(),
+                model=dataclasses.asdict(self._model) if self._model else {},
+                contemplation_level=(
+                    self._state.contemplation_level.value
+                    if isinstance(self._state.contemplation_level, ContemplationLevel)
+                    else str(self._state.contemplation_level)
+                ),
+                signal=signal,
+            )
+        finally:
+            self._turn_in_flight = False
+            if self._reload_pending:
+                try:
+                    await self.reload()
+                except Exception:
+                    logger.exception("Queued reload failed at turn boundary")
+                else:
+                    self._reload_pending = False
+
+    def _build_spells_from(
+        self,
+        spells: Sequence[SpellUnion],
+        runner: RuneRunner | None = None,
+    ) -> list[MvgeSpell]:
+        """Build executable spells from an explicit spell list.
+
+        Single source of validation, collision renaming, and filtering.
+        ``runner`` selects which runner's registered spells are merged:
+        the live runner by default, a candidate runner during reload.
+        """
+        built: list[MvgeSpell] = []
+        for s in spells:
+            spell = coerce_spell(s)
+            if not _validate_spell_name(spell.name):
+                logger.warning(
+                    "Spell '%s' has an invalid name (must match ^[a-zA-Z0-9_-]+$) "
+                    "and will be skipped.",
+                    spell.name,
+                )
+                continue
+            built.append(spell)
+
+        seen_names: set[str] = {s.name for s in built}
+
+        active_runner = runner if runner is not None else self._state.rune_runner
+        if active_runner is not None:
+            active = set(active_runner.get_active_spells())
+            for rs in active_runner.get_all_registered_spells():
+                if rs.name not in active:
+                    continue
+
+                if not _validate_spell_name(rs.name):
+                    logger.warning(
+                        "Rune spell '%s' has an invalid name "
+                        "(must match ^[a-zA-Z0-9_-]+$) and will be skipped.",
+                        rs.name,
+                    )
+                    continue
+
+                if not _validate_spell_parameters(getattr(rs, "parameters", None)):
+                    logger.warning(
+                        "Rune spell '%s' has an invalid parameter schema "
+                        "and will be skipped.",
+                        rs.name,
+                    )
+                    continue
+
+                if not _validate_spell_signature(rs):
+                    logger.warning(
+                        "Rune spell '%s' execution signature does not conform "
+                        "to the execution contract and will be skipped.",
+                        rs.name,
+                    )
+                    continue
+
+                spell_to_add: MvgeSpell = RuneSpellWrapper(rs, runner_origin=True)
+                spell_name = rs.name
+                if spell_name in seen_names:
+                    source_rune = getattr(rs, "source_rune", None) or "rune"
+                    prefixed_name = f"{source_rune}_{spell_name}"
+                    logger.warning(
+                        "Rune spell '%s' collides with existing spell; "
+                        "renaming to '%s'.",
+                        spell_name,
+                        prefixed_name,
+                    )
+                    if not _validate_spell_name(prefixed_name):
+                        logger.warning(
+                            "Prefixed rune spell '%s' has an invalid name "
+                            "and will be skipped.",
+                            prefixed_name,
+                        )
+                        continue
+                    if prefixed_name in seen_names:
+                        logger.warning(
+                            "Prefixed rune spell '%s' still collides with an "
+                            "existing spell and will be skipped.",
+                            prefixed_name,
+                        )
+                        continue
+                    spell_to_add = copy.copy(spell_to_add)
+                    spell_to_add.name = prefixed_name
+                    spell_name = prefixed_name
+
+                seen_names.add(spell_name)
+                built.append(spell_to_add)
+
+        if self._enabled_spells_filter is not None:
+            built = [s for s in built if s.name in self._enabled_spells_filter]
+
+        if active_runner is not None:
+            global_allowlist = active_runner.get_global_spell_allowlist()
+            if global_allowlist is not None:
+                allowlist_set = set(global_allowlist)
+                built = [s for s in built if s.name in allowlist_set]
+
+        if self._plan_mode:
+            built = [s for s in built if s.read_only]
+
+        return built
+
+    def _build_spells(self) -> list[MvgeSpell]:
+        """Rebuild the executable spell list from discovered spells."""
+        return self._build_spells_from(self._discovered_spells)
+
+    def reload_spells(self) -> None:
+        """Re-run validated spell resolution and refresh the spell cache.
+
+        Called after Rune watcher reload, manual load_runes(), or any
+        event that may have changed the rune-registered spell set.
+        Refreshes ``state.spells`` and the internal spell index, and
+        records the runner's spell version so the per-turn read can
+        skip the rebuild when nothing changed.
+        """
+        self._state.spells = self._build_spells()
+        self._state._spell_index = {s.name: s for s in self._state.spells}
+        runner = self._state.rune_runner
+        self._spell_version_seen = runner.spell_version if runner is not None else 0
+
     def _resolve_spells(self) -> list[MvgeSpell]:
         """Resolve the spell list for the current turn.
 
-        If a refresh_spells hook is provided (from Mvge._build_spells), use it
-        for centralized validation, renaming, and filtering. Otherwise fall back
-        to the legacy append-only merge (for backward compatibility).
+        Consults ``RuneRunner.spell_version``: an unchanged version is a
+        cache hit (no ``inspect.signature``, no ``RuneSpellWrapper``
+        churn); a changed version rebuilds the cache. The legacy
+        append-only merge is deleted — removals now take effect.
         """
-        if self._refresh_spells is not None:
-            return self._refresh_spells()
-
-        # Legacy append-only merge (no validation/rename/filter)
-        spells = list(self._state.spells)
         runner = self._state.rune_runner
-        if runner is None:
-            return spells
-        known = {spell.name for spell in spells}
-        active = set(runner.get_active_spells())
-        for rune_spell in runner.get_all_registered_spells():
-            if rune_spell.name not in known and rune_spell.name in active:
-                spells.append(RuneSpellWrapper(rune_spell, runner_origin=True))
-        return spells
+        version = runner.spell_version if runner is not None else 0
+        if self._spell_version_seen != version:
+            self.reload_spells()
+        return self._state.spells
 
     async def _drain_steer_queue(self) -> list[MvgeInvocation]:
         if not self._state.steer_queue:

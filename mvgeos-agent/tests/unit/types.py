@@ -11,7 +11,7 @@ from mvgeos_core.events import (
 from mvgeos_core.invocations import SummonerRequest
 from mvgeos_core.spells import MvgeSpell
 
-from mvgeos_agent.types import MvgeState
+from mvgeos_agent.harness._state import MvgeState
 
 
 def test_content_type_values() -> None:

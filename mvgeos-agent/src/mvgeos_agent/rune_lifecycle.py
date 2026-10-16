@@ -85,6 +85,14 @@ class RuneLifecycle:
         """The active RuneRunner, populated after :meth:`load`."""
         return self._runner
 
+    def set_runner(self, runner: RuneRunner | None) -> None:
+        """Replace the active RuneRunner (explicit injection).
+
+        The seam for collaborators that previously wrote
+        ``lifecycle._runner`` directly.
+        """
+        self._runner = runner
+
     @property
     def environment(self) -> MvgeEnvironment | None:
         """The environment passed in, refreshed with post-load diagnostics."""

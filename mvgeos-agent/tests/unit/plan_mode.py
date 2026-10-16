@@ -23,7 +23,7 @@ from mvgeos_agent.function_spell import (
     coerce_spell,
 )
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.types import MvgeState
+from mvgeos_agent.harness._state import MvgeState
 
 
 def read_files(path: str) -> str:
@@ -131,14 +131,6 @@ def test_zero_read_only_spells_emits_explicit_notice(
     )
 
 
-def test_set_plan_mode_refreshes_state_spells() -> None:
-    agent = _plan_agent()
-    agent._state = MvgeState(system_prompt="test", spells=agent._build_spells())
-    assert {s.name for s in agent._state.spells} == {"read", "write"}
-    agent.set_plan_mode(True)
-    assert [s.name for s in agent._state.spells] == ["read"]
-
-
 def test_mid_run_toggle_leaves_live_loop_context_untouched() -> None:
     agent = _plan_agent()
     context = LoopContext(spells=agent._build_spells())
@@ -162,38 +154,3 @@ def _wired_agent() -> Mvge:
     return agent
 
 
-def test_set_plan_mode_rebuilds_harness_not_surgery() -> None:
-    agent = _wired_agent()
-    old_harness = agent._harness
-    old_index = agent._state._spell_index
-    agent.set_plan_mode(True)
-    # The harness is replaced, not mutated.
-    assert agent._harness is not old_harness
-    assert isinstance(agent._harness, MvgeHarness)
-    assert agent._harness.state is agent._state
-    # state.spells is refreshed through the normal list assignment...
-    assert [s.name for s in agent._state.spells] == ["read"]
-    # ...with no index surgery: the untouched index object is identical.
-    assert agent._state._spell_index is old_index
-
-
-def test_rebuilt_harness_serves_next_run_while_live_context_survives() -> None:
-    agent = _wired_agent()
-    # The in-flight run's context, built before the toggle.
-    live_context = LoopContext(spells=agent._harness._resolve_spells())
-    agent.set_plan_mode(True)
-    # The live context is immutable: still the full spell set.
-    assert live_context.get_spell("write") is not None
-    assert {s.name for s in live_context.spells} == {"read", "write"}
-    # The next run resolves through the rebuilt harness: filtered.
-    next_spells = agent._harness._resolve_spells()
-    assert [s.name for s in next_spells] == ["read"]
-    assert agent._harness.state is agent._state
-
-
-def test_plan_mode_toggle_without_harness_skips_rebuild() -> None:
-    agent = _plan_agent()
-    agent._state = MvgeState(system_prompt="test", spells=agent._build_spells())
-    agent.set_plan_mode(True)
-    assert agent._harness is None
-    assert [s.name for s in agent._state.spells] == ["read"]

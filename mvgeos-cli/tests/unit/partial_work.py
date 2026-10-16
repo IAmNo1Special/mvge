@@ -17,7 +17,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from mvgeos_agent.types import MvgeState
+from mvgeos_agent.harness._state import MvgeState
 from mvgeos_core.channel import MvgeResponse, StopReason
 from mvgeos_core.spells import MvgeSpell, SpellResultMessage
 

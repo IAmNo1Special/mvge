@@ -30,7 +30,7 @@ import mvgeos_agent.mvge as mvge_module
 from mvgeos_agent import Mvge
 from mvgeos_agent.commands import CommandAction, CommandDispatcher
 from mvgeos_agent.environment import MvgeEnvironment
-from mvgeos_agent.mvge import (
+from mvgeos_agent.harness.reload import (
     _RETIRED_SHUTDOWN_ATTEMPTS,
     _restore_provider_registrations,
     _snapshot_provider_registrations,
@@ -369,37 +369,6 @@ async def test_failed_reload_preserves_rune_registrations(
 
 
 @pytest.mark.asyncio
-async def test_failed_harness_build_preserves_everything(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A candidate-harness construction failure preserves all live state."""
-    _write_probe_rune(tmp_path)
-    agent = _make_agent(tmp_path, monkeypatch)
-    await agent.initialize()
-    (_config_dir(tmp_path) / "SYSTEM.md").write_text(
-        "# PERSONA_NEW\nYou are New.\n", encoding="utf-8"
-    )
-    try:
-        before_prompt = agent.system_prompt
-        before_spells = agent.enabled_spells
-        before_commands = agent.registered_commands
-
-        def _boom_harness(self: Any) -> Any:
-            raise RuntimeError("harness exploded")
-
-        monkeypatch.setattr(Mvge, "_build_harness", _boom_harness)
-        result = await agent.reload()
-        assert not result.ok
-        assert "harness exploded" in result.message
-        assert "preserved" in result.message
-        assert agent.system_prompt == before_prompt
-        assert agent.enabled_spells == before_spells
-        assert agent.registered_commands == before_commands
-        assert "[RUNE_MARKER]" in agent.system_prompt
-    finally:
-        await agent.close()
-
-
 @pytest.mark.asyncio
 async def test_reload_queues_while_turn_in_flight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -456,10 +425,11 @@ async def test_turn_boundary_reload_failure_keeps_request_pending(
         async def _boom() -> ReloadResult:
             raise RuntimeError("reload exploded")
 
-        monkeypatch.setattr(agent, "reload", _boom)
+        assert agent._harness is not None
+        monkeypatch.setattr(agent._harness, "reload", _boom)
         turn = asyncio.create_task(agent.run("hello"))
         await asyncio.wait_for(realm.entered.wait(), timeout=5)
-        agent._reload_pending = True
+        agent._harness._reload_pending = True
         realm.release.set()
         await asyncio.wait_for(turn, timeout=10)
         # The reload blew up at the boundary; the request must survive so
@@ -999,10 +969,11 @@ async def test_failed_reload_rolls_back_provider_registrations(
             "# PERSONA_NEW\nYou are New.\n", encoding="utf-8"
         )
 
-        def _boom_harness(self: Any) -> Any:
-            raise RuntimeError("harness exploded")
+        def _boom_builder() -> Any:
+            raise RuntimeError("candidate build exploded")
 
-        monkeypatch.setattr(Mvge, "_build_harness", _boom_harness)
+        assert agent._harness is not None
+        monkeypatch.setattr(agent._harness, "_reload_builder", _boom_builder)
         result = await agent.reload()
         assert not result.ok
         # ...but the failed build rolled it back: the live provider
@@ -1145,17 +1116,19 @@ async def test_concurrent_reloads_do_not_interleave(
         entered = asyncio.Event()
         release = asyncio.Event()
         calls = 0
-        original_build = Mvge._build_reload_state
+        assert agent._harness is not None
+        original_build = agent._harness._reload_builder
 
-        async def _gated_build(self: Mvge) -> Any:
+        async def _gated_build() -> Any:
             nonlocal calls
             calls += 1
             if calls == 1:
                 entered.set()
                 await release.wait()
-            return await original_build(self)
+            assert original_build is not None
+            return await original_build()
 
-        monkeypatch.setattr(Mvge, "_build_reload_state", _gated_build)
+        monkeypatch.setattr(agent._harness, "_reload_builder", _gated_build)
         first = asyncio.create_task(agent.reload())
         await asyncio.wait_for(entered.wait(), timeout=5)
         second = asyncio.create_task(agent.reload())

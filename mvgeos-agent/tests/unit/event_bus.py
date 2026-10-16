@@ -91,7 +91,7 @@ class TestEventBusIntegration:
         from mvgeos_core.invocations import SummonerRequest
 
         from mvgeos_agent.harness import MvgeHarness
-        from mvgeos_agent.types import MvgeState
+        from mvgeos_agent.harness._state import MvgeState
 
         bus = EventBus()
         handler = MagicMock()
@@ -161,7 +161,7 @@ class TestEventBusIntegration:
         from mvgeos_core.invocations import SummonerRequest
 
         from mvgeos_agent.harness import MvgeHarness
-        from mvgeos_agent.types import MvgeState
+        from mvgeos_agent.harness._state import MvgeState
 
         state = MvgeState(
             system_prompt="test",
