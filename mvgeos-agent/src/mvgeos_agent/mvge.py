@@ -10,19 +10,16 @@ import logging
 import os
 import re
 import sys
-from collections.abc import AsyncIterator, Callable, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, cast
 
 from dotenv import load_dotenv
 from mvgeos_core.abort import (
     AbortController,
-    AbortSignal,
 )
 from mvgeos_core.channel import (
-    ChannelConfig,
     Model,
-    RealmResponse,
 )
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.errors import MissingApiKeyError, TomeResumeError
@@ -43,9 +40,8 @@ from mvgeos_core.layers import (
     agents_dir,
     sessions_dir,
 )
-from mvgeos_core.loop import StreamFn
 from mvgeos_core.spells import MvgeSpell
-from mvgeos_provider.base import Realm, RealmFactory
+from mvgeos_provider.base import Realm
 from mvgeos_provider.model_registry import (
     ModelRegistry,
     model_requires_credential,
@@ -203,64 +199,6 @@ def _apply_gateway_allowlist(runner: RuneRunner) -> str | None:
     runner.set_global_spell_allowlist(names)
     logger.info("Spell-gateway mode engaged via rune '%s'", gateway)
     return gateway
-
-
-_ProviderSnapshot = tuple[dict[str, dict[str, Any]], dict[str, RealmFactory]]
-"""Rune-registered provider configs and realm factories, for rollback."""
-
-
-_RETIRED_SHUTDOWN_ATTEMPTS = 3
-"""How many times reload retries stopping the retired lifecycle's watchers."""
-
-_RETIRED_SHUTDOWN_BACKOFF_SECONDS = 0.25
-"""Delay between retired-shutdown attempts: a transient observer-teardown
-race may fail identically on immediate retry but succeed after a beat."""
-
-
-def _snapshot_provider_registrations(
-    registry: RealmRegistry,
-) -> _ProviderSnapshot:
-    """Capture rune-registered provider state using the public API."""
-    providers: dict[str, dict[str, Any]] = {}
-    for name in registry.get_registered_providers():
-        config = registry.get_provider_config(name)
-        if config is not None:
-            providers[name] = dict(config)
-    factories: dict[str, RealmFactory] = {}
-    for prefix in registry.get_registered_realm_factories():
-        factory = registry.get_realm_factory(prefix)
-        if factory is not None:
-            factories[prefix] = factory
-    return providers, factories
-
-
-def _restore_provider_registrations(
-    registry: RealmRegistry, snapshot: _ProviderSnapshot
-) -> None:
-    """Roll provider state back to a snapshot taken before candidate load.
-
-    Candidate rune factories execute against the shared registry; when the
-    candidate build later fails, this removes or repairs anything the
-    candidate added so the failed reload leaves no trace.
-    """
-    snap_providers, snap_factories = snapshot
-    # Provider configs and realm factories live in separate namespaces;
-    # one name may appear in both, so each is restored independently.
-    for name in registry.get_registered_providers():
-        wanted = snap_providers.get(name)
-        current = registry.get_provider_config(name)
-        if wanted is None:
-            if current is not None:
-                registry.unregister_provider(name)
-        elif current != wanted:
-            registry.unregister_provider(name)
-            registry.register_provider(name, wanted)
-    for prefix in registry.get_registered_realm_factories():
-        wanted_factory = snap_factories.get(prefix)
-        if wanted_factory is None:
-            registry.unregister_realm_factory(prefix)
-        elif registry.get_realm_factory(prefix) is not wanted_factory:
-            registry.register_realm_factory(prefix, wanted_factory)
 
 
 def discover_agent_rune_extras(
@@ -1230,53 +1168,6 @@ class Mvge:
             config_dir=self.config_dir,
             active_spells_dir=active_spells_dir,
         )
-
-    def _make_stream_fn(
-        self,
-        model: Model,
-        realm: Realm,
-        state: MvgeState,
-        temperature: float,
-        max_tokens: int,
-    ) -> StreamFn:
-        spells = [
-            {
-                "type": "function",
-                "function": {
-                    "name": spell.name,
-                    "description": spell.description,
-                    "parameters": spell.parameters,
-                },
-            }
-            for spell in state.spells
-            if spell.parameters
-        ]
-
-        def stream_fn(
-            invocations: list[MvgeInvocation],
-            signal: AbortSignal | None = None,
-        ) -> AsyncIterator[RealmResponse]:
-            return realm.stream(
-                model=model,
-                invocations=invocations,
-                config=ChannelConfig(
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    contemplation_level=(
-                        state.contemplation_level.value
-                        if isinstance(state.contemplation_level, ContemplationLevel)
-                        else str(state.contemplation_level)
-                    ),
-                    contemplation_budget=state.contemplation_budget,
-                    exclude_contemplation=state.exclude_contemplation,
-                    spells=spells,
-                    system_prompt=state.system_prompt,
-                ),
-                signal=signal,
-            )
-
-        return stream_fn
 
     async def initialize(self) -> None:
         """Wire lifecycle modules into a running agent."""

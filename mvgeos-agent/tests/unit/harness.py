@@ -47,9 +47,9 @@ from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.harness._state import MvgeState
 from mvgeos_agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
 from mvgeos_agent.harness.harness import _apply_prepare_next_turn
-from mvgeos_agent.harness._state import MvgeState
 
 
 @pytest.mark.asyncio

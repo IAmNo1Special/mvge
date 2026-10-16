@@ -934,11 +934,16 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             self._turn_in_flight = False
             if self._reload_pending:
                 try:
-                    await self.reload()
+                    result = await self.reload()
                 except Exception:
                     logger.exception("Queued reload failed at turn boundary")
+                    # Flag stays True: the request survives for retry at the
+                    # next boundary.
                 else:
-                    self._reload_pending = False
+                    if result.ok:
+                        self._reload_pending = False
+                    # If not ok, the flag stays True so the next turn
+                    # boundary retries the request instead of dropping it.
 
     def _build_spells_from(
         self,

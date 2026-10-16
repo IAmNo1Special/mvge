@@ -32,6 +32,7 @@ from mvgeos_agent.commands import CommandAction, CommandDispatcher
 from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.harness.reload import (
     _RETIRED_SHUTDOWN_ATTEMPTS,
+    _RETIRED_SHUTDOWN_BACKOFF_SECONDS,
     _restore_provider_registrations,
     _snapshot_provider_registrations,
 )
@@ -422,14 +423,17 @@ async def test_turn_boundary_reload_failure_keeps_request_pending(
     await agent.initialize()
     try:
 
-        async def _boom() -> ReloadResult:
+        async def _boom() -> Any:
             raise RuntimeError("reload exploded")
 
         assert agent._harness is not None
-        monkeypatch.setattr(agent._harness, "reload", _boom)
+        monkeypatch.setattr(agent._harness, "_reload_builder", _boom)
         turn = asyncio.create_task(agent.run("hello"))
         await asyncio.wait_for(realm.entered.wait(), timeout=5)
-        agent._harness._reload_pending = True
+        # Queue a reload via the public API while the turn is in flight.
+        result = await agent.reload()
+        assert result.queued
+        assert agent.reload_pending
         realm.release.set()
         await asyncio.wait_for(turn, timeout=10)
         # The reload blew up at the boundary; the request must survive so
@@ -739,7 +743,7 @@ async def test_retired_shutdown_retries_back_off_between_attempts(
         elapsed = time.monotonic() - start
         assert result.ok
         # Two gaps between three attempts.
-        assert elapsed >= 2 * mvge_module._RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
+        assert elapsed >= 2 * _RETIRED_SHUTDOWN_BACKOFF_SECONDS * 0.9
     finally:
         monkeypatch.setattr(RuneLifecycle, "shutdown", original_shutdown)
         await agent.close()

@@ -22,8 +22,6 @@ from mvgeos_agent.function_spell import (
     RuneSpellWrapper,
     coerce_spell,
 )
-from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.harness._state import MvgeState
 
 
 def read_files(path: str) -> str:
@@ -141,16 +139,3 @@ def test_mid_run_toggle_leaves_live_loop_context_untouched() -> None:
     assert {s.name for s in context.spells} == {"read", "write"}
     # The next build picks up the filter.
     assert [s.name for s in agent._build_spells()] == ["read"]
-
-
-def _wired_agent() -> Mvge:
-    """Agent with state and harness wired the way initialize() wires them."""
-    agent = _plan_agent()
-    agent._state = MvgeState(system_prompt="test", spells=agent._build_spells())
-    agent._harness = MvgeHarness(
-        state=agent._state,
-        refresh_spells=agent._build_spells,
-    )
-    return agent
-
-

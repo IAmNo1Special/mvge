@@ -3,13 +3,12 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from mvgeos_core.abort import AbortSignal
 from mvgeos_core.constants import DEFAULT_MODEL
 from mvgeos_core.events import QueueMode
-from mvgeos_core.invocations import SummonerRequest
 from mvgeos_core.spells import ExecutionMode
 from mvgeos_provider.base import Realm
 from mvgeos_provider.realms import realm_for_model_id
@@ -25,7 +24,6 @@ from mvgeos_agent.mvge import (
     _resolve_api_key,
     _validate_spell_name,
 )
-from mvgeos_agent.harness._state import MvgeState
 
 
 def dummy_built_in(command: str) -> str:
@@ -395,32 +393,6 @@ class TestMvgeBuildSpellsNameValidation:
         assert len(spells) == 0
         assert "Spell 'invalid.spell.name' has an invalid name" in caplog.text
 
-    def test_make_stream_fn_passes_system_prompt_to_channel_config(self) -> None:
-        from mvgeos_core.channel import Model
-
-        from mvgeos_agent.harness._state import MvgeState
-
-        agent = Mvge(api_key="k", spells=[])
-        model = Model(id="m", name="n", realm="r", base_url="", api_key="")
-        mock_realm = MagicMock()
-        mock_realm.stream.return_value = []
-        state = MvgeState(system_prompt="Custom System Prompt with Skills")
-
-        stream_fn = agent._make_stream_fn(
-            model=model,
-            realm=mock_realm,
-            state=state,
-            temperature=0.5,
-            max_tokens=1000,
-        )
-        stream_fn([])
-
-        assert mock_realm.stream.called
-        call_config = mock_realm.stream.call_args.kwargs["config"]
-        assert call_config.system_prompt == "Custom System Prompt with Skills"
-
-
-class TestMvgeNoLongerOwnsTurnLoop:
     def test_make_stream_removed(self) -> None:
         assert not hasattr(Mvge, "_make_stream")
 

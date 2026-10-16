@@ -9,8 +9,8 @@ from mvgeos_core.approval import ApprovalOutcome, ApprovalRequest, deny
 from mvgeos_runes.rune_runner import RuneRunner
 
 from mvgeos_agent.harness import MvgeHarness
-from mvgeos_agent.rune_lifecycle import RuneLifecycle
 from mvgeos_agent.harness._state import MvgeState
+from mvgeos_agent.rune_lifecycle import RuneLifecycle
 
 
 def _request() -> ApprovalRequest:
