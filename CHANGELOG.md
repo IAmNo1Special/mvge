@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-10-16
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2f9f0e2)
+
+- **release:** v0.7.4 (a738f82)
+
+
+### Documentation
+
+- **adr:** re-derive ADR-0012 section 2 per issue #164 (62005e7)
+
+- **adr:** fix ruff formatting in ADR-0012 code blocks (701c0df)
+
+- **adr:** remove stale with_model and Mvge-owned reload_spells text from ADR-0012 (46d6a6f)
+
+
+### Features
+
+- **sigil:** one module owns every sigil payload (e05b7a8)
+
+
 ## [0.7.3] - 2026-10-14
 
 
