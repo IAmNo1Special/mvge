@@ -38,6 +38,7 @@ from mvgeos_agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
 )
+from mvgeos_agent.sigil_payloads import payload_for
 
 logger = logging.getLogger(__name__)
 
@@ -449,11 +450,7 @@ class MvgeTome:
         self._started = True
         await self._safe_emit(
             SigilHook.SESSION_START,
-            {
-                "reason": reason,
-                "tomeId": self._tome_id,
-                "tomeFile": self.tome_file,
-            },
+            payload_for(SigilHook.SESSION_START, session_name=self._tome_id),
         )
 
     async def shutdown(
@@ -462,21 +459,19 @@ class MvgeTome:
         if not self._started:
             return
         self._started = False
-        data: dict[str, Any] = {
-            "reason": reason,
-            "tomeId": self._tome_id,
-        }
-        if target_session_file is not None:
-            data["targetSessionFile"] = target_session_file
-        await self._safe_emit(SigilHook.SESSION_SHUTDOWN, data)
+        await self._safe_emit(
+            SigilHook.SESSION_SHUTDOWN,
+            payload_for(SigilHook.SESSION_SHUTDOWN, session_name=self._tome_id),
+        )
 
     async def before_switch(self, target_file: str) -> dict[str, Any] | None:
         result = await self._safe_emit_first(
             SigilHook.SESSION_BEFORE_SWITCH,
-            {
-                "targetSessionFile": target_file,
-                "tomeId": self._tome_id,
-            },
+            payload_for(
+                SigilHook.SESSION_BEFORE_SWITCH,
+                from_session=self._tome_id,
+                to_session=target_file,
+            ),
         )
         if isinstance(result, dict) and result.get("cancel"):
             return {"cancelled": True}
@@ -485,10 +480,11 @@ class MvgeTome:
     async def before_fork(self, entry_id: str) -> dict[str, Any] | None:
         result = await self._safe_emit_first(
             SigilHook.SESSION_BEFORE_FORK,
-            {
-                "entryId": entry_id,
-                "tomeId": self._tome_id,
-            },
+            payload_for(
+                SigilHook.SESSION_BEFORE_FORK,
+                parent_session=self._tome_id,
+                entry_id=entry_id,
+            ),
         )
         if isinstance(result, dict) and result.get("cancel"):
             return {"cancelled": True}

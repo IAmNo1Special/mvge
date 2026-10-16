@@ -117,6 +117,13 @@ class CompactionRunner:
         if self._emit is not None:
             await self._emit(event)
 
+    @property
+    def _session_name(self) -> str:
+        """Tome id for the sigil contract; empty when no tome is bound."""
+        if self._tome is None:
+            return ""
+        return self._tome.tome_id
+
     async def maybe_compact(
         self,
         invocations: list[MvgeInvocation],
@@ -145,6 +152,10 @@ class CompactionRunner:
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_START,
                 data={
+                    # session_name/message_count satisfy the sigil contract;
+                    # the mana keys stay for event-bus observers.
+                    "session_name": self._session_name,
+                    "message_count": len(invocations),
                     "mana_before": prepared.mana_before,
                     "mana_pool": self._model.context_window,
                 },
@@ -158,7 +169,12 @@ class CompactionRunner:
             await self._send_event(
                 MvgeEvent(
                     type=MvgeEventType.COMPACTION_END,
-                    data={"error": "Summarization failed"},
+                    data={
+                        "session_name": self._session_name,
+                        "original_count": len(prepared.to_summarize),
+                        "compacted_count": 0,
+                        "error": "Summarization failed",
+                    },
                 )
             )
             return None
@@ -182,6 +198,9 @@ class CompactionRunner:
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_END,
                 data={
+                    "session_name": self._session_name,
+                    "original_count": len(prepared.to_summarize),
+                    "compacted_count": len(replacement),
                     "mana_before": prepared.mana_before,
                     "mana_after": estimate_context_mana(replacement).mana,
                     "summarized": len(prepared.to_summarize),
@@ -209,6 +228,10 @@ class CompactionRunner:
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_START,
                 data={
+                    # session_name/message_count satisfy the sigil contract;
+                    # the mana keys stay for event-bus observers.
+                    "session_name": self._session_name,
+                    "message_count": len(invocations),
                     "mana_before": prepared.mana_before,
                     "mana_pool": self._model.context_window,
                 },
@@ -222,7 +245,12 @@ class CompactionRunner:
             await self._send_event(
                 MvgeEvent(
                     type=MvgeEventType.COMPACTION_END,
-                    data={"error": "Summarization failed"},
+                    data={
+                        "session_name": self._session_name,
+                        "original_count": len(prepared.to_summarize),
+                        "compacted_count": 0,
+                        "error": "Summarization failed",
+                    },
                 )
             )
             return None
@@ -246,6 +274,9 @@ class CompactionRunner:
             MvgeEvent(
                 type=MvgeEventType.COMPACTION_END,
                 data={
+                    "session_name": self._session_name,
+                    "original_count": len(prepared.to_summarize),
+                    "compacted_count": len(replacement),
                     "mana_before": prepared.mana_before,
                     "mana_after": estimate_context_mana(replacement).mana,
                     "summarized": len(prepared.to_summarize),
