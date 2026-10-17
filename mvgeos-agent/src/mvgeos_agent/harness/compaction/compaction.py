@@ -22,6 +22,7 @@ from mvgeos_core.events import ContentType
 from mvgeos_core.invocations import (
     MvgeInvocation,
     SummonerRequest,
+    extract_text_blocks,
 )
 from mvgeos_core.spells import SpellResultMessage
 
@@ -334,16 +335,7 @@ def _render_invocation(invocation: MvgeInvocation) -> str | None:
 
 
 def _render_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    parts = [
-        block.get("text", "")
-        for block in content
-        if isinstance(block, dict) and block.get("type") == ContentType.TEXT
-    ]
-    return " ".join(part for part in parts if part)
+    return extract_text_blocks(content)
 
 
 async def generate_summary(
