@@ -18,10 +18,10 @@ from mvgeos_core.errors import (
     TomeIncompatibleError,
     TomeResumeError,
 )
-from mvgeos_core.events import ContentType
 from mvgeos_core.invocations import (
     MvgeInvocation,
     SummonerRequest,
+    normalize_content_blocks,
 )
 from mvgeos_core.spells import SpellResultMessage
 from mvgeos_runes.rune_runner import RuneRunner
@@ -56,7 +56,11 @@ def _timestamp_now() -> float:
 def _serialise_invocation(invocation: Any) -> dict[str, Any]:
     """Flatten an Invocation to JSON-safe primitives for the Tome file."""
     if dataclasses.is_dataclass(invocation) and not isinstance(invocation, type):
-        return dataclasses.asdict(invocation)
+        data = dataclasses.asdict(invocation)
+        # Normalize content to canonical list form before persisting.
+        if "content" in data:
+            data["content"] = normalize_content_blocks(data["content"])
+        return data
     return {"role": getattr(invocation, "role", "unknown")}
 
 
@@ -324,14 +328,7 @@ class MvgeTome:
                         SummonerRequest(role="user", content=user_content)
                     )
                 elif role == "assistant":
-                    if isinstance(content, list):
-                        content_blocks = content
-                    elif isinstance(content, str):
-                        content_blocks = [{"type": ContentType.TEXT, "text": content}]
-                    else:
-                        content_blocks = [
-                            {"type": ContentType.TEXT, "text": str(content)}
-                        ]
+                    content_blocks = normalize_content_blocks(content)
                     stop_reason = StopReason.STOP
                     if "stop_reason" in payload:
                         try:
@@ -346,14 +343,7 @@ class MvgeTome:
                         )
                     )
                 elif role in ("spellResult", "tool"):
-                    if isinstance(content, list):
-                        content_blocks = content
-                    elif isinstance(content, str):
-                        content_blocks = [{"type": ContentType.TEXT, "text": content}]
-                    else:
-                        content_blocks = [
-                            {"type": ContentType.TEXT, "text": str(content)}
-                        ]
+                    content_blocks = normalize_content_blocks(content)
                     invocations.append(
                         SpellResultMessage(
                             role="spellResult",
@@ -388,22 +378,7 @@ class MvgeTome:
                                     )
                                 )
                             elif item_role == "assistant":
-                                if isinstance(item_content, list):
-                                    c_blocks = item_content
-                                elif isinstance(item_content, str):
-                                    c_blocks = [
-                                        {
-                                            "type": ContentType.TEXT,
-                                            "text": item_content,
-                                        }
-                                    ]
-                                else:
-                                    c_blocks = [
-                                        {
-                                            "type": ContentType.TEXT,
-                                            "text": str(item_content),
-                                        }
-                                    ]
+                                c_blocks = normalize_content_blocks(item_content)
                                 invocations.append(
                                     MvgeResponse(
                                         role="assistant",
@@ -412,22 +387,7 @@ class MvgeTome:
                                     )
                                 )
                             elif item_role in ("spellResult", "tool"):
-                                if isinstance(item_content, list):
-                                    c_blocks = item_content
-                                elif isinstance(item_content, str):
-                                    c_blocks = [
-                                        {
-                                            "type": ContentType.TEXT,
-                                            "text": item_content,
-                                        }
-                                    ]
-                                else:
-                                    c_blocks = [
-                                        {
-                                            "type": ContentType.TEXT,
-                                            "text": str(item_content),
-                                        }
-                                    ]
+                                c_blocks = normalize_content_blocks(item_content)
                                 invocations.append(
                                     SpellResultMessage(
                                         role="spellResult",
