@@ -117,6 +117,28 @@ class CompactionRunner:
         if self._emit is not None:
             await self._emit(event)
 
+    def rebind(
+        self,
+        realm: Realm | None = None,
+        model: Model | None = None,
+        tome: MvgeTome | None = None,
+        emit: EmitSink | None = None,
+    ) -> None:
+        """Update the bound collaborators after a session change.
+
+        Replaces direct writes to this runner's private attributes from
+        the harness: the seam moves, the collaborator grows a method.
+        Only the provided references are replaced.
+        """
+        if realm is not None:
+            self._realm = realm
+        if model is not None:
+            self._model = model
+        if tome is not None:
+            self._tome = tome
+        if emit is not None:
+            self._emit = emit
+
     @property
     def _session_name(self) -> str:
         """Tome id for the sigil contract; empty when no tome is bound."""

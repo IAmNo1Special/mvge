@@ -47,9 +47,9 @@ from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_agent.agent_session import MvgeTome
 from mvgeos_agent.environment import PromptSource
 from mvgeos_agent.harness import MvgeHarness
+from mvgeos_agent.harness._state import MvgeState
 from mvgeos_agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
 from mvgeos_agent.harness.harness import _apply_prepare_next_turn
-from mvgeos_agent.types import MvgeState
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_harness_switch_tome() -> None:
     harness = MvgeHarness(state=mock_state, tome=tome1)
     assert harness.tome == tome1
 
-    harness.switch_tome(tome2)
+    await harness.switch_tome(tome2)
     assert harness.tome == tome2
     assert mock_state.agent_tome == tome2
 

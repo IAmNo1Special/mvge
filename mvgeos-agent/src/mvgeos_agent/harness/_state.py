@@ -1,3 +1,9 @@
+"""Internal session state (ADR-0012 §3).
+
+``MvgeState`` is internal implementation, never in a protocol signature.
+The sole writer of every field is the harness package.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -41,7 +41,6 @@ from mvgeos_agent.snapshot import (
     SnapshotSpell,
     SpellSource,
 )
-from mvgeos_agent.types import MvgeState
 
 __all__ = [
     "AgentConfig",
@@ -54,7 +53,6 @@ __all__ = [
     "MvgeAgent",
     "MvgeEnvironment",
     "MvgeHarness",
-    "MvgeState",
     "MvgeTome",
     "PEP723Metadata",
     "PEP723ScriptSpell",
