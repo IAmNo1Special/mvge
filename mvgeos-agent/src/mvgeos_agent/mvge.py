@@ -1326,6 +1326,7 @@ class Mvge:
         """Switch the model in-flight."""
         if self._harness is not None:
             await self._harness.switch_model(model_id)
+        self._model_id = model_id
 
     async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
         """Switch the contemplation level in-flight."""
