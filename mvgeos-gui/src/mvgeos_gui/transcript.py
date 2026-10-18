@@ -313,7 +313,7 @@ class InvocationTranscript:
                     transcript._append_part(MessagePartType.CONTEMPLATION, thought)
                 if cleaned:
                     transcript._append_part(MessagePartType.TEXT, cleaned)
-            return transcript
+            # fall through to final return
 
         if isinstance(content, list):
             for item in content:
