@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from mvgeos_core.channel import MvgeResponse
+from mvgeos_core.events import ContentType
 from mvgeos_core.spells import SpellResultMessage
 
 
@@ -72,4 +73,63 @@ __all__ = [
     "MvgeInvocation",
     "SummonerRequest",
     "build_content_parts",
+    "denormalize_content_blocks",
+    "extract_text_blocks",
+    "normalize_content_blocks",
 ]
+
+
+def normalize_content_blocks(content: Any) -> list[dict[str, Any]]:
+    """Normalize any content shape to the canonical ``list[dict[str, Any]]`` form.
+
+    Handles the raw shapes found in Tome JSON and in-flight invocations:
+    ``None`` becomes ``[]``; a ``str`` becomes a single TEXT block; a bare
+    ``dict`` becomes a single-element list; a list normalizes each item
+    (dicts pass through, strs become TEXT blocks, anything else is
+    stringified into a TEXT block).
+    """
+    if content is None:
+        return []
+    if isinstance(content, str):
+        return [{"type": ContentType.TEXT, "text": content}]
+    if isinstance(content, dict):
+        return [content]
+    if isinstance(content, list):
+        blocks: list[dict[str, Any]] = []
+        for item in content:
+            if isinstance(item, dict):
+                blocks.append(item)
+            elif isinstance(item, str):
+                blocks.append({"type": ContentType.TEXT, "text": item})
+            else:
+                blocks.append({"type": ContentType.TEXT, "text": str(item)})
+        return blocks
+    return [{"type": ContentType.TEXT, "text": str(content)}]
+
+
+def denormalize_content_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return normalized blocks in their canonical list form.
+
+    The inverse of :func:`normalize_content_blocks` for already-canonical
+    input; provided for symmetric serialize/deserialize call sites.
+    """
+    return list(blocks)
+
+
+def extract_text_blocks(content: list[dict[str, Any]] | str | None) -> str:
+    """Extract and concatenate all TEXT and CONTEMPLATION block text.
+
+    Replaces the buggy ``compaction._render_content`` which silently dropped
+    ``ContentType.CONTEMPLATION`` (and ``SPELL_CAST``) blocks from summaries.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    parts = [
+        block.get("text", "")
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") in (ContentType.TEXT, ContentType.CONTEMPLATION)
+    ]
+    return " ".join(part for part in parts if part)

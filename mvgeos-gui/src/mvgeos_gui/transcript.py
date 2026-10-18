@@ -16,6 +16,8 @@ import re
 from collections.abc import Mapping
 from typing import Any, TypedDict
 
+from mvgeos_core.invocations import normalize_content_blocks
+
 from mvgeos_gui.models import (
     Artifact,
     ChatMessage,
@@ -316,11 +318,8 @@ class InvocationTranscript:
             # fall through to final return
 
         if isinstance(content, list):
-            for item in content:
-                if isinstance(item, dict):
-                    transcript._consume_replay_dict(item)
-                elif isinstance(item, str):
-                    transcript._append_part(MessagePartType.TEXT, item)
+            for item in normalize_content_blocks(content):
+                transcript._consume_replay_dict(item)
         return transcript
 
     def _consume_replay_dict(self, item: dict[str, Any]) -> None:
