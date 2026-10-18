@@ -315,14 +315,11 @@ class InvocationTranscript:
                     transcript._append_part(MessagePartType.CONTEMPLATION, thought)
                 if cleaned:
                     transcript._append_part(MessagePartType.TEXT, cleaned)
-            return transcript
+            # Fall through to the final return below.
 
         if isinstance(content, list):
             for item in normalize_content_blocks(content):
-                if isinstance(item, dict):
-                    transcript._consume_replay_dict(item)
-                elif isinstance(item, str):
-                    transcript._append_part(MessagePartType.TEXT, item)
+                transcript._consume_replay_dict(item)
         return transcript
 
     def _consume_replay_dict(self, item: dict[str, Any]) -> None:
