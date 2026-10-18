@@ -571,7 +571,7 @@ class MvgeEnvironment:
         diags: list[Diagnostic | SkillDiagnostic] = []
         if runner is not None:
             diags.extend(runner.diagnostics)
-            diags.extend(runner.skill_diagnostics)
+            diags.extend(runner.skill_catalog.skill_diagnostics)
 
         return cls(
             agent_name=agent_name,
@@ -744,13 +744,15 @@ class MvgeEnvironment:
             self.runner.loaded_manifests if self.runner is not None else []
         )
         skills: list[SkillManifest] = (
-            self.runner.get_skills() if self.runner is not None else []
+            self.runner.skill_catalog.get_skills() if self.runner is not None else []
         )
         rune_diagnostics: list[Diagnostic] = (
             self.runner.diagnostics if self.runner is not None else []
         )
         skill_diagnostics: list[SkillDiagnostic] = (
-            self.runner.skill_diagnostics if self.runner is not None else []
+            self.runner.skill_catalog.skill_diagnostics
+            if self.runner is not None
+            else []
         )
 
         config_source_files: dict[ConfigLayer, Path | None] = {}

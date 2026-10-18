@@ -24,6 +24,7 @@ from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.loader import load_factory_from_manifest
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneAPI
+from mvgeos_runes.skill_catalog import SkillCatalog
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -34,9 +35,6 @@ from mvgeos_runes.types import (
     RuneShortcut,
     Sandbox,
     SigilHook,
-    SkillDiagnostic,
-    SkillLoad,
-    SkillManifest,
     SpellDefinition,
 )
 
@@ -128,9 +126,10 @@ class RuneRunner:
         self._diagnostics: list[Diagnostic] = []
         self._loaded_rune_names: set[str] = set()
         self._current_loading_rune: str | None = None
-        self._loaded_skills: list[SkillLoad] = []
-        self._skill_diagnostics: list[SkillDiagnostic] = []
         self._spell_version: int = 0
+        # SkillCatalog owns all skill-related state (loaded skills, diagnostics,
+        # registered skill paths, active-skills set). RuneRunner composes it.
+        self._skill_catalog = SkillCatalog()
         # The effective active-spell set is the *union* of each rune's own
         # contribution: ``_active_spells_by_rune`` maps a rune name (or ``None``
         # for spells registered outside any rune context) to the set of spell
@@ -144,8 +143,6 @@ class RuneRunner:
         # engine narrows the model's spell view to this rune's spells and the
         # gateway reveals discovered spells via widen_global_allowlist.
         self._gateway_rune_name: str | None = None
-        self._registered_skill_paths: list[Path] = []
-        self._active_skills: set[str] = set()
         # Host-privileged accessor registry: a rune factory may return its
         # public rune instance object; the runner records non-None results
         # here, keyed by manifest name, so the host can reach a loaded rune
@@ -201,13 +198,14 @@ class RuneRunner:
     def diagnostics(self) -> list[Diagnostic]:
         return list(self._diagnostics)
 
+    @property
+    def skill_catalog(self) -> SkillCatalog:
+        """The SkillCatalog owning all skill-related state for this runner."""
+        return self._skill_catalog
+
     def extend_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
         """Append loader diagnostics for paths that produced no runes."""
         self._diagnostics.extend(diagnostics)
-
-    def extend_skill_diagnostics(self, diagnostics: list[SkillDiagnostic]) -> None:
-        """Append loader diagnostics for paths that produced no skills."""
-        self._skill_diagnostics.extend(diagnostics)
 
     def bind_context(self, context: RuneContext) -> None:
         # has_ui is derived from the host-bound presenter slot, never from
@@ -649,57 +647,6 @@ class RuneRunner:
             existing.update(spell_names)
             self._global_spell_allowlist = list(existing)
         self._spell_version += 1
-
-    def load_skills(
-        self,
-        loads: list[SkillLoad],
-        diagnostics: list[SkillDiagnostic] | None = None,
-    ) -> None:
-        """Load skills from discovery.
-
-        Args:
-            loads: List of skill loads (manifests) from discovery.
-            diagnostics: Optional list of skill diagnostics to retain for
-                the runtime snapshot.
-        """
-        self._loaded_skills.extend(loads)
-        if diagnostics is not None:
-            self._skill_diagnostics.extend(diagnostics)
-
-    def get_skills(self) -> list[SkillManifest]:
-        """Get all loaded skill manifests."""
-        return [load.manifest for load in self._loaded_skills]
-
-    def register_skill_path(self, path: Path | str) -> None:
-        """Register a skill directory path dynamically."""
-        resolved = Path(path).expanduser().resolve()
-        if resolved not in self._registered_skill_paths:
-            self._registered_skill_paths.append(resolved)
-
-    def get_registered_skill_paths(self) -> list[Path]:
-        """Get all dynamically registered skill paths."""
-        return list(self._registered_skill_paths)
-
-    def register_skill(self, manifest: SkillManifest) -> None:
-        """Register an in-memory SkillManifest directly."""
-        self.load_skills([SkillLoad(manifest=manifest)])
-
-    @property
-    def skill_diagnostics(self) -> list[SkillDiagnostic]:
-        """Diagnostics accumulated during skill discovery."""
-        return list(self._skill_diagnostics)
-
-    def is_skill_active(self, name: str) -> bool:
-        """Check if a skill has already been activated in this session."""
-        return name in self._active_skills
-
-    def mark_skill_active(self, name: str) -> None:
-        """Mark a skill as active in this session."""
-        self._active_skills.add(name)
-
-    def get_active_skills(self) -> set[str]:
-        """Get names of all skills activated in this session."""
-        return set(self._active_skills)
 
     def send_message(self, content: str) -> None:
         self._message_queue.append(content)

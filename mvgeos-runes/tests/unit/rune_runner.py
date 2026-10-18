@@ -21,11 +21,6 @@ from mvgeos_runes.types import (
     RuneScope,
     RuneShortcut,
     SigilHook,
-    SkillDiagnostic,
-    SkillDiagnosticKind,
-    SkillLoad,
-    SkillManifest,
-    SkillScope,
     SpellDefinition,
 )
 
@@ -786,82 +781,6 @@ class TestRuneRunnerDedup:
         await runner.load_rune_loads(loads)
         assert len(runner.get_sigil_handlers(SigilHook.TURN_START)) == 1
 
-
-class TestRuneRunnerSkills:
-    def test_load_skills(self) -> None:
-        runner = RuneRunner()
-        skill1 = SkillManifest(
-            name="skill-one",
-            description="First skill",
-            scope=SkillScope.PROJECT,
-            path="/tmp/skill-one",
-        )
-        skill2 = SkillManifest(
-            name="skill-two",
-            description="Second skill",
-            scope=SkillScope.USER,
-            path="/tmp/skill-two",
-        )
-        loads = [SkillLoad(manifest=skill1), SkillLoad(manifest=skill2)]
-        runner.load_skills(loads)
-
-        skills = runner.get_skills()
-        assert len(skills) == 2
-        names = {s.name for s in skills}
-        assert names == {"skill-one", "skill-two"}
-
-    def test_get_skills_empty(self) -> None:
-        runner = RuneRunner()
-        assert runner.get_skills() == []
-
-    def test_load_skills_stores_diagnostics(self) -> None:
-        runner = RuneRunner()
-        skill = SkillManifest(
-            name="loaded-skill",
-            description="Loaded",
-            scope=SkillScope.PROJECT,
-            path="/tmp/loaded",
-        )
-        diag = SkillDiagnostic(
-            kind=SkillDiagnosticKind.SHADOWED_SKILL,
-            skill_name="dup-skill",
-            message="shadowed",
-            scope=SkillScope.USER,
-            path="/tmp/dup",
-        )
-        runner.load_skills([SkillLoad(manifest=skill)], diagnostics=[diag])
-
-        assert runner.skill_diagnostics == [diag]
-
-    def test_skill_diagnostics_empty_by_default(self) -> None:
-        runner = RuneRunner()
-        assert runner.skill_diagnostics == []
-
-    def test_load_skills_without_diagnostics_still_works(self) -> None:
-        runner = RuneRunner()
-        skill = SkillManifest(
-            name="no-diag", description="d", scope=SkillScope.PROJECT, path="/x"
-        )
-        runner.load_skills([SkillLoad(manifest=skill)])
-        assert runner.skill_diagnostics == []
-        assert len(runner.get_skills()) == 1
-
-    def test_load_skills_diagnostics_accumulate(self) -> None:
-        runner = RuneRunner()
-        diag1 = SkillDiagnostic(
-            kind=SkillDiagnosticKind.PARSE_WARNING,
-            skill_name="s1",
-            message="bad",
-        )
-        diag2 = SkillDiagnostic(
-            kind=SkillDiagnosticKind.SHADOWED_SKILL,
-            skill_name="s2",
-            message="dup",
-        )
-        runner.load_skills([], diagnostics=[diag1])
-        runner.load_skills([], diagnostics=[diag2])
-        assert runner.skill_diagnostics == [diag1, diag2]
-
     def test_extend_diagnostics_appends(self) -> None:
         runner = RuneRunner()
         diag = Diagnostic(
@@ -871,16 +790,6 @@ class TestRuneRunnerSkills:
         )
         runner.extend_diagnostics([diag])
         assert runner.diagnostics == [diag]
-
-    def test_extend_skill_diagnostics_appends(self) -> None:
-        runner = RuneRunner()
-        sdiag = SkillDiagnostic(
-            kind=SkillDiagnosticKind.PARSE_WARNING,
-            skill_name="s1",
-            message="warned",
-        )
-        runner.extend_skill_diagnostics([sdiag])
-        assert runner.skill_diagnostics == [sdiag]
 
 
 class TestRuneRunnerSigils:

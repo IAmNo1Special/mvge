@@ -52,13 +52,14 @@ def _runner_state(runner: RuneRunner) -> dict[str, Any]:
         "shortcuts": sorted(sc.key for sc in runner.get_shortcuts()),
         "providers": dict(sorted(runner.get_registered_providers().items())),
         "active_spells": runner.get_active_spells(),
-        "skills": [s.name for s in runner.get_skills()],
+        "skills": [s.name for s in runner.skill_catalog.get_skills()],
         "context": runner.context,
         "diagnostics": [
             (d.kind.value, d.rune_name, d.message) for d in runner.diagnostics
         ],
         "skill_diagnostics": [
-            (d.kind.value, d.skill_name, d.message) for d in runner.skill_diagnostics
+            (d.kind.value, d.skill_name, d.message)
+            for d in runner.skill_catalog.skill_diagnostics
         ],
     }
 
