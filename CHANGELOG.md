@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.6] - 2026-10-18
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (91b6d9a)
+
+- **deps:** bump typer from 0.27.2 to 0.27.3 (18d884d)
+
+- **deps:** bump pydantic from 2.13.5 to 2.14.1 (94a6274)
+
+- **deps-dev:** update uv-build requirement (72cbf33)
+
+- **deps-dev:** bump ruff from 0.16.10 to 0.17.0 (b280567)
+
+- **deps:** bump nicegui from 3.17.1 to 3.18.0 (56677f1)
+
+- **release:** v0.7.6 (38e2029)
+
+
+### Features
+
+- **core:** add content block normalization seam (#145) (#236) (8f41398)
+
+
 ## [0.7.5] - 2026-10-17
 
 
