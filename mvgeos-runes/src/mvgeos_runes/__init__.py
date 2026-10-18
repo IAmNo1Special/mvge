@@ -22,6 +22,7 @@ from mvgeos_runes.rune_audit import (
     default_rune_ops_dir,
 )
 from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.skill_catalog import SkillCatalog
 from mvgeos_runes.skill_installer import install_skill
 from mvgeos_runes.types import (
     Diagnostic,
@@ -67,6 +68,7 @@ __all__ = [
     "RuneWatcher",
     "Scope",
     "SigilHook",
+    "SkillCatalog",
     "SkillDiagnostic",
     "SkillDiagnosticKind",
     "SkillLoad",

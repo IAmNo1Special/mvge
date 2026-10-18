@@ -136,7 +136,8 @@ class RuneLifecycle:
         if self._environment is not None:
             self._environment = dataclasses.replace(
                 self._environment,
-                diagnostics=list(runner.diagnostics) + list(runner.skill_diagnostics),
+                diagnostics=list(runner.diagnostics)
+                + list(runner.skill_catalog.skill_diagnostics),
                 runner=runner,
             )
         return runner

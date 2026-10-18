@@ -1126,7 +1126,7 @@ def test_populate_skills_seeds_active_skills(
     """Verify populate_skills adds manifests from the agent's runner."""
     manifest = _make_skill_manifest()
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
 
@@ -1146,7 +1146,7 @@ def test_populate_skills_is_idempotent(
     """Verify populate_skills does not duplicate already-tracked skills."""
     manifest = _make_skill_manifest()
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
 
@@ -1172,7 +1172,7 @@ def test_populate_skills_handles_get_skills_failure(
 ) -> None:
     """Verify populate_skills tolerates a failing get_skills call."""
     mock_runner = MagicMock()
-    mock_runner.get_skills.side_effect = RuntimeError("boom")
+    mock_runner.skill_catalog.get_skills.side_effect = RuntimeError("boom")
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
 
@@ -1186,7 +1186,7 @@ def test_mark_skill_invoked_by_skill_md_path(
     """Verify reading a SKILL.md file marks the skill as invoked."""
     manifest = _make_skill_manifest(path="/skills/review")
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service.populate_skills(mock_agent, app_state)
@@ -1205,7 +1205,7 @@ def test_mark_skill_invoked_deduplicates(
     """Verify the same skill is only marked invoked once."""
     manifest = _make_skill_manifest(path="/skills/review")
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service.populate_skills(mock_agent, app_state)
@@ -1222,7 +1222,7 @@ def test_mark_skill_invoked_windows_backslashes(
     """Verify reading a SKILL.md with Windows backslashes marks the skill as invoked."""
     manifest = _make_skill_manifest(path=r"C:\Users\user\.agents\skills\location")
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service.populate_skills(mock_agent, app_state)
@@ -1276,7 +1276,7 @@ def test_get_or_create_agent_populates_skills(
     """Verify get_or_create_agent seeds active_skills on agent creation."""
     manifest = _make_skill_manifest()
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
 
@@ -1297,7 +1297,7 @@ def test_handle_agent_start_populates_skills(
     """Verify AGENT_START seeds active_skills from the bound agent's runner."""
     manifest = _make_skill_manifest()
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service._agent = mock_agent
@@ -1321,7 +1321,7 @@ def test_handle_read_skill_md_marks_invoked(
     """Verify reading a SKILL.md path via the read spell marks it invoked."""
     manifest = _make_skill_manifest(path="/skills/review")
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service._agent = mock_agent
@@ -1349,7 +1349,7 @@ def test_handle_read_non_skill_path_does_not_invoke(
     """Verify reading a non-SKILL.md path does not mark any skill invoked."""
     manifest = _make_skill_manifest(path="/skills/review")
     mock_runner = MagicMock()
-    mock_runner.get_skills.return_value = [manifest]
+    mock_runner.skill_catalog.get_skills.return_value = [manifest]
     mock_agent = MagicMock()
     mock_agent.runner = mock_runner
     agent_service._agent = mock_agent

@@ -982,7 +982,10 @@ class AgentService:
         runner = getattr(agent, "runner", None)
         if runner is None:
             return []
-        getter = getattr(runner, "get_skills", None)
+        catalog = getattr(runner, "skill_catalog", None)
+        if catalog is None:
+            return []
+        getter = getattr(catalog, "get_skills", None)
         if not callable(getter):
             return []
         try:

@@ -287,7 +287,8 @@ class TestLoad:
         assert refreshed is not environment
         assert refreshed is not None
         assert refreshed.runner is runner
-        assert refreshed.diagnostics == runner.diagnostics + runner.skill_diagnostics
+        expected_diags = runner.diagnostics + runner.skill_catalog.skill_diagnostics
+        assert refreshed.diagnostics == expected_diags
 
 
 def _watcher_factory(

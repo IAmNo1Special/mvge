@@ -198,15 +198,15 @@ class RuneAPI:
 
     def get_skills(self) -> list[SkillManifest]:
         """Get all registered skills."""
-        return self._runner.get_skills()
+        return self._runner.skill_catalog.get_skills()
 
     def register_skill_path(self, path: Path | str) -> None:
         """Dynamically register an additional skill directory path."""
-        self._runner.register_skill_path(path)
+        self._runner.skill_catalog.register_skill_path(path)
 
     def register_skill(self, manifest: SkillManifest) -> None:
         """Dynamically register an in-memory SkillManifest."""
-        self._runner.register_skill(manifest)
+        self._runner.skill_catalog.register_skill(manifest)
 
     def send_message(self, content: str) -> None:
         self._runner.send_message(content)

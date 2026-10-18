@@ -256,7 +256,7 @@ class TestRuneAPISkillRegistration:
     ) -> None:
         p = tmp_path / "skills"
         api.register_skill_path(p)
-        assert runner.get_registered_skill_paths() == [p.resolve()]
+        assert runner.skill_catalog.get_registered_skill_paths() == [p.resolve()]
 
     def test_register_skill_delegates_to_runner(
         self, api: RuneAPI, runner: RuneRunner
@@ -265,7 +265,7 @@ class TestRuneAPISkillRegistration:
 
         manifest = SkillManifest(name="api-skill", description="API registered skill")
         api.register_skill(manifest)
-        assert runner.get_skills() == [manifest]
+        assert runner.skill_catalog.get_skills() == [manifest]
         assert api.get_skills() == [manifest]
 
     def test_context_property_delegates(self, api: RuneAPI, runner: RuneRunner) -> None:

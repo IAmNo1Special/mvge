@@ -655,7 +655,7 @@ class Mvge:
                 rune_diags = list(candidate_runner.diagnostics)
                 rune_diagnostics = [
                     *rune_diags,
-                    *candidate_runner.skill_diagnostics,
+                    *candidate_runner.skill_catalog.skill_diagnostics,
                 ]
                 # A previously working rune that no longer loads (broken
                 # manifest or factory, reported as a diagnostic) fails the
@@ -1386,7 +1386,7 @@ class Mvge:
         """List registered skills with metadata."""
         if self._runner is None:
             return []
-        skills = self._runner.get_skills()
+        skills = self._runner.skill_catalog.get_skills()
         return [
             {
                 "name": s.name,
