@@ -16,6 +16,11 @@ from packaging.requirements import InvalidRequirement, Requirement
 from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.rune_api import RuneFactory
+from mvgeos_runes.trust import (
+    WorkspaceTrustStatus,
+    WorkspaceTrustStore,
+    canonicalize_workspace_path,
+)
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -307,6 +312,17 @@ def load_factory_from_manifest(
     return cast(RuneFactory, factory)
 
 
+def find_project_root_from_path(path: Path) -> Path:
+    """Find the project root containing .agents from a sub-path."""
+    p = canonicalize_workspace_path(path)
+    for parent in [p, *p.parents]:
+        if parent.name == ".agents":
+            return parent.parent
+        if (parent / ".agents").is_dir():
+            return parent
+    return p
+
+
 def load_manifests(
     extensions_dir: Path,
     scope: RuneScope = RuneScope.PROJECT,
@@ -315,7 +331,7 @@ def load_manifests(
     if not extensions_dir.exists():
         return []
     manifests: list[RuneManifest] = []
-    for entry in extensions_dir.iterdir():
+    for entry in sorted(extensions_dir.iterdir(), key=lambda e: e.name):
         if not entry.is_dir():
             continue
         manifest = load_manifest(entry)
@@ -348,6 +364,8 @@ def _resolve_search_path(path_str: str | Path, agent_name: str | None = None) ->
 def load_runes_from_paths(
     paths: Sequence[tuple[str | Path, RuneScope]],
     agent_name: str | None = None,
+    *,
+    trust_store: WorkspaceTrustStore | None = None,
 ) -> tuple[list[RuneLoad], list[Diagnostic]]:
     """Load runes from multiple paths in precedence order (first wins).
 
@@ -355,6 +373,7 @@ def load_runes_from_paths(
         paths: List of (path, scope) tuples, paths can include ~ and
             {agent_name} placeholder
         agent_name: Agent name to substitute {agent_name} placeholder
+        trust_store: Optional WorkspaceTrustStore for verifying project trust
 
     Returns:
         Tuple of (rune_loads, diagnostics). RuneLoads are deduped
@@ -368,6 +387,29 @@ def load_runes_from_paths(
         path = _resolve_search_path(path_str, agent_name)
         if not path.exists():
             continue
+        if scope == RuneScope.PROJECT and (
+            ".agents" in path.parts
+            or (path / ".agents").is_dir()
+            or trust_store is not None
+        ):
+            store = trust_store if trust_store is not None else WorkspaceTrustStore()
+            project_root = find_project_root_from_path(path)
+            trust_status = store.check_trust(project_root)
+            if trust_status != WorkspaceTrustStatus.TRUSTED:
+                diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.LOAD_WARNING,
+                        rune_name=path.name,
+                        message=(
+                            f"Skipping project-level extensions at {path}: "
+                            f"workspace {project_root} is untrusted "
+                            f"({trust_status.value})"
+                        ),
+                        scope=scope,
+                        path=str(path),
+                    )
+                )
+                continue
         manifests = load_manifests(path, scope=scope, diagnostics=diagnostics)
         for manifest in manifests:
             factory = None
@@ -394,4 +436,7 @@ def load_runes_from_paths(
             seen_names[manifest.name] = (scope, str(path))
             loads.append(RuneLoad(manifest=manifest, factory=factory))
 
-    return loads, diagnostics
+    partitioned_loads = [r for r in loads if not r.manifest.spell_gateway] + [
+        r for r in loads if r.manifest.spell_gateway
+    ]
+    return partitioned_loads, diagnostics

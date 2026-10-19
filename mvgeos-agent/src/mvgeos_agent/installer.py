@@ -7,21 +7,83 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mvgeos_core.layers import agents_dir
+from mvgeos_core.layers import agents_dir, extensions_dir
 from mvgeos_runes.catalog import (
     DEFAULT_MARKETPLACE_URL,
     MVGES_SECTION,
+    PROFILES_SECTION,
     fetch_catalog,
     local_catalog_candidate,
     resolve_artifact,
     section_of,
 )
 from mvgeos_runes.deps import confirm_python_deps_install
+from mvgeos_runes.installer import install_rune
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
+    "minimal": {
+        "name": "minimal",
+        "description": (
+            "Minimal coding environment with standard safety gate and steering"
+        ),
+        "mvges": ["coding_mvge"],
+        "runes": ["opencode-realm", "approval-rune", "steering-bridge"],
+    },
+    "coding": {
+        "name": "coding",
+        "description": (
+            "Default flagship coding profile with active discovery, skills, "
+            "diagnostics, checkpoints, and sub-agents"
+        ),
+        "mvges": ["coding_mvge"],
+        "runes": [
+            "opencode-realm",
+            "approval-rune",
+            "steering-bridge",
+            "seeker",
+            "skills-bridge",
+            "session-search",
+            "session-title",
+            "lsp-bridge",
+            "checkpoint-bridge",
+            "submvge-bridge",
+        ],
+    },
+    "autonomous": {
+        "name": "autonomous",
+        "description": (
+            "Full autonomous suite with knowledge graphs, ADR tracking, "
+            "MCP integration, self-modification, CodeAct REPL, and evals"
+        ),
+        "mvges": ["coding_mvge"],
+        "runes": [
+            "opencode-realm",
+            "approval-rune",
+            "steering-bridge",
+            "seeker",
+            "skills-bridge",
+            "session-search",
+            "session-title",
+            "lsp-bridge",
+            "checkpoint-bridge",
+            "submvge-bridge",
+            "okf-bridge",
+            "adr-bridge",
+            "mcp-bridge",
+            "selfmod-bridge",
+            "skill-evolution",
+            "opentelemetry-bridge",
+            "codeact-rune",
+            "eval-bridge",
+        ],
+    },
+}
 
 
 # Allowlist for install/uninstall directory names. Anything outside this set
@@ -319,3 +381,108 @@ def install_mvge(
         pass
 
     return dest
+
+
+@dataclass(frozen=True)
+class ProfileInstallResult:
+    profile: str
+    installed_mvges: list[str]
+    installed_runes: list[str]
+    skipped_mvges: list[str]
+    skipped_runes: list[str]
+
+
+def fetch_marketplace_profiles(
+    marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    timeout: float = 15.0,
+) -> dict[str, Any]:
+    """Fetch available profiles from the marketplace index or fallback defaults."""
+    try:
+        catalog = fetch_catalog(marketplace_url, timeout=timeout)
+        profiles = section_of(catalog, PROFILES_SECTION)
+        if profiles:
+            return dict(profiles)
+    except Exception as exc:
+        logger.warning(
+            "Failed to fetch marketplace profiles from '%s': %s",
+            marketplace_url,
+            exc,
+        )
+    return dict(DEFAULT_PROFILES)
+
+
+def install_profile(
+    profile_name: str,
+    target_agents_dir: Path | None = None,
+    target_extensions_dir: Path | None = None,
+    marketplace_url: str = DEFAULT_MARKETPLACE_URL,
+    confirm_python_deps: bool | None = None,
+    force: bool = False,
+) -> ProfileInstallResult:
+    """Install all mvges and runes declared by a named profile.
+
+    Args:
+        profile_name: Named profile ("minimal", "coding", "autonomous", etc.).
+        target_agents_dir: Directory to install mvges into (default agents_dir()).
+        target_extensions_dir: Directory to install runes into (default
+            extensions_dir()).
+        marketplace_url: Marketplace index URL.
+        confirm_python_deps: Gate for installing python dependencies.
+        force: If True, reinstall already installed mvges and runes.
+    """
+    profiles = fetch_marketplace_profiles(marketplace_url=marketplace_url)
+    profile_data = profiles.get(profile_name)
+    if profile_data is None:
+        profile_data = DEFAULT_PROFILES.get(profile_name)
+    if not isinstance(profile_data, dict):
+        available = ", ".join(sorted(profiles or DEFAULT_PROFILES))
+        raise ValueError(f"Unknown profile '{profile_name}'. Available: {available}.")
+
+    agents_target = (
+        target_agents_dir.expanduser()
+        if target_agents_dir is not None
+        else agents_dir()
+    )
+    extensions_target = (
+        target_extensions_dir.expanduser()
+        if target_extensions_dir is not None
+        else extensions_dir()
+    )
+
+    installed_mvges: list[str] = []
+    skipped_mvges: list[str] = []
+    for mvge_name in profile_data.get("mvges", []):
+        dest = agents_target / mvge_name
+        if dest.is_dir() and not force:
+            skipped_mvges.append(mvge_name)
+            continue
+        install_mvge(
+            mvge_name,
+            target_dir=agents_target,
+            marketplace_url=marketplace_url,
+            confirm_python_deps=confirm_python_deps,
+        )
+        installed_mvges.append(mvge_name)
+
+    installed_runes: list[str] = []
+    skipped_runes: list[str] = []
+    for rune_name in profile_data.get("runes", []):
+        dest = extensions_target / rune_name
+        if dest.is_dir() and not force:
+            skipped_runes.append(rune_name)
+            continue
+        install_rune(
+            rune_name,
+            target_dir=extensions_target,
+            marketplace_url=marketplace_url,
+            confirm_python_deps=confirm_python_deps,
+        )
+        installed_runes.append(rune_name)
+
+    return ProfileInstallResult(
+        profile=profile_name,
+        installed_mvges=installed_mvges,
+        installed_runes=installed_runes,
+        skipped_mvges=skipped_mvges,
+        skipped_runes=skipped_runes,
+    )

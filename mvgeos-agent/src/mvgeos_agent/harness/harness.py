@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import dataclasses
 import inspect
@@ -90,7 +91,6 @@ _EVENT_TO_SIGIL: dict[MvgeEventType, SigilHook] = {
     MvgeEventType.TURN_START: SigilHook.TURN_START,
     MvgeEventType.TURN_END: SigilHook.TURN_END,
     MvgeEventType.INPUT: SigilHook.INPUT,
-    MvgeEventType.BEFORE_PROVIDER_REQUEST: SigilHook.BEFORE_PROVIDER_REQUEST,
     MvgeEventType.AFTER_PROVIDER_RESPONSE: SigilHook.AFTER_PROVIDER_RESPONSE,
     MvgeEventType.BEFORE_INVOCATION: SigilHook.BEFORE_INVOCATION,
     MvgeEventType.AFTER_INVOCATION: SigilHook.AFTER_INVOCATION,
@@ -257,6 +257,7 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         discovered_spells: Sequence[SpellUnion] | None = None,
         plan_mode: bool = False,
         enabled_spells_filter: set[str] | None = None,
+        allowed_spells: frozenset[str] | Sequence[str] | None = None,
         rune_lifecycle: RuneLifecycle | None = None,
         provider_registry: RealmRegistry | None = None,
         environment: MvgeEnvironment | None = None,
@@ -283,6 +284,9 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         self._plan_mode = plan_mode
         self._enabled_spells_filter = (
             set(enabled_spells_filter) if enabled_spells_filter is not None else None
+        )
+        self._allowed_spells: frozenset[str] | None = (
+            frozenset(allowed_spells) if allowed_spells is not None else None
         )
         # Last RuneRunner.spell_version the spell cache was built from.
         # Initialized to the live version so pre-populated state.spells
@@ -340,6 +344,11 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         return self._compaction
 
     @property
+    def allowed_spells(self) -> frozenset[str] | None:
+        """The restricted subset of spell names this harness permits, if any."""
+        return self._allowed_spells
+
+    @property
     def emit(self) -> EmitSink:
         """The sink that fans an event out to state, bus, Sigils, and Tome."""
         return self._emit
@@ -351,16 +360,43 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         if self._compaction is not None:
             self._compaction.rebind(tome=tome)
 
+    def _workspace_root(self) -> str | None:
+        runner_ctx = getattr(self._state.rune_runner, "context", None)
+        root = getattr(runner_ctx, "project_root", None) or getattr(
+            runner_ctx, "cwd", None
+        )
+        if root:
+            return str(root)
+        config_manager = self._environment.config_manager if self._environment else None
+        configured = getattr(config_manager, "project_dir", None)
+        if configured:
+            return str(Path(configured).resolve())
+        return None
+
     async def fork_tome(self, entry_id: str | None = None) -> str:
         """Branch the current Tome and switch to the new branch."""
         if self._tome is None:
             raise RuntimeError("Agent not initialized")
+        old_leaf_id = getattr(self._tome, "active_leaf_id", None)
         new_tome = await self._tome.fork(entry_id)
         if new_tome is None:
             raise RuntimeError("Failed to fork tome")
         await self.switch_tome(new_tome)
         self._state.invocations = new_tome.reconstruct_invocations()
         self._rebind_runner_context()
+        if self._state.rune_runner is not None:
+            new_leaf_id = getattr(new_tome, "active_leaf_id", None)
+            await self._state.rune_runner.emit_async(
+                SigilHook.SESSION_LEAF_CHANGED,
+                payload_for(
+                    SigilHook.SESSION_LEAF_CHANGED,
+                    tome_id=new_tome.tome_id,
+                    old_leaf_id=old_leaf_id,
+                    new_leaf_id=new_leaf_id,
+                    reason="fork",
+                    workspace_root=self._workspace_root(),
+                ),
+            )
         return new_tome.tome_id
 
     async def checkout_leaf(self, leaf_id: str) -> None:
@@ -369,8 +405,21 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             raise RuntimeError("Agent not initialized")
         if self._state.is_streaming:
             raise RuntimeError("Cannot checkout leaf while invocation is streaming")
+        old_leaf_id = getattr(self._tome, "active_leaf_id", None)
         self._tome.set_leaf(leaf_id)
         self._state.invocations = self._tome.reconstruct_invocations()
+        if self._state.rune_runner is not None:
+            await self._state.rune_runner.emit_async(
+                SigilHook.SESSION_LEAF_CHANGED,
+                payload_for(
+                    SigilHook.SESSION_LEAF_CHANGED,
+                    tome_id=self._tome.tome_id,
+                    old_leaf_id=old_leaf_id,
+                    new_leaf_id=leaf_id,
+                    reason="checkout",
+                    workspace_root=self._workspace_root(),
+                ),
+            )
 
     async def undo(self) -> str | None:
         """Revert the most recent summoner invocation."""
@@ -385,8 +434,21 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         )
         if target is None:
             raise ValueError("Cannot undo: at root invocation")
+        old_leaf_id = getattr(self._tome, "active_leaf_id", None)
         self._tome.set_leaf(target.id)
         self._state.invocations = self._tome.reconstruct_invocations()
+        if self._state.rune_runner is not None:
+            await self._state.rune_runner.emit_async(
+                SigilHook.SESSION_LEAF_CHANGED,
+                payload_for(
+                    SigilHook.SESSION_LEAF_CHANGED,
+                    tome_id=self._tome.tome_id,
+                    old_leaf_id=old_leaf_id,
+                    new_leaf_id=target.id,
+                    reason="undo",
+                    workspace_root=self._workspace_root(),
+                ),
+            )
         return target.id
 
     async def compact(self) -> str:
@@ -680,21 +742,24 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
         """Synchronize active session/tome context into the bound RuneRunner."""
         runner = self._state.rune_runner
         if runner is not None and self._tome is not None:
-            project_root = runner.context.project_root
+            project_root = getattr(runner.context, "project_root", "")
             config_manager = (
                 self._environment.config_manager if self._environment else None
             )
             configured = getattr(config_manager, "project_dir", None)
             if configured is not None:
                 project_root = str(Path(configured).resolve())
-            new_ctx = dataclasses.replace(
-                runner.context,
-                project_root=project_root,
-                session_id=self._tome.tome_id,
-                tome_dir=str(self._tome_dir) if self._tome_dir else "",
-                model_id=self._model_id or "",
-            )
-            runner.bind_context(new_ctx)
+            if dataclasses.is_dataclass(runner.context) and not isinstance(
+                runner.context, type
+            ):
+                new_ctx = dataclasses.replace(
+                    runner.context,
+                    project_root=project_root,
+                    session_id=self._tome.tome_id,
+                    tome_dir=str(self._tome_dir) if self._tome_dir else "",
+                    model_id=self._model_id or "",
+                )
+                runner.bind_context(new_ctx)
 
     def set_model_and_realm(self, model: Model, realm: Realm) -> None:
         """Update model and realm references on harness and compaction runner.
@@ -972,6 +1037,7 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
 
         active_runner = runner if runner is not None else self._state.rune_runner
         if active_runner is not None:
+            active_runner.set_discoverable_builtin_spells([copy.copy(s) for s in built])
             active = set(active_runner.get_active_spells())
             for rs in active_runner.get_all_registered_spells():
                 if rs.name not in active:
@@ -1044,6 +1110,9 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
 
         if self._plan_mode:
             built = [s for s in built if s.read_only]
+
+        if self._allowed_spells is not None:
+            built = [s for s in built if s.name in self._allowed_spells]
 
         return built
 
@@ -1163,6 +1232,9 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
                 prepare_next_turn=(
                     self._callbacks.prepare_next_turn if self._callbacks else None
                 ),
+                before_provider_request=(
+                    self._callbacks.before_provider_request if self._callbacks else None
+                ),
             )
 
         async def transform_context(
@@ -1267,25 +1339,50 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
                 )
             except Exception:
                 return False
-            return bool(result) if isinstance(result, bool) else False
+            if isinstance(result, bool):
+                return result
+            if isinstance(result, dict):
+                return bool(result.get("stop", False))
+            return bool(getattr(result, "stop", False))
+
+        async def before_provider_request(
+            data: dict[str, Any],
+        ) -> dict[str, Any] | None:
+            if self._callbacks is not None and self._callbacks.before_provider_request:
+                cb_res = await self._callbacks.before_provider_request(data)
+                if cb_res is not None:
+                    return cb_res
+            model_data = data.get("model") or {}
+            result: Any = await runner.emit_first(
+                SigilHook.BEFORE_PROVIDER_REQUEST,
+                payload_for(SigilHook.BEFORE_PROVIDER_REQUEST, model=model_data),
+            )
+            if isinstance(result, dict):
+                return result
+            if result is not None and hasattr(result, "synthetic_response"):
+                return {"synthetic_response": result.synthetic_response}
+            return None
 
         async def prepare_next_turn(context: LoopContext) -> LoopContext:
+            current = context
+            if runner is not None and self._spell_version_seen != runner.spell_version:
+                self.reload_spells()
+                current = dataclasses.replace(current, spells=self._state.spells)
             try:
                 result = await runner.emit_chain(
                     SigilHook.PREPARE_NEXT_TURN,
-                    prepare_next_turn_payload(context),
+                    prepare_next_turn_payload(current),
                 )
             except Exception:
                 result = None
             if isinstance(result, PrepareNextTurnData):
-                try:
-                    current = _apply_prepare_next_turn(result, context)
-                except (TypeError, ValueError, AttributeError):
-                    current = context
+                with contextlib.suppress(TypeError, ValueError, AttributeError):
+                    current = _apply_prepare_next_turn(result, current)
             elif isinstance(result, LoopContext):
                 current = result
-            else:
-                current = context
+            if runner is not None and self._spell_version_seen != runner.spell_version:
+                self.reload_spells()
+                current = dataclasses.replace(current, spells=self._state.spells)
             if self._callbacks is not None and self._callbacks.prepare_next_turn:
                 current = await self._callbacks.prepare_next_turn(current)
             return current
@@ -1312,6 +1409,7 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             after_invocation=after_invocation,
             should_stop_after_turn=should_stop_after_turn,
             prepare_next_turn=prepare_next_turn,
+            before_provider_request=before_provider_request,
         )
 
     async def _emit(self, event: MvgeEvent) -> None:

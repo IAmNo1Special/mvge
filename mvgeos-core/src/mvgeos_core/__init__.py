@@ -89,10 +89,20 @@ from mvgeos_core.loop import (
     run_loop,
 )
 from mvgeos_core.sandbox import MvgeSandbox, SandboxTimeoutError
-from mvgeos_core.spell_schema import generate_spell_schema
+from mvgeos_core.spell_schema import (
+    find_context_parameter,
+    generate_spell_schema,
+    inject_casting_rationale_schema,
+    invoke_spell_callable,
+    unwrap_callable,
+)
 from mvgeos_core.spells import (
+    ExecResult,
+    ExecutionBackend,
     ExecutionMode,
+    LocalExecutionBackend,
     MvgeSpell,
+    SpellContext,
     SpellExecutionMode,
     SpellResult,
     SpellResultMessage,
@@ -126,7 +136,10 @@ __all__ = [
     "GLOBAL_DIR_ENV",
     "EmitSink",
     "EventBus",
+    "ExecResult",
+    "ExecutionBackend",
     "ExecutionMode",
+    "LocalExecutionBackend",
     "PROJECT_RUNE_PATH",
     "PROJECT_SKILL_PATH",
     "agent_dir",
@@ -137,8 +150,11 @@ __all__ = [
     "approval_dir",
     "auth_dir",
     "auth_file",
+    "find_context_parameter",
     "global_file",
     "history_file",
+    "inject_casting_rationale_schema",
+    "invoke_spell_callable",
     "models_file",
     "project_skills_dir",
     "skills_dir",
@@ -165,6 +181,7 @@ __all__ = [
     "ResolvedLayer",
     "SCOPE_PRECEDENCE",
     "SandboxTimeoutError",
+    "SpellContext",
     "SpellDispatcher",
     "SpellDiscoveryError",
     "SpellExecutionMode",
@@ -190,4 +207,5 @@ __all__ = [
     "sessions_dir",
     "run_loop",
     "to_error",
+    "unwrap_callable",
 ]

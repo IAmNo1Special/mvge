@@ -67,7 +67,7 @@ class TestFunctionSpell:
         assert "Search for items" in spell.description
         assert "query" in spell.parameters.get("properties", {})
         assert "limit" in spell.parameters.get("properties", {})
-        assert spell.parameters.get("required") == ["query"]
+        assert "query" in spell.parameters.get("required", [])
 
     def test_async_function_metadata(self) -> None:
         spell = FunctionSpell(

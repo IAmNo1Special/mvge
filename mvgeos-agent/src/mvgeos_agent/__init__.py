@@ -24,8 +24,12 @@ from mvgeos_agent.function_spell import (
 )
 from mvgeos_agent.harness import MvgeHarness
 from mvgeos_agent.installer import (
+    DEFAULT_PROFILES,
+    ProfileInstallResult,
     fetch_marketplace_mvges,
+    fetch_marketplace_profiles,
     install_mvge,
+    install_profile,
     list_installed_mvges,
     uninstall_mvge,
 )
@@ -41,6 +45,12 @@ from mvgeos_agent.snapshot import (
     SnapshotSpell,
     SpellSource,
 )
+from mvgeos_agent.sub_mvge import (
+    SubMvgeManager,
+    SubMvgeRecord,
+    SubMvgeSpec,
+    SubMvgeState,
+)
 
 __all__ = [
     "AgentConfig",
@@ -48,6 +58,7 @@ __all__ = [
     "CommandAction",
     "CommandDispatcher",
     "CommandOutcome",
+    "DEFAULT_PROFILES",
     "FunctionSpell",
     "Mvge",
     "MvgeAgent",
@@ -56,6 +67,7 @@ __all__ = [
     "MvgeTome",
     "PEP723Metadata",
     "PEP723ScriptSpell",
+    "ProfileInstallResult",
     "PromptSource",
     "ResolvedPrompt",
     "ReloadResult",
@@ -70,10 +82,16 @@ __all__ = [
     "SnapshotSpell",
     "SpellSource",
     "SpellUnion",
+    "SubMvgeManager",
+    "SubMvgeRecord",
+    "SubMvgeSpec",
+    "SubMvgeState",
     "coerce_spell",
     "discover_spells_from_dir",
     "fetch_marketplace_mvges",
+    "fetch_marketplace_profiles",
     "install_mvge",
+    "install_profile",
     "list_installed_mvges",
     "load_api_key_from_auth",
     "parse_pep723_metadata",

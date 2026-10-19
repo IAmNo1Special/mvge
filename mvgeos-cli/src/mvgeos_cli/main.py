@@ -70,6 +70,7 @@ from mvgeos_cli.formatting import (
     landed_work_of,
     transcript_length,
 )
+from mvgeos_cli.rpc import run_rpc
 
 console = get_console()
 
@@ -103,6 +104,56 @@ async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
         return 1
 
 
+def _maybe_bootstrap_profile(
+    bootstrap: bool | None = None,
+    is_interactive: bool = False,
+) -> bool:
+    """Prompt or bootstrap the default 'coding' profile when no agents are installed."""
+    from mvgeos_agent.agent_name import installed_agent_names
+    from mvgeos_agent.installer import install_profile
+
+    if installed_agent_names():
+        return False
+
+    if bootstrap is False:
+        return False
+
+    should_install = False
+    if bootstrap is True:
+        should_install = True
+    elif is_interactive:
+        at_a_terminal = sys.stdin.isatty() and sys.stdout.isatty()
+        if at_a_terminal:
+            try:
+                answer = (
+                    input(
+                        "No agent (Mvge) installed. Would you like to bootstrap "
+                        "the 'coding' profile from the marketplace now? [Y/n]: "
+                    )
+                    .strip()
+                    .lower()
+                )
+                should_install = answer in ("", "y", "yes")
+            except (EOFError, KeyboardInterrupt):
+                should_install = False
+
+    if should_install:
+        console.print("[dim]Bootstrapping 'coding' profile from marketplace...[/dim]")
+        try:
+            res = install_profile("coding")
+            console.print(
+                f"[green]Successfully bootstrapped 'coding' profile "
+                f"({len(res.installed_mvges)} mvges, "
+                f"{len(res.installed_runes)} runes installed). "
+                "Starting session...[/green]"
+            )
+            return True
+        except Exception as exc:
+            console.print(format_error(f"Failed to bootstrap profile: {exc}"))
+            return False
+    return False
+
+
 async def _run_agent(
     incantation: str | None,
     model_id: str | None,
@@ -121,9 +172,30 @@ async def _run_agent(
     agent_factory: AgentFactory | None = None,
     approval_mode: str | None = None,
     realm_install_attempted: bool = False,
+    mode: str = "auto",
+    bootstrap: bool | None = None,
 ) -> int:
     prompts_out = ([incantation] if incantation else []) + (prompts or [])
-    mode: ApprovalMode = resolve_approval_mode(approval_mode)
+    approval_mode_val: ApprovalMode = resolve_approval_mode(approval_mode)
+
+    execution_mode = (
+        "rpc"
+        if mode == "rpc"
+        else (
+            "tui"
+            if (mode == "tui" or tui)
+            else ("text" if (mode == "text" or prompts_out) else "repl")
+        )
+    )
+    is_interactive = not prompts_out and execution_mode not in ("rpc", "text")
+
+    if (
+        _maybe_bootstrap_profile(bootstrap=bootstrap, is_interactive=is_interactive)
+        and agent_name == DEFAULT_AGENT_NAME
+    ):
+        from mvgeos_agent.agent_name import resolve_active_agent_name
+
+        agent_name = resolve_active_agent_name(DEFAULT_AGENT_NAME)
 
     overrides: dict[str, Any] = {}
     if model_id is not None:
@@ -204,9 +276,9 @@ async def _run_agent(
                 provider_name = getattr(active_realm, "realm_name", None)
 
         if approval_mode is not None:
-            notice = approval_mode_notice(mode)
+            notice = approval_mode_notice(approval_mode_val)
             if notice is not None:
-                style = "yellow" if mode == "allow-all" else "dim"
+                style = "yellow" if approval_mode_val == "allow-all" else "dim"
                 console.print(f"[{style}]{notice}[/{style}]")
         if tui and not prompts_out:
             console.print(
@@ -214,6 +286,24 @@ async def _run_agent(
                 "gated spell casts will be denied. Use the REPL for "
                 "interactive approval.[/dim]"
             )
+        if execution_mode == "rpc":
+            validate_api_key(api_key, model_id=model_id)
+            agent = await _create_agent(
+                model=model_id,
+                api_key=api_key,
+                spells=spells_joined,
+                extension_dir=extension_dir,
+                tome_dir=tome_dir,
+                resume=resume,
+                provider=provider_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                contemplation=contemplation_level,
+                agent_name=agent_name,
+                agent_factory=agent_factory,
+            )
+            return await run_rpc(agent)
+
         if not prompts_out:
             if tui:
                 await run_tui(
@@ -268,7 +358,7 @@ async def _run_agent(
             agent_name=agent_name,
             agent_factory=agent_factory,
         )
-        presenter = CliApprovalPresenter(mode=mode)
+        presenter = CliApprovalPresenter(mode=approval_mode_val)
         # getattr: a custom agent_factory may return an agent without the
         # engine runner accessor; that is a missing slot (warn, fail
         # closed), not a crash.
@@ -352,6 +442,8 @@ async def _run_agent(
                     agent_factory=agent_factory,
                     approval_mode=approval_mode,
                     realm_install_attempted=True,
+                    mode=mode,
+                    bootstrap=bootstrap,
                 )
             except Exception as install_exc:
                 console.print(format_error(install_exc))
@@ -515,6 +607,19 @@ def _repl_callback(
             "environment variables never grant approval."
         ),
     ),
+    mode: str = typer.Option(
+        "auto",
+        "--mode",
+        help=(
+            "Execution mode: 'auto' (text or tui based on --tui), "
+            "'text', 'tui', or 'rpc' (headless stdio JSONL RPC)"
+        ),
+    ),
+    bootstrap: bool | None = typer.Option(
+        None,
+        "--bootstrap/--no-bootstrap",
+        help="Bootstrap the default 'coding' profile when no agents are installed",
+    ),
 ) -> None:
     """Launch the MvgeOS interactive REPL, or run a single prompt."""
     if ctx.invoked_subcommand is not None:
@@ -600,6 +705,8 @@ def _repl_callback(
             agent_name=agent_name,
             prompts=prompts,
             approval_mode=approval_mode,
+            mode=mode,
+            bootstrap=bootstrap,
         )
     )
     if code:

@@ -8,6 +8,7 @@ from mvgeos_agent.environment import MvgeEnvironment
 from mvgeos_agent.mvge import Mvge
 from mvgeos_core.layers import resolve_rune_layers, resolve_rune_paths
 from mvgeos_runes.loader import load_runes_from_paths
+from mvgeos_runes.trust import WorkspaceTrustStatus, WorkspaceTrustStore
 from typer.testing import CliRunner
 
 from mvgeos_cli.dynamic_commands import (
@@ -143,6 +144,7 @@ class TestLoadingAndDiscoveryAgree:
                 encoding="utf-8",
             )
         monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+        WorkspaceTrustStore().set_trust(project, WorkspaceTrustStatus.TRUSTED)
         return {"global_dir": global_dir, "project": project}
 
     def test_discovery_dirs_equal_the_resolved_rune_stack(

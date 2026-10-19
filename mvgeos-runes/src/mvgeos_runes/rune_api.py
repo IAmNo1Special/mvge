@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -12,6 +12,7 @@ from mvgeos_core.approval import (
     ApprovalRequest,
     SpellGateHandler,
 )
+from mvgeos_core.spells import MvgeSpell
 
 from mvgeos_runes.rune_audit import (
     AuditError,
@@ -22,6 +23,7 @@ from mvgeos_runes.rune_audit import (
 from mvgeos_runes.types import (
     RegisteredCommand,
     RuneContext,
+    RuneDisposableScope,
     RuneShortcut,
     Sandbox,
     SigilHook,
@@ -53,6 +55,24 @@ class RuneAPI:
         # Engine-owned: the rune-op audit log. Defaults to the user-scope
         # ``.agents/extensions/audit.jsonl``; injectable for tests.
         self._audit_log = audit_log or RuneAuditLog(default_rune_ops_dir())
+        self._disposable_scope = (
+            runner.get_or_create_scope(rune_name)
+            if rune_name is not None
+            else RuneDisposableScope(rune_name="anonymous")
+        )
+
+    @property
+    def scope(self) -> RuneDisposableScope:
+        return self._disposable_scope
+
+    def on_dispose(self, callback: Callable[[], Any]) -> None:
+        """Register a cleanup callback invoked when this rune is unloaded."""
+        self._disposable_scope.cleanup_callbacks.append(callback)
+
+    def unregister_spell(self, name: str) -> bool:
+        """Unregister a single spell previously registered by this rune."""
+        self._disposable_scope.spell_names.discard(name)
+        return self._runner.unregister_spell(name, rune_name=self._rune_name)
 
     @property
     def install_id(self) -> str | None:
@@ -75,6 +95,7 @@ class RuneAPI:
         return self._runner.context
 
     def on(self, hook: SigilHook, handler: Any) -> None:
+        self._disposable_scope.sigil_handlers.append((hook, handler))
         self._runner.register_handler(hook, handler, rune_name=self._rune_name)
 
     def register_spell_gate(self, handler: SpellGateHandler) -> None:
@@ -85,6 +106,7 @@ class RuneAPI:
         malformed response denies the cast. This is the approval path; the
         fail-open ``BEFORE_SPELL_CAST`` hook cannot substitute for it.
         """
+        self._disposable_scope.installed_spell_gate = True
         self._runner.register_spell_gate(handler, rune_name=self._rune_name)
 
     async def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
@@ -96,10 +118,15 @@ class RuneAPI:
         """
         return await self._runner.request_approval(request)
 
-    def register_spell(self, spell: SpellDefinition, override: bool = False) -> bool:
-        return self._runner.register_spell(
+    def register_spell(
+        self, spell: SpellDefinition | MvgeSpell, override: bool = False
+    ) -> bool:
+        ok = self._runner.register_spell(
             spell, self._rune_name, override=override or self._override
         )
+        if ok:
+            self._disposable_scope.spell_names.add(spell.name)
+        return ok
 
     def register_command(
         self,
@@ -108,10 +135,13 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
-        return self._runner.register_command(
+        ok = self._runner.register_command(
             RegisteredCommand(name=name, description=description, handler=handler),
             override=override or self._override,
         )
+        if ok:
+            self._disposable_scope.commands.add(name)
+        return ok
 
     def register_shortcut(
         self,
@@ -120,10 +150,13 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
-        return self._runner.register_shortcut(
+        ok = self._runner.register_shortcut(
             RuneShortcut(key=key, description=description, handler=handler),
             override=override or self._override,
         )
+        if ok:
+            self._disposable_scope.shortcuts.add(key)
+        return ok
 
     def register_provider(
         self,
@@ -131,9 +164,12 @@ class RuneAPI:
         config: dict[str, Any],
         override: bool = False,
     ) -> bool:
-        return self._runner.register_provider(
+        ok = self._runner.register_provider(
             name, config, override=override or self._override
         )
+        if ok:
+            self._disposable_scope.providers.add(name)
+        return ok
 
     def get_registered_providers(
         self,
@@ -146,12 +182,15 @@ class RuneAPI:
         factory: Any,
         override: bool = False,
     ) -> bool:
-        return self._runner.register_realm_factory(
+        ok = self._runner.register_realm_factory(
             prefix,
             factory,
             rune_name=self._rune_name,
             override=override or self._override,
         )
+        if ok:
+            self._disposable_scope.realm_factories.add(prefix)
+        return ok
 
     def get_registered_realm_factories(
         self,
@@ -190,7 +229,23 @@ class RuneAPI:
             return
         self._runner.widen_global_allowlist(spell_names)
 
-    def get_all_spells(self) -> list[SpellDefinition]:
+    def narrow_global_allowlist(self, spell_names: Iterable[str]) -> list[str]:
+        """Narrow the engine's global spell filter by removing names.
+
+        Names belonging to the designated gateway rune cannot be removed.
+        """
+        return self._runner.narrow_global_allowlist(spell_names)
+
+    @property
+    def has_spell_gateway(self) -> bool:
+        """Whether a spell-gateway rune has been designated on the runner."""
+        return self._runner.has_spell_gateway
+
+    def get_discoverable_spells(self) -> list[Any]:
+        """All non-gateway builtin spells + all enabled non-gateway Rune spells."""
+        return self._runner.get_discoverable_spells()
+
+    def get_all_spells(self) -> list[SpellDefinition | MvgeSpell]:
         return self._runner.get_all_registered_spells()
 
     def get_shortcuts(self) -> list[RuneShortcut]:

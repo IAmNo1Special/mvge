@@ -8,8 +8,8 @@ def test_generate_empty_params() -> None:
         return "ok"
 
     schema = generate_spell_schema(no_params)
-    assert schema["properties"] == {}
-    assert "required" not in schema or schema["required"] == []
+    assert set(schema["properties"].keys()) == {"spell_action", "spell_summary"}
+    assert schema["required"] == ["spell_action", "spell_summary"]
 
 
 def test_generate_with_all_param_types() -> None:

@@ -24,6 +24,13 @@ from mvgeos_runes.rune_audit import (
 from mvgeos_runes.rune_runner import RuneRunner
 from mvgeos_runes.skill_catalog import SkillCatalog
 from mvgeos_runes.skill_installer import install_skill
+from mvgeos_runes.trust import (
+    WorkspaceTrustRecord,
+    WorkspaceTrustStatus,
+    WorkspaceTrustStore,
+    canonicalize_workspace_path,
+    compute_project_agents_digest,
+)
 from mvgeos_runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -31,11 +38,13 @@ from mvgeos_runes.types import (
     RegisteredCommand,
     ResourcesDiscoverData,
     RuneContext,
+    RuneDisposableScope,
     RuneLoad,
     RuneManifest,
     RuneScope,
     RuneShortcut,
     Scope,
+    SessionLeafChangedData,
     SigilHook,
     SkillDiagnostic,
     SkillDiagnosticKind,
@@ -59,6 +68,7 @@ __all__ = [
     "RuneAPI",
     "RuneAuditLog",
     "RuneContext",
+    "RuneDisposableScope",
     "RuneFactory",
     "RuneLoad",
     "RuneManifest",
@@ -67,6 +77,7 @@ __all__ = [
     "RuneShortcut",
     "RuneWatcher",
     "Scope",
+    "SessionLeafChangedData",
     "SigilHook",
     "SkillCatalog",
     "SkillDiagnostic",
@@ -86,4 +97,9 @@ __all__ = [
     "set_rune_enabled",
     "install_skill",
     "uninstall_rune",
+    "WorkspaceTrustRecord",
+    "WorkspaceTrustStatus",
+    "WorkspaceTrustStore",
+    "canonicalize_workspace_path",
+    "compute_project_agents_digest",
 ]

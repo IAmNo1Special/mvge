@@ -366,3 +366,49 @@ def test_setup_install_cli() -> None:
     with patch("mvgeos_cli.commands.setup.install_missing_deps", return_value=1):
         res_fail = runner.invoke(setup_app, ["install", "--yes"])
         assert res_fail.exit_code == 1
+
+
+def test_setup_profile_command_success() -> None:
+    from mvgeos_agent.installer import ProfileInstallResult
+
+    runner = CliRunner()
+    mock_res = ProfileInstallResult(
+        profile="coding",
+        installed_mvges=["coding_mvge"],
+        installed_runes=["seeker", "skills-bridge"],
+        skipped_mvges=[],
+        skipped_runes=[],
+    )
+    with patch("mvgeos_agent.installer.install_profile", return_value=mock_res):
+        res = runner.invoke(setup_app, ["profile", "coding", "--yes"])
+        assert res.exit_code == 0
+        assert "Successfully installed profile 'coding'" in res.output
+        assert "coding_mvge" in res.output
+
+
+def test_setup_profile_command_flag_syntax() -> None:
+    from mvgeos_agent.installer import ProfileInstallResult
+
+    runner = CliRunner()
+    mock_res = ProfileInstallResult(
+        profile="minimal",
+        installed_mvges=["coding_mvge"],
+        installed_runes=["approval-rune"],
+        skipped_mvges=[],
+        skipped_runes=[],
+    )
+    with patch("mvgeos_agent.installer.install_profile", return_value=mock_res):
+        res = runner.invoke(setup_app, ["--profile", "minimal"])
+        assert res.exit_code == 0
+        assert "Successfully installed profile 'minimal'" in res.output
+
+
+def test_setup_profile_command_failure() -> None:
+    runner = CliRunner()
+    with patch(
+        "mvgeos_agent.installer.install_profile",
+        side_effect=ValueError("Unknown profile 'fake'"),
+    ):
+        res = runner.invoke(setup_app, ["profile", "fake"])
+        assert res.exit_code == 1
+        assert "Failed to install profile 'fake'" in res.output

@@ -90,6 +90,10 @@ class ApprovalRequest:
     # allow rule against it, and presenters must show an "unvalidated
     # arguments" warning.
     schema_validated: bool = True
+    spell_action: str = ""
+    spell_summary: str = ""
+    sub_mvge_id: str | None = None
+    parent_spell_cast_id: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "spell_identity", _freeze_mapping(self.spell_identity))

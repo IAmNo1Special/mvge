@@ -19,9 +19,15 @@ from mvgeos_core.abort import (
     AbortSignal,
 )
 from mvgeos_core.errors import SpellDiscoveryError
-from mvgeos_core.spell_schema import generate_spell_schema
+from mvgeos_core.spell_schema import (
+    find_context_parameter,
+    generate_spell_schema,
+    invoke_spell_callable,
+    unwrap_callable,
+)
 from mvgeos_core.spells import (
     MvgeSpell,
+    SpellContext,
     SpellExecutionMode,
     SpellResult,
     SpellStatus,
@@ -163,6 +169,7 @@ class PEP723ScriptSpell(MvgeSpell):
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
+        ctx: SpellContext | None = None,
     ) -> str | SpellResult:
         if signal is not None and getattr(signal, "aborted", False):
             raise AbortError("Operation aborted")
@@ -256,7 +263,7 @@ class RuneSpellWrapper(MvgeSpell):
     """Adapter converting a Rune SpellDefinition into an executable MvgeSpell."""
 
     def __init__(
-        self, spell_def: SpellDefinition, *, runner_origin: bool = True
+        self, spell_def: SpellDefinition | MvgeSpell, *, runner_origin: bool = True
     ) -> None:
         super().__init__(
             name=spell_def.name,
@@ -284,7 +291,7 @@ class RuneSpellWrapper(MvgeSpell):
         return getattr(self._spell_def, "source_rune", None)
 
     @property
-    def spell_def(self) -> SpellDefinition:
+    def spell_def(self) -> SpellDefinition | MvgeSpell:
         return self._spell_def
 
     async def execute(
@@ -293,8 +300,11 @@ class RuneSpellWrapper(MvgeSpell):
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
+        ctx: SpellContext | None = None,
     ) -> Any:
-        return await self._spell_def.execute(spell_cast_id, params, signal, on_update)
+        return await self._spell_def.execute(
+            spell_cast_id, params, signal=signal, on_update=on_update, ctx=ctx
+        )
 
 
 class FunctionSpell(MvgeSpell):
@@ -342,6 +352,7 @@ class FunctionSpell(MvgeSpell):
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
+        ctx: SpellContext | None = None,
     ) -> str | SpellResult:
         if signal is not None and getattr(signal, "aborted", False):
             raise AbortError("Operation aborted")
@@ -350,18 +361,30 @@ class FunctionSpell(MvgeSpell):
         args = {k: v for k, v in validated.items() if v is not None}
 
         try:
-            func_params = inspect.signature(self.func).parameters
+            unwrapped = unwrap_callable(self.func)
+            func_params = inspect.signature(unwrapped).parameters
+            has_var_kw = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in func_params.values()
+            )
+            ctx_param = find_context_parameter(unwrapped)
+            if ctx_param is not None and ctx is not None:
+                args[ctx_param] = ctx
             if "signal" in func_params and signal is not None:
                 args["signal"] = signal
             if "on_update" in func_params and on_update is not None:
                 args["on_update"] = on_update
+            if "spell_cast_id" in func_params and spell_cast_id is not None:
+                args["spell_cast_id"] = spell_cast_id
+
+            if not has_var_kw:
+                if "spell_action" not in func_params:
+                    args.pop("spell_action", None)
+                if "spell_summary" not in func_params:
+                    args.pop("spell_summary", None)
         except (ValueError, TypeError):
             pass
 
-        if inspect.iscoroutinefunction(self.func):
-            result = await self.func(**args)
-        else:
-            result = await asyncio.to_thread(self.func, **args)
+        result = await invoke_spell_callable(self.func, **args)
 
         if isinstance(result, (SpellResult, str)):
             return result

@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import dataclasses
+import inspect
 import logging
 import traceback
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from mvgeos_core.approval import (
     allow,
     deny,
 )
+from mvgeos_core.spells import MvgeSpell
 
 from mvgeos_runes.installer import read_or_create_install_id
 from mvgeos_runes.loader import load_factory_from_manifest
@@ -30,6 +32,7 @@ from mvgeos_runes.types import (
     DiagnosticKind,
     RegisteredCommand,
     RuneContext,
+    RuneDisposableScope,
     RuneLoad,
     RuneManifest,
     RuneShortcut,
@@ -55,6 +58,10 @@ async def _call_handler_async(handler: Any, hook: SigilHook, data: Any) -> Any:
     if isinstance(result, Awaitable):
         result = await result
     return result
+
+
+async def _safe_await(awaitable: Any) -> Any:
+    return await awaitable
 
 
 async def _safe_call_handler_async(
@@ -109,7 +116,7 @@ Handler = Callable[..., Any | None | Awaitable[Any | None]]
 class RuneRunner:
     def __init__(self, sandbox_factory: Callable[[], Sandbox] | None = None) -> None:
         self._sigil_handlers: dict[SigilHook, list[Handler]] = {}
-        self._spells: dict[str, SpellDefinition] = {}
+        self._spells: dict[str, SpellDefinition | MvgeSpell] = {}
         self._commands: dict[str, RegisteredCommand] = {}
         self._shortcuts: dict[str, RuneShortcut] = {}
         self._providers: dict[str, dict[str, Any]] = {}
@@ -163,6 +170,8 @@ class RuneRunner:
         # shutdown can never orphan a pending approval future.
         self._presenter_generation: int = 0
         self._pending_approvals: set[asyncio.Future[None]] = set()
+        self._presenter_lock: asyncio.Lock = asyncio.Lock()
+        self._disposable_scopes: dict[str, RuneDisposableScope] = {}
 
     @property
     def context(self) -> RuneContext:
@@ -226,8 +235,41 @@ class RuneRunner:
                 handler
             )
 
-    def clear_rune(self, rune_name: str) -> None:
-        """Clear registrations and handlers associated with a rune before reload."""
+    def get_or_create_scope(self, rune_name: str) -> RuneDisposableScope:
+        """Get or create the disposable registration scope for a rune."""
+        if rune_name not in self._disposable_scopes:
+            self._disposable_scopes[rune_name] = RuneDisposableScope(
+                rune_name=rune_name
+            )
+        return self._disposable_scopes[rune_name]
+
+    def get_rune_scope(self, rune_name: str) -> RuneDisposableScope | None:
+        """Get the disposable registration scope for a rune if created."""
+        return self._disposable_scopes.get(rune_name)
+
+    def unregister_spell(self, name: str, rune_name: str | None = None) -> bool:
+        """Unregister a single spell from the runner."""
+        if name not in self._spells:
+            return False
+        spell = self._spells[name]
+        if rune_name is not None and getattr(spell, "source_rune", None) != rune_name:
+            return False
+        del self._spells[name]
+        if rune_name and rune_name in self._active_spells_by_rune:
+            self._active_spells_by_rune[rune_name].discard(name)
+        if (
+            self._global_spell_allowlist is not None
+            and name in self._global_spell_allowlist
+        ):
+            self._global_spell_allowlist = [
+                s for s in self._global_spell_allowlist if s != name
+            ]
+        if rune_name and rune_name in self._disposable_scopes:
+            self._disposable_scopes[rune_name].spell_names.discard(name)
+        self._spell_version += 1
+        return True
+
+    def _cleanup_residual_rune_registrations(self, rune_name: str) -> None:
         to_remove_spells = [
             k
             for k, v in self._spells.items()
@@ -235,6 +277,10 @@ class RuneRunner:
         ]
         for k in to_remove_spells:
             del self._spells[k]
+            if self._global_spell_allowlist is not None:
+                self._global_spell_allowlist = [
+                    s for s in self._global_spell_allowlist if s != k
+                ]
         if rune_name in self._active_spells_by_rune:
             del self._active_spells_by_rune[rune_name]
         self._pinned_runes.discard(rune_name)
@@ -268,6 +314,89 @@ class RuneRunner:
         self._rune_instances.pop(rune_name, None)
         self._spell_version += 1
 
+    def clear_rune(self, rune_name: str) -> None:
+        """Clear registrations and handlers associated with a rune before reload."""
+        scope = self._disposable_scopes.pop(rune_name, None)
+        if scope is not None:
+            for cb in scope.cleanup_callbacks:
+                try:
+                    res = cb()
+                    if inspect.isawaitable(res):
+                        coro = _safe_await(res)
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.create_task(coro)
+                        except RuntimeError:
+                            asyncio.run(coro)
+                except Exception as exc:
+                    logger.warning(
+                        "Error in cleanup callback for rune %s: %s", rune_name, exc
+                    )
+            for sname in list(scope.spell_names):
+                if sname in self._spells:
+                    del self._spells[sname]
+                if self._global_spell_allowlist is not None:
+                    self._global_spell_allowlist = [
+                        s for s in self._global_spell_allowlist if s != sname
+                    ]
+            for hook, handler in scope.sigil_handlers:
+                handlers = self._sigil_handlers.get(hook)
+                if handlers is not None and handler in handlers:
+                    handlers.remove(handler)
+            for cmd in scope.commands:
+                self._commands.pop(cmd, None)
+            for sc in scope.shortcuts:
+                self._shortcuts.pop(sc, None)
+            for prov in scope.providers:
+                self._providers.pop(prov, None)
+            for rf in scope.realm_factories:
+                self._realm_factories.pop(rf, None)
+            if scope.installed_spell_gate:
+                self._spell_gates = [
+                    (h, owner) for h, owner in self._spell_gates if owner != rune_name
+                ]
+
+        self._cleanup_residual_rune_registrations(rune_name)
+
+    async def unload_rune(self, rune_name: str) -> None:
+        """Asynchronously unload a rune and invoke all on_dispose callbacks."""
+        scope = self._disposable_scopes.pop(rune_name, None)
+        if scope is not None:
+            for cb in scope.cleanup_callbacks:
+                try:
+                    res = cb()
+                    if inspect.isawaitable(res):
+                        await res
+                except Exception as exc:
+                    logger.warning(
+                        "Error in cleanup callback for rune %s: %s", rune_name, exc
+                    )
+            for sname in list(scope.spell_names):
+                if sname in self._spells:
+                    del self._spells[sname]
+                if self._global_spell_allowlist is not None:
+                    self._global_spell_allowlist = [
+                        s for s in self._global_spell_allowlist if s != sname
+                    ]
+            for hook, handler in scope.sigil_handlers:
+                handlers = self._sigil_handlers.get(hook)
+                if handlers is not None and handler in handlers:
+                    handlers.remove(handler)
+            for cmd in scope.commands:
+                self._commands.pop(cmd, None)
+            for sc in scope.shortcuts:
+                self._shortcuts.pop(sc, None)
+            for prov in scope.providers:
+                self._providers.pop(prov, None)
+            for rf in scope.realm_factories:
+                self._realm_factories.pop(rf, None)
+            if scope.installed_spell_gate:
+                self._spell_gates = [
+                    (h, owner) for h, owner in self._spell_gates if owner != rune_name
+                ]
+
+        self._cleanup_residual_rune_registrations(rune_name)
+
     async def refresh_runes(self, extensions_dirs: Sequence[Path]) -> list[Diagnostic]:
         """Clear and re-execute every rune factory across the given dirs.
 
@@ -279,6 +408,7 @@ class RuneRunner:
         instead of aborting the refresh.
         """
         diagnostics: list[Diagnostic] = []
+        candidates: list[tuple[RuneManifest, Path, Any]] = []
         for extensions_dir in extensions_dirs:
             if not extensions_dir.is_dir():
                 continue
@@ -302,34 +432,40 @@ class RuneRunner:
                 )
                 if factory is None:
                     continue
-                self.clear_rune(manifest.name)
-                self._loaded_manifests = [
-                    m for m in self._loaded_manifests if m.name != manifest.name
-                ]
-                self._loaded_manifests.append(manifest)
-                self._loaded_rune_names.add(manifest.name)
-                for sc in manifest.shortcuts:
-                    self.register_shortcut(sc, override=True)
-                self._current_loading_rune = manifest.name
-                api = self.create_api(rune_name=manifest.name, override=True)
-                try:
-                    result = factory(api)
-                    if isinstance(result, Awaitable):
-                        result = await result
-                except Exception as exc:
-                    diagnostics.append(
-                        Diagnostic(
-                            kind=DiagnosticKind.LOAD_FAILURE,
-                            rune_name=manifest.name,
-                            message=f"Factory raised during refresh: {exc}",
-                            path=str(child),
-                        )
+                candidates.append((manifest, child, factory))
+
+        partitioned = [c for c in candidates if not c[0].spell_gateway] + [
+            c for c in candidates if c[0].spell_gateway
+        ]
+        for manifest, child, factory in partitioned:
+            self.clear_rune(manifest.name)
+            self._loaded_manifests = [
+                m for m in self._loaded_manifests if m.name != manifest.name
+            ]
+            self._loaded_manifests.append(manifest)
+            self._loaded_rune_names.add(manifest.name)
+            for sc in manifest.shortcuts:
+                self.register_shortcut(sc, override=True)
+            self._current_loading_rune = manifest.name
+            api = self.create_api(rune_name=manifest.name, override=True)
+            try:
+                result = factory(api)
+                if isinstance(result, Awaitable):
+                    result = await result
+            except Exception as exc:
+                diagnostics.append(
+                    Diagnostic(
+                        kind=DiagnosticKind.LOAD_FAILURE,
+                        rune_name=manifest.name,
+                        message=f"Factory raised during refresh: {exc}",
+                        path=str(child),
                     )
-                    continue
-                finally:
-                    self._current_loading_rune = None
-                if result is not None:
-                    self._rune_instances[manifest.name] = result
+                )
+                continue
+            finally:
+                self._current_loading_rune = None
+            if result is not None:
+                self._rune_instances[manifest.name] = result
         self._designate_spell_gateway()
         return diagnostics
 
@@ -410,6 +546,24 @@ class RuneRunner:
         self._context = dataclasses.replace(self._context, has_ui=True)
         self._invalidate_pending_approvals()
 
+    @property
+    def approval_presenter(self) -> ApprovalPresenter | None:
+        """The currently bound approval presenter, if any."""
+        return self._approval_presenter
+
+    @property
+    def presenter_lock(self) -> asyncio.Lock:
+        """The serialization mutex for approval presentation."""
+        return self._presenter_lock
+
+    def share_approval_presenter_from(self, other: RuneRunner) -> None:
+        """Share approval presenter and mutex lock from another runner."""
+        self._approval_presenter = other._approval_presenter
+        self._presenter_lock = other._presenter_lock
+        self._context = dataclasses.replace(
+            self._context, has_ui=other._approval_presenter is not None
+        )
+
     def clear_approval_presenter(self) -> None:
         """Unbind the presenter; pending requests resolve as denied."""
         self._approval_presenter = None
@@ -436,62 +590,64 @@ class RuneRunner:
         slot. With no presenter bound (headless/CI) the request is denied.
         If the host rebinds or unbinds the presenter while a request is
         pending, the request resolves as denied immediately instead of
-        waiting on the orphaned presenter.
+        waiting on the orphaned presenter. Concurrent requests serialize
+        through _presenter_lock.
         """
-        presenter = self._approval_presenter
-        if presenter is None:
-            return deny(request, ApprovalReasonCode.FAILURE)
-        generation = self._presenter_generation
-        invalidated = asyncio.get_running_loop().create_future()
-        self._pending_approvals.add(invalidated)
-        task = asyncio.ensure_future(presenter(request))
-        try:
-            try:
-                done, _ = await asyncio.wait(
-                    {task, invalidated}, return_when=asyncio.FIRST_COMPLETED
-                )
-            except asyncio.CancelledError:
-                task.cancel()
+        async with self._presenter_lock:
+            presenter = self._approval_presenter
+            if presenter is None:
                 return deny(request, ApprovalReasonCode.FAILURE)
-            if invalidated in done:
-                # The slot changed mid-flight: the orphaned presenter task
-                # cannot authorize this request.
-                if not task.done():
+            generation = self._presenter_generation
+            invalidated = asyncio.get_running_loop().create_future()
+            self._pending_approvals.add(invalidated)
+            task = asyncio.ensure_future(presenter(request))
+            try:
+                try:
+                    done, _ = await asyncio.wait(
+                        {task, invalidated}, return_when=asyncio.FIRST_COMPLETED
+                    )
+                except asyncio.CancelledError:
                     task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError, Exception):
-                        await task
-                return deny(request, ApprovalReasonCode.FAILURE)
-            if (
-                self._presenter_generation != generation
-                or self._approval_presenter is not presenter
-            ):
-                return deny(request, ApprovalReasonCode.FAILURE)
-            try:
-                decision = task.result()
-            except asyncio.CancelledError:
-                return deny(request, ApprovalReasonCode.FAILURE)
-            except Exception:
-                logger.exception("Approval presenter raised; denying request")
-                return deny(request, ApprovalReasonCode.FAILURE)
-            if (
-                not isinstance(decision, ApprovalDecision)
-                or decision.request_digest != request.argument_digest
-            ):
-                return deny(request, ApprovalReasonCode.FAILURE)
-            if decision.outcome is ApprovalOutcome.ALLOW and (
-                self._context.session_id != request.tome_id
-                or self._context.project_root != request.project_root
-            ):
-                # The active Tome or project changed while the prompt was
-                # open: a late decision bound to the old context must not
-                # authorize the new one.
-                logger.warning(
-                    "Approval context changed mid-prompt; denying stale decision"
-                )
-                return deny(request, ApprovalReasonCode.FAILURE)
-            return decision
-        finally:
-            self._pending_approvals.discard(invalidated)
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                if invalidated in done:
+                    # The slot changed mid-flight: the orphaned presenter task
+                    # cannot authorize this request.
+                    if not task.done():
+                        task.cancel()
+                        with contextlib.suppress(asyncio.CancelledError, Exception):
+                            await task
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                if (
+                    self._presenter_generation != generation
+                    or self._approval_presenter is not presenter
+                ):
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                try:
+                    decision = task.result()
+                except asyncio.CancelledError:
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                except Exception:
+                    logger.exception("Approval presenter raised; denying request")
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                if (
+                    not isinstance(decision, ApprovalDecision)
+                    or decision.request_digest != request.argument_digest
+                ):
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                if decision.outcome is ApprovalOutcome.ALLOW and (
+                    self._context.session_id != request.tome_id
+                    or self._context.project_root != request.project_root
+                ):
+                    # The active Tome or project changed while the prompt was
+                    # open: a late decision bound to the old context must not
+                    # authorize the new one.
+                    logger.warning(
+                        "Approval context changed mid-prompt; denying stale decision"
+                    )
+                    return deny(request, ApprovalReasonCode.FAILURE)
+                return decision
+            finally:
+                self._pending_approvals.discard(invalidated)
 
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
@@ -502,7 +658,7 @@ class RuneRunner:
 
     def register_spell(
         self,
-        spell: SpellDefinition,
+        spell: SpellDefinition | MvgeSpell,
         rune_name: str | None = None,
         override: bool = False,
     ) -> bool:
@@ -520,7 +676,7 @@ class RuneRunner:
 
         if getattr(spell, "source_rune", None) is None and rune_name is not None:
             with contextlib.suppress(AttributeError):
-                spell.source_rune = rune_name
+                object.__setattr__(spell, "source_rune", rune_name)
         self._spells[spell.name] = spell
         # Seed the rune's own active set with every registered rune spell by
         # default, unless that rune has already pinned an explicit set. Other
@@ -572,10 +728,10 @@ class RuneRunner:
         """Return dict of prefix -> factory without rune attribution tuple."""
         return {k: v[0] for k, v in self._realm_factories.items()}
 
-    def get_all_registered_spells(self) -> list[SpellDefinition]:
+    def get_all_registered_spells(self) -> list[SpellDefinition | MvgeSpell]:
         return list(self._spells.values())
 
-    def get_spell(self, name: str) -> SpellDefinition | None:
+    def get_spell(self, name: str) -> SpellDefinition | MvgeSpell | None:
         return self._spells.get(name)
 
     def get_commands(self) -> list[RegisteredCommand]:
@@ -648,6 +804,35 @@ class RuneRunner:
             self._global_spell_allowlist = list(existing)
         self._spell_version += 1
 
+    def narrow_global_allowlist(self, spell_names: Iterable[str]) -> list[str]:
+        """Remove spell names from the existing global allowlist.
+
+        Names belonging to the designated gateway rune cannot be removed.
+        Returns the updated global spell allowlist (or empty list if None).
+        """
+        if self._global_spell_allowlist is None:
+            return []
+        gateway_spells = set(self.gateway_spell_names())
+        to_remove = set(spell_names) - gateway_spells
+        self._global_spell_allowlist = [
+            s for s in self._global_spell_allowlist if s not in to_remove
+        ]
+        self._spell_version += 1
+        return list(self._global_spell_allowlist)
+
+    def set_discoverable_builtin_spells(self, spells: Sequence[Any]) -> None:
+        """Register builtin engine spells as discoverable for gateway runes."""
+        self._discoverable_builtin_spells = list(spells)
+
+    def get_discoverable_spells(self) -> list[Any]:
+        """All non-gateway builtin spells + all enabled non-gateway Rune spells."""
+        result: list[Any] = list(getattr(self, "_discoverable_builtin_spells", []))
+        gateway_name = self._gateway_rune_name
+        for s in self._spells.values():
+            if getattr(s, "source_rune", None) != gateway_name:
+                result.append(s)
+        return result
+
     def send_message(self, content: str) -> None:
         self._message_queue.append(content)
 
@@ -690,7 +875,10 @@ class RuneRunner:
     ) -> None:
         if diagnostics is not None:
             self._diagnostics.extend(diagnostics)
-        for load in loads:
+        partitioned = [
+            load_item for load_item in loads if not load_item.manifest.spell_gateway
+        ] + [load_item for load_item in loads if load_item.manifest.spell_gateway]
+        for load in partitioned:
             if load.manifest.name in self._loaded_rune_names:
                 continue
             self._loaded_manifests.append(load.manifest)
@@ -737,6 +925,11 @@ class RuneRunner:
     def gateway_rune_name(self) -> str | None:
         """Name of the designated spell-gateway rune, if any."""
         return self._gateway_rune_name
+
+    @property
+    def has_spell_gateway(self) -> bool:
+        """Whether a spell-gateway rune has been designated."""
+        return self._gateway_rune_name is not None
 
     def gateway_spell_names(self) -> list[str]:
         """Spell names registered by the designated gateway rune.

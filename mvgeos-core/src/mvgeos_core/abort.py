@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 
 class AbortError(Exception):
@@ -22,6 +22,17 @@ class AbortSignal:
         self._aborted = False
         self._callbacks: list[Callable[[], None]] = []
         self._wait_future: asyncio.Future[None] | None = None
+
+    @classmethod
+    def any(cls, signals: Sequence[AbortSignal]) -> AbortSignal:
+        """Create an AbortSignal that aborts when any of the input signals aborts."""
+        controller = AbortController()
+        if any(s.aborted for s in signals):
+            controller.abort()
+            return controller.signal
+        for s in signals:
+            s.on_abort(controller.abort)
+        return controller.signal
 
     @property
     def aborted(self) -> bool:

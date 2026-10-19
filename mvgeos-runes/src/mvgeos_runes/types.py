@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -10,7 +11,12 @@ from mvgeos_core.abort import AbortSignal
 from mvgeos_core.invocations import MvgeInvocation
 from mvgeos_core.layers import RuneScope as RuneScope
 from mvgeos_core.layers import Scope as Scope
-from mvgeos_core.spells import ExecutionMode
+from mvgeos_core.spell_schema import (
+    find_context_parameter,
+    invoke_spell_callable,
+    unwrap_callable,
+)
+from mvgeos_core.spells import ExecutionMode, SpellContext
 
 
 @runtime_checkable
@@ -54,6 +60,7 @@ class SigilHook(StrEnum):
     SHOULD_STOP_AFTER_TURN = "should_stop_after_turn"
     PREPARE_NEXT_TURN = "prepare_next_turn"
     RESOURCES_DISCOVER = "resources_discover"
+    SESSION_LEAF_CHANGED = "session_leaf_changed"
 
 
 @dataclass
@@ -257,6 +264,17 @@ class ResourcesDiscoverData:
     prompt_paths: list[str | Path] = field(default_factory=list)
 
 
+@dataclass
+class SessionLeafChangedData:
+    """Data passed to SESSION_LEAF_CHANGED sigil hook."""
+
+    tome_id: str
+    old_leaf_id: str | None
+    new_leaf_id: str | None
+    reason: str  # "undo", "checkout", "fork"
+    workspace_root: str | None = None
+
+
 # Mapping from SigilHook to its typed data class
 SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.BEFORE_INVOCATION: BeforeInvocationData,
@@ -282,6 +300,7 @@ SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.SHOULD_STOP_AFTER_TURN: ShouldStopAfterTurnData,
     SigilHook.PREPARE_NEXT_TURN: PrepareNextTurnData,
     SigilHook.RESOURCES_DISCOVER: ResourcesDiscoverData,
+    SigilHook.SESSION_LEAF_CHANGED: SessionLeafChangedData,
 }
 
 
@@ -411,9 +430,25 @@ class RuneShortcut:
     handler: Any = None
 
 
+@dataclass
+class RuneDisposableScope:
+    """Disposable lifecycle registration scope for one rune."""
+
+    rune_name: str
+    spell_names: set[str] = field(default_factory=set)
+    sigil_handlers: list[tuple[SigilHook, Any]] = field(default_factory=list)
+    commands: set[str] = field(default_factory=set)
+    shortcuts: set[str] = field(default_factory=set)
+    providers: set[str] = field(default_factory=set)
+    realm_factories: set[str] = field(default_factory=set)
+    installed_spell_gate: bool = False
+    cleanup_callbacks: list[Callable[[], Any]] = field(default_factory=list)
+
+
 class DiagnosticKind(StrEnum):
     SHADOWED_RUNE = "shadowed_rune"
     LOAD_FAILURE = "load_failure"
+    LOAD_WARNING = "load_warning"
     PARSE_WARNING = "parse_warning"
     MISSING_DEP = "missing_dep"
     INCOMPATIBLE_SESSION = "incompatible_session"
@@ -467,21 +502,44 @@ class SpellDefinition:
         params: dict[str, Any],
         signal: AbortSignal | None = None,
         on_update: Any | None = None,
+        ctx: SpellContext | None = None,
     ) -> dict[str, Any]:
         if self._handler is not None:
-            sig = inspect.signature(self._handler)
-            if len(sig.parameters) >= 2 and list(sig.parameters.keys())[0] in (
+            unwrapped = unwrap_callable(self._handler)
+            sig = inspect.signature(unwrapped)
+            func_params = sig.parameters
+            has_var_kw = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in func_params.values()
+            )
+            ctx_param = find_context_parameter(unwrapped)
+
+            call_kwargs: dict[str, Any] = {}
+            if "signal" in func_params or has_var_kw:
+                call_kwargs["signal"] = signal
+            if "on_update" in func_params or has_var_kw:
+                call_kwargs["on_update"] = on_update
+            if ctx_param is not None and ctx is not None:
+                call_kwargs[ctx_param] = ctx
+
+            call_params = dict(params)
+            if not has_var_kw:
+                if "spell_action" not in func_params:
+                    call_params.pop("spell_action", None)
+                if "spell_summary" not in func_params:
+                    call_params.pop("spell_summary", None)
+
+            param_keys = list(func_params.keys())
+            if len(param_keys) >= 2 and param_keys[0] in (
                 "spell_cast_id",
                 "id",
+                "cast_id",
             ):
-                return cast(
-                    dict[str, Any],
-                    await self._handler(
-                        spell_cast_id, params, signal=signal, on_update=on_update
-                    ),
+                res = await invoke_spell_callable(
+                    self._handler, spell_cast_id, call_params, **call_kwargs
                 )
-            return cast(
-                dict[str, Any],
-                await self._handler(params, signal=signal, on_update=on_update),
-            )
+            else:
+                res = await invoke_spell_callable(
+                    self._handler, call_params, **call_kwargs
+                )
+            return cast(dict[str, Any], res)
         raise NotImplementedError

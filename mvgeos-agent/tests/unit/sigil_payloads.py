@@ -82,6 +82,13 @@ PAYLOAD_FIELDS: dict[SigilHook, dict[str, Any]] = {
     SigilHook.SHOULD_STOP_AFTER_TURN: {},
     SigilHook.PREPARE_NEXT_TURN: {},
     SigilHook.RESOURCES_DISCOVER: {"cwd": "/w"},
+    SigilHook.SESSION_LEAF_CHANGED: {
+        "tome_id": "tome-1",
+        "old_leaf_id": "leaf-1",
+        "new_leaf_id": "leaf-2",
+        "reason": "checkout",
+        "workspace_root": "/w",
+    },
 }
 
 

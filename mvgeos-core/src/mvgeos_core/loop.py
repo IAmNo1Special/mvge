@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+import dataclasses
+import inspect
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from mvgeos_core.abort import AbortError, AbortSignal
 from mvgeos_core.approval import ApprovalDecision, ApprovalRequest
-from mvgeos_core.channel import MvgeResponse, RealmResponse, StopReason
+from mvgeos_core.channel import Model, MvgeResponse, RealmResponse, StopReason
 from mvgeos_core.dispatcher import SpellDispatcher
 from mvgeos_core.errors import (
     AuthenticationError,
@@ -23,7 +26,7 @@ from mvgeos_core.events import (
     QueueMode,
 )
 from mvgeos_core.invocations import MvgeInvocation, SummonerRequest
-from mvgeos_core.spells import MvgeSpell
+from mvgeos_core.spells import ExecutionBackend, MvgeSpell
 
 EmitSink = Callable[[MvgeEvent], Awaitable[None]]
 StreamFn = Callable[
@@ -55,6 +58,10 @@ class LoopContext:
     project_root: str = ""
     tome_id: str = ""
     agent_name: str = ""
+    workspace_root: Path | None = None
+    backend: ExecutionBackend | None = None
+    sub_mvge_id: str | None = None
+    parent_spell_cast_id: str | None = None
     _spell_index: dict[str, MvgeSpell] = field(
         default_factory=dict, init=False, repr=False, compare=False
     )
@@ -102,6 +109,9 @@ class LoopCallbacks:
     ) = None
     should_stop_after_turn: Callable[[], Awaitable[bool]] | None = None
     prepare_next_turn: Callable[[LoopContext], Awaitable[LoopContext]] | None = None
+    before_provider_request: (
+        Callable[[dict[str, Any]], Awaitable[dict[str, Any] | None]] | None
+    ) = None
 
 
 @dataclass
@@ -148,11 +158,60 @@ async def _run_turn(
     state: _RunState,
     signal: AbortSignal | None = None,
 ) -> _TurnOutcome:
-    """Channel one Realm response and cast any Spells it requests."""
     outcome = _TurnOutcome()
     streamed_any_chunk = False
 
-    async for response in stream_fn(list(invocations), signal):
+    synthetic_response = None
+    if callbacks.before_provider_request is not None:
+        model_data: Any = getattr(context, "model", None)
+        model_dict: dict[str, Any] = {}
+        if model_data is not None:
+            if dataclasses.is_dataclass(model_data) and not isinstance(
+                model_data, type
+            ):
+                model_dict = dataclasses.asdict(model_data)
+            elif isinstance(model_data, dict):
+                model_dict = model_data
+        req_result = await callbacks.before_provider_request({"model": model_dict})
+        if isinstance(req_result, dict) and "synthetic_response" in req_result:
+            synthetic_response = req_result["synthetic_response"]
+
+    if synthetic_response is not None:
+
+        async def _synthetic_stream() -> AsyncIterator[RealmResponse]:
+            if isinstance(synthetic_response, RealmResponse):
+                yield synthetic_response
+            elif isinstance(synthetic_response, MvgeResponse):
+                stop_str = (
+                    synthetic_response.stop_reason.value
+                    if hasattr(synthetic_response.stop_reason, "value")
+                    else str(synthetic_response.stop_reason or "stop")
+                )
+                yield RealmResponse(
+                    model=Model(
+                        id=synthetic_response.model or "synthetic",
+                        name="synthetic",
+                        realm=synthetic_response.realm or "synthetic",
+                        base_url="",
+                        api_key="",
+                    ),
+                    invocation=synthetic_response,
+                    stop_reason=stop_str,
+                )
+            elif inspect.isasyncgen(synthetic_response):
+                async for item in synthetic_response:
+                    if isinstance(item, RealmResponse):
+                        yield item
+            elif isinstance(synthetic_response, Iterable):
+                for item in synthetic_response:
+                    if isinstance(item, RealmResponse):
+                        yield item
+
+        stream: AsyncIterator[RealmResponse] = _synthetic_stream()
+    else:
+        stream = stream_fn(list(invocations), signal)
+
+    async for response in stream:
         if response.error_message:
             error_code = getattr(response, "error_code", None)
             if error_code == "rate_limited":

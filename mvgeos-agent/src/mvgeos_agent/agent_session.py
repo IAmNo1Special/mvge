@@ -265,6 +265,11 @@ class MvgeTome:
         return str(self._factory.tome_file(self._tome_id))
 
     @property
+    def path(self) -> Path:
+        """The filesystem Path to the underlying JSONL session file."""
+        return Path(self.tome_file)
+
+    @property
     def factory(self) -> TomeHandleFactory:
         return self._factory
 

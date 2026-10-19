@@ -106,6 +106,7 @@ RUNE_IMPORTABLE_MODULES = frozenset(
         "mvgeos_agent.sigil_payloads",
         "mvgeos_agent.config_manager",
         "mvgeos_agent.agent_name",
+        "mvgeos_agent.sub_mvge",
         # A Tome codec is a Rune's product.
         "mvgeos_tome",
         "mvgeos_tome.types",

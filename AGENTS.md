@@ -46,7 +46,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 ## Conversational Style
 
 - Keep answers short and direct
-- No emojis in commits, issues, PR comments, or code
+- No emojis in commits, issues, PR comments, or code (`README.md` files are exempt — emojis are welcome in READMEs)
 - No fluff or cheerful filler text
 - Technical prose only
 

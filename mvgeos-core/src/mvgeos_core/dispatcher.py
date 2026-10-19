@@ -6,6 +6,7 @@ import hashlib
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mvgeos_core.abort import AbortError, AbortSignal
@@ -26,6 +27,7 @@ from mvgeos_core.errors import (
 )
 from mvgeos_core.events import ContentType, MvgeEvent, MvgeEventType
 from mvgeos_core.spells import (
+    SpellContext,
     SpellExecutionMode,
     SpellResult,
     SpellResultMessage,
@@ -361,6 +363,9 @@ class SpellDispatcher:
                 ApprovalReasonCode.FAILURE, "arguments must be a JSON object"
             )
 
+        spell_action = str(arguments.get("spell_action", ""))
+        spell_summary = str(arguments.get("spell_summary", ""))
+
         # Gate-side schema validation for every spell kind that carries one.
         # A spell with no parameter schema is a schemaless cast:
         # prepare_arguments is then a pass-through and the arguments reach
@@ -397,6 +402,10 @@ class SpellDispatcher:
             tome_id=context.tome_id,
             agent_name=context.agent_name,
             schema_validated=schema_validated,
+            spell_action=spell_action,
+            spell_summary=spell_summary,
+            sub_mvge_id=context.sub_mvge_id,
+            parent_spell_cast_id=context.parent_spell_cast_id,
         )
 
         try:
@@ -478,6 +487,28 @@ class SpellDispatcher:
                 raise RuntimeError("Approval gate returned neither approval nor denial")
             execution_arguments = outcome.approved_arguments
 
+        raw_args = spell_cast.get("arguments", {})
+        spell_action = (
+            str(raw_args.get("spell_action", "")) if isinstance(raw_args, dict) else ""
+        )
+        spell_summary = (
+            str(raw_args.get("spell_summary", "")) if isinstance(raw_args, dict) else ""
+        )
+
+        ctx = SpellContext(
+            spell_cast_id=spell_cast_id,
+            signal=signal,
+            on_update=None,
+            backend=context.backend,
+            workspace_root=context.workspace_root,
+            project_root=Path(context.project_root) if context.project_root else None,
+            tome_id=context.tome_id or None,
+            agent_name=context.agent_name or None,
+            sub_mvge_id=context.sub_mvge_id,
+            spell_action=spell_action,
+            spell_summary=spell_summary,
+        )
+
         await emit(
             MvgeEvent(
                 type=MvgeEventType.SPELL_CASTING_START,
@@ -485,6 +516,8 @@ class SpellDispatcher:
                     "spellCastId": spell_cast_id,
                     "spellName": spell_name,
                     "arguments": execution_arguments,
+                    "spell_action": spell_action,
+                    "spell_summary": spell_summary,
                 },
             )
         )
@@ -493,11 +526,19 @@ class SpellDispatcher:
             if signal is not None and signal.aborted:
                 raise AbortError("Operation aborted")
             try:
+                execute_kwargs: dict[str, Any] = {"signal": signal}
+                sig = inspect.signature(spell.execute)
+                if "ctx" in sig.parameters or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in sig.parameters.values()
+                ):
+                    execute_kwargs["ctx"] = ctx
+
                 raw_result = await asyncio.wait_for(
                     spell.execute(
                         spell_cast_id,
                         execution_arguments,
-                        signal=signal,
+                        **execute_kwargs,
                     ),
                     timeout=context.spell_timeout_ms / 1000,
                 )

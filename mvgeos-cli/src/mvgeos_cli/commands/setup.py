@@ -12,6 +12,7 @@ import typer._click as _click
 from mvgeos_agent.agent_name import validate_agent_name
 from mvgeos_core.constants import DEFAULT_AGENT_NAME
 from mvgeos_core.layers import resolve_rune_paths
+from mvgeos_runes.catalog import DEFAULT_MARKETPLACE_URL
 from mvgeos_runes.loader import check_python_dep_installed
 from mvgeos_runes.manifest import load_manifest
 from mvgeos_runes.types import RuneManifest
@@ -26,13 +27,24 @@ console = get_console()
 class DefaultCheckGroup(TyperGroup):
     """Group that defaults to the ``check`` subcommand when none is given."""
 
+    def parse_args(self, ctx: _click.Context, args: list[str]) -> list[str]:
+        if args and any(
+            arg == "--profile" or arg.startswith("--profile=") for arg in args
+        ):
+            cmd_names = set(self.commands.keys())
+            if not any(arg in cmd_names for arg in args):
+                args = ["profile", *args]
+        return super().parse_args(ctx, args)
+
     def invoke(self, ctx: _click.Context) -> Any:
         if not ctx._protected_args:
             ctx._protected_args = ["check"]
         return super().invoke(ctx)
 
 
-setup_app = typer.Typer(name="setup", help="Install system dependencies for runes")
+setup_app = typer.Typer(
+    name="setup", cls=DefaultCheckGroup, help="Install system dependencies for runes"
+)
 
 # Package manager mappings for common tools
 PACKAGE_MAP: dict[str, dict[str, list[str]]] = {
@@ -460,3 +472,61 @@ def setup_install(
     )
     if code != 0:
         raise typer.Exit(code)
+
+
+@setup_app.command("profile")
+def setup_profile(
+    profile_name: str = typer.Argument(
+        "coding",
+        help="Name of the profile to install (minimal, coding, autonomous)",
+    ),
+    profile: str | None = typer.Option(
+        None,
+        "--profile",
+        help="Alternative flag for profile name",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-f",
+        help="Force reinstallation of already installed mvges and runes",
+    ),
+    yes: bool = typer.Option(
+        False,
+        "--yes",
+        "-y",
+        help="Auto-confirm python dependency installation",
+    ),
+    marketplace_url: str = typer.Option(
+        DEFAULT_MARKETPLACE_URL,
+        "--marketplace-url",
+        help="Marketplace index URL",
+    ),
+) -> None:
+    """Install all mvges and runes declared by a named profile."""
+    from mvgeos_agent.installer import install_profile
+
+    target_profile = profile or profile_name
+    try:
+        res = install_profile(
+            target_profile,
+            marketplace_url=marketplace_url,
+            confirm_python_deps=yes,
+            force=force,
+        )
+        console.print(
+            f"[green]Successfully installed profile '{target_profile}':[/green]"
+        )
+        if res.installed_mvges:
+            console.print(f"  Mvges: {', '.join(res.installed_mvges)}")
+        if res.installed_runes:
+            console.print(f"  Runes: {', '.join(res.installed_runes)}")
+        if res.skipped_mvges:
+            console.print(f"  Skipped existing mvges: {', '.join(res.skipped_mvges)}")
+        if res.skipped_runes:
+            console.print(f"  Skipped existing runes: {', '.join(res.skipped_runes)}")
+    except Exception as exc:
+        console.print(
+            format_error(f"Failed to install profile '{target_profile}': {exc}")
+        )
+        raise typer.Exit(1) from exc

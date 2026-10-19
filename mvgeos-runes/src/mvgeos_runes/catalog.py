@@ -37,6 +37,7 @@ DEFAULT_MARKETPLACE_URL = (
 #: read it; the marketplace no longer emits it.
 RUNES_SECTION = "runes"
 MVGES_SECTION = "mvges"
+PROFILES_SECTION = "profiles"
 _MVGE_SECTION_ALIASES = (MVGES_SECTION, "agents")
 
 

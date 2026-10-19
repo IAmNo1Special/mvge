@@ -12,7 +12,10 @@ import re
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from mvgeos_agent.sub_mvge import SubMvgeManager
 
 from dotenv import load_dotenv
 from mvgeos_core.abort import (
@@ -304,6 +307,12 @@ class Mvge:
         force_fork_resume: bool = False,
         caller_dir: Path | None = None,
         provider_registry: RealmRegistry | None = None,
+        allowed_spells: frozenset[str] | Sequence[str] | None = None,
+        sub_mvge_id: str | None = None,
+        parent_spell_cast_id: str | None = None,
+        shared_realm_registry: RealmRegistry | None = None,
+        skip_closing_shared_resources: bool = False,
+        model_id: str | None = None,
     ) -> None:
         resolved_caller_dir: Path | None = (
             caller_dir.resolve() if caller_dir is not None else None
@@ -369,7 +378,7 @@ class Mvge:
         self._environment = environment
         self._config_manager = environment.config_manager
 
-        self._model_id = environment.model_id
+        self._model_id = model_id if model_id is not None else environment.model_id
         # Now that the model is known, its Realm is too, and only then is it
         # safe to read a credential. An explicit key still wins: the Summoner
         # handing one over is not a guess about which Realm they meant.
@@ -402,13 +411,22 @@ class Mvge:
             self._tome_dir, self._runes_paths
         )
 
-        self._provider_registry = (
-            provider_registry
-            if provider_registry is not None
-            else get_default_realm_registry()
+        if shared_realm_registry is not None:
+            self._provider_registry = shared_realm_registry
+        elif provider_registry is not None:
+            self._provider_registry = provider_registry
+        else:
+            self._provider_registry = get_default_realm_registry()
+
+        self._allowed_spells: frozenset[str] | None = (
+            frozenset(allowed_spells) if allowed_spells is not None else None
         )
+        self._sub_mvge_id = sub_mvge_id
+        self._parent_spell_cast_id = parent_spell_cast_id
+        self._skip_closing_shared_resources = skip_closing_shared_resources
         self._runner: RuneRunner | None = None
         self._rune_lifecycle: RuneLifecycle | None = None
+        self._sub_mvge_manager: SubMvgeManager | None = None
         self._prompt_source = environment.resolved_prompt.source
         # Inputs for re-resolving the base SYSTEM.md chain on reload: the
         # exact values MvgeEnvironment.resolve used, so reload re-discovers
@@ -484,6 +502,20 @@ class Mvge:
         if caller_dir is not None and (caller_dir / "spells").is_dir():
             caller_spells = caller_dir / "spells"
             return _from_dir(caller_spells), caller_spells
+        project_spells = Path.cwd() / ".agents" / "spells"
+        if project_spells.is_dir():
+            from mvgeos_runes.trust import (
+                WorkspaceTrustStatus,
+                WorkspaceTrustStore,
+            )
+
+            store = WorkspaceTrustStore()
+            if store.check_trust(Path.cwd()) == WorkspaceTrustStatus.TRUSTED:
+                return _from_dir(project_spells), project_spells
+            logger.warning(
+                "Skipping project-level spells at %s: workspace is untrusted",
+                project_spells,
+            )
         agent_config_dir = resolve_config_dir(name)
         config_spells = agent_config_dir / "spells"
         if config_spells.is_dir():
@@ -495,6 +527,11 @@ class Mvge:
         if self._agent_tome is not None:
             return self._agent_tome.tome_id
         return None
+
+    @property
+    def agent_tome(self) -> MvgeTome | None:
+        """The active Tome persistence handle for this agent session."""
+        return self._agent_tome
 
     @property
     def session_id(self) -> str | None:
@@ -518,6 +555,20 @@ class Mvge:
         if self._state is not None:
             return getattr(self._state, "mana_used", None)
         return None
+
+    @property
+    def allowed_spells(self) -> frozenset[str] | None:
+        """The restricted subset of spell names permitted on this agent, if any."""
+        return self._allowed_spells
+
+    @property
+    def sub_mvge_manager(self) -> SubMvgeManager:
+        """The SubMvgeManager bound to this agent session."""
+        if self._sub_mvge_manager is None:
+            from mvgeos_agent.sub_mvge import SubMvgeManager
+
+            self._sub_mvge_manager = SubMvgeManager(parent_mvge=self)
+        return self._sub_mvge_manager
 
     @property
     def system_prompt(self) -> str:
@@ -1050,6 +1101,7 @@ class Mvge:
 
         active_runner = runner if runner is not None else self._runner
         if active_runner is not None:
+            active_runner.set_discoverable_builtin_spells([copy.copy(s) for s in built])
             active = set(active_runner.get_active_spells())
             for rs in active_runner.get_all_registered_spells():
                 if rs.name not in active:
@@ -1122,6 +1174,9 @@ class Mvge:
 
         if self._plan_mode:
             built = [s for s in built if s.read_only]
+
+        if self._allowed_spells is not None:
+            built = [s for s in built if s.name in self._allowed_spells]
 
         return built
 
@@ -1297,6 +1352,7 @@ class Mvge:
             discovered_spells=self._spells,
             plan_mode=self._plan_mode,
             enabled_spells_filter=self._enabled_spells_filter,
+            allowed_spells=self._allowed_spells,
             rune_lifecycle=self._rune_lifecycle,
             provider_registry=self._provider_registry,
             environment=self._environment,
@@ -1326,6 +1382,8 @@ class Mvge:
         """Switch the model in-flight."""
         if self._harness is not None:
             await self._harness.switch_model(model_id)
+            if self._harness._model is not None:
+                self._model = self._harness._model
         self._model_id = model_id
 
     async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
@@ -1409,16 +1467,27 @@ class Mvge:
             )
 
         result = await spell.execute(f"cast_activate_{name}", {"name": name})
-        content = result.get("content", "")
-        if not content and "error" in result:
-            raise ValueError(result["error"])
-        return str(content)
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            content = result.get("content", "")
+            if not content and "error" in result:
+                raise ValueError(result["error"])
+            return str(content)
+        return str(getattr(result, "data", result))
 
     async def close(self) -> None:
         """Teardown the agent session and release resources."""
+        if self._sub_mvge_manager is not None:
+            await self._sub_mvge_manager.kill_all()
+            self._sub_mvge_manager = None
         if self._harness is not None:
             await self._harness.close()
             self._harness = None
+        if self._skip_closing_shared_resources:
+            self._runner = None
+            self._initialized = False
+            return
         # If runes were loaded without a harness (e.g., _load_runes called
         # directly), shut down the Mvge-owned lifecycle here.
         if self._rune_lifecycle is not None:
