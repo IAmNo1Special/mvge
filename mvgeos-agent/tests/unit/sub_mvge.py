@@ -441,7 +441,8 @@ async def test_sub_mvge_workspace_worktree(tmp_path: Path) -> None:
 
     with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
         ws = await manager._resolve_workspace("sub-1", "worktree")
-        assert "worktrees/sub-1" in str(ws)
+        assert "worktrees" in ws.parts
+        assert ws.name == "sub-1"
 
         manager._records["sub-1"] = SubMvgeRecord(
             sub_mvge_id="sub-1",

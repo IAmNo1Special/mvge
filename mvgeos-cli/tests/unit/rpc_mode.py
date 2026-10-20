@@ -380,10 +380,10 @@ def test_rpc_json_safe_types() -> None:
         }
     )
     assert res["num"] == 42
-    assert res["path"] == "/test/path"
+    assert res["path"] == str(Path("/test/path"))
     assert res["enum"] == "a"
     assert res["dc"] == {"count": 5}
-    assert res["list"] == ["a", "/sub"]
+    assert res["list"] == ["a", str(Path("/sub"))]
 
 
 @pytest.mark.asyncio
