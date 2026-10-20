@@ -173,7 +173,7 @@ async def _run_agent(
     approval_mode: str | None = None,
     realm_install_attempted: bool = False,
     mode: str = "auto",
-    bootstrap: bool | None = None,
+    bootstrap: bool | None = False,
 ) -> int:
     prompts_out = ([incantation] if incantation else []) + (prompts or [])
     approval_mode_val: ApprovalMode = resolve_approval_mode(approval_mode)
