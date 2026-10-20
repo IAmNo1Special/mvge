@@ -15,7 +15,7 @@ import json
 import logging
 import sys
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import Enum
 from pathlib import Path
 from typing import Any, TextIO
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 def _json_safe(val: Any) -> Any:
-    if isinstance(val, dict):
+    if isinstance(val, (dict, Mapping)):
         return {str(k): _json_safe(v) for k, v in val.items()}
     if isinstance(val, (list, tuple)):
         return [_json_safe(x) for x in val]
@@ -163,7 +163,7 @@ class RpcApprovalPresenter:
             "request_id": req_id,
             "spell_name": request.spell_name,
             "spell_cast_id": cast_id,
-            "arguments": request.arguments,
+            "arguments": _json_safe(request.arguments),
             "reason": getattr(request, "reason", ""),
             "grant_scope": grant_scope_val,
         }

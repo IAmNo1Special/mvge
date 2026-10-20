@@ -78,6 +78,22 @@ def test_unbind_without_slot_returns_false() -> None:
     assert unbind_approval_presenter(object()) is False
 
 
+def test_unbind_legacy_runner_without_clear() -> None:
+    class LegacyRunner:
+        def __init__(self) -> None:
+            self.presenter: object = None
+
+        def set_approval_presenter(self, p: object) -> None:
+            self.presenter = p
+
+    runner = LegacyRunner()
+    presenter = _presenter()
+    runner.set_approval_presenter(presenter)
+    assert unbind_approval_presenter(runner, presenter) is True
+    assert presenter.closed is True
+    assert runner.presenter is None
+
+
 def test_context_manager_binds_then_unbinds() -> None:
     runner = StubRunner()
     presenter = _presenter()

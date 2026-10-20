@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from mvgeos_core.layers import RuneScope
 
@@ -31,20 +31,22 @@ def test_canonicalize_workspace_path_darwin_casing(tmp_path: Path) -> None:
     target_dir = tmp_path / "my_project"
     target_dir.mkdir()
 
-    # Simulate macOS F_GETPATH via mock
+    mock_fcntl = MagicMock()
+    c_buf = str(target_dir.resolve()).encode("utf-8") + b"\0"
+
+    def _fake_fcntl(fd: int, op: int, arg: bytearray) -> int:
+        arg[: len(c_buf)] = c_buf
+        return 0
+
+    mock_fcntl.fcntl.side_effect = _fake_fcntl
+    mock_fcntl.F_GETPATH = 50
+
     with (
         patch("sys.platform", "darwin"),
-        patch("fcntl.fcntl") as mock_fcntl,
+        patch.dict("sys.modules", {"fcntl": mock_fcntl}),
         patch("os.open", return_value=99),
         patch("os.close"),
     ):
-        c_buf = str(target_dir.resolve()).encode("utf-8") + b"\0"
-
-        def _fake_fcntl(fd: int, op: int, arg: bytearray) -> int:
-            arg[: len(c_buf)] = c_buf
-            return 0
-
-        mock_fcntl.side_effect = _fake_fcntl
         result = canonicalize_workspace_path(target_dir)
         assert result == target_dir.resolve()
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_core.abort import AbortController
@@ -362,3 +362,112 @@ async def test_reactive_wakeup_queueing(tmp_path: Path) -> None:
     assert fake_harness.steer.called
     notification_arg_steer = fake_harness.steer.call_args[0][0]
     assert 'role="mid_turn_worker"' in notification_arg_steer
+
+
+@pytest.mark.asyncio
+async def test_sub_mvge_kill_and_kill_all(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def slow_run(*args: object, **kwargs: object) -> MvgeResponse:
+        await asyncio.sleep(5.0)
+        return MvgeResponse(role="assistant", content=[])
+
+    with MockChildMvgeContext(custom_run=slow_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="to_kill", prompt="Long work", wait=False)]
+        )
+        sub_id = records[0].sub_mvge_id
+
+        killed = await manager.kill([sub_id])
+        assert len(killed) == 1
+        assert killed[0].state == SubMvgeState.CANCELING
+
+        # kill unknown id
+        killed_none = await manager.kill(["unknown_id"])
+        assert killed_none == []
+
+        # kill_all
+        await manager.summon(
+            [SubMvgeSpec(role="to_kill_all", prompt="More work", wait=False)]
+        )
+        killed_all = await manager.kill_all()
+        assert len(killed_all) >= 1
+
+
+@pytest.mark.asyncio
+async def test_sub_mvge_send_message_error(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def failing_run(*args: object, **kwargs: object) -> MvgeResponse:
+        raise RuntimeError("Crash in child")
+
+    with MockChildMvgeContext(custom_run=failing_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="failing", prompt="Fail", wait=True)]
+        )
+        sub_id = records[0].sub_mvge_id
+        assert records[0].state == SubMvgeState.ERRORED
+
+        rec = await manager.send_message(sub_id, "Retry")
+        assert rec.state == SubMvgeState.ERRORED
+        assert "Crash in child" in str(rec.error)
+
+
+@pytest.mark.asyncio
+async def test_sub_mvge_workspace_worktree(tmp_path: Path) -> None:
+    git_dir = tmp_path / ".git"
+    git_dir.mkdir()
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+
+    with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+        ws = await manager._resolve_workspace("sub-1", "worktree")
+        assert "worktrees/sub-1" in str(ws)
+
+        manager._records["sub-1"] = SubMvgeRecord(
+            sub_mvge_id="sub-1",
+            role="test",
+            agent_name="test_mvge",
+            model_id="test_model",
+            tome_path=tmp_path / "tome.jsonl",
+            child_tome_id="sub-1",
+            workspace_path=ws,
+            state=SubMvgeState.IDLE,
+        )
+        ws.mkdir(parents=True, exist_ok=True)
+        killed = await manager.kill(["sub-1"])
+        assert len(killed) == 1
+
+
+def test_extract_invocation_text_fallbacks() -> None:
+    from mvgeos_agent.sub_mvge import _extract_invocation_text
+
+    class InvWithText:
+        text = "direct text"
+
+    assert _extract_invocation_text(InvWithText()) == "direct text"
+
+    class InvPlain:
+        def __str__(self) -> str:
+            return "plain string"
+
+    assert _extract_invocation_text(InvPlain()) == "plain string"

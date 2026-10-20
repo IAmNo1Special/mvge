@@ -13,9 +13,12 @@ package roots, so a Rune reaching into an engine submodule passed cleanly.
 
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import patch
+
 from mvgeos_core import truncate as _truncate
 
-from mvgeos_runes.contract import RUNE_IMPORTABLE_MODULES, check_source
+from mvgeos_runes.contract import RUNE_IMPORTABLE_MODULES, check_source, check_tree
 
 # Whether `truncate_head` is actually declared by mvgeos_core.truncate. The
 # test that asserts the submodule case names it directly, so this fails loudly
@@ -135,3 +138,58 @@ def test_every_declared_module_is_importable() -> None:
         "RUNE_IMPORTABLE_MODULES names modules the engine cannot import: "
         f"{unimportable}"
     )
+
+
+def test_check_tree_scans_directory(tmp_path: Path) -> None:
+    clean_file = tmp_path / "clean.py"
+    clean_file.write_text("from mvgeos_core import sessions_dir\n", encoding="utf-8")
+
+    bad_file = tmp_path / "bad.py"
+    bad_file.write_text(
+        "from mvgeos_core.dispatcher import SpellDispatcher\n",
+        encoding="utf-8",
+    )
+
+    violations = check_tree(tmp_path)
+    assert len(violations) == 1
+    assert violations[0].kind == "unpublished"
+    assert violations[0].module == "mvgeos_core.dispatcher"
+
+
+def test_violation_string_representations() -> None:
+    from mvgeos_runes.contract import Violation
+
+    v_unpub = Violation("unpublished", "foo.py:1", "mvgeos_core.secret", "Secret")
+    assert "is not published" in str(v_unpub)
+
+    v_unimp = Violation("unimportable", "foo.py:2", "mvgeos_core.broken", "Broken")
+    assert "could not be imported" in str(v_unimp)
+
+    v_miss = Violation("missing", "foo.py:3", "mvgeos_core", "nonexistent")
+    assert "has no 'nonexistent'" in str(v_miss)
+
+    v_undec = Violation("undeclared", "foo.py:4", "mvgeos_core", "hidden")
+    assert "is not declared in mvgeos_core.__all__" in str(v_undec)
+
+
+def test_check_source_syntax_error() -> None:
+    violations = check_source("def broken_syntax(:", location="test.py")
+    assert len(violations) == 1
+    assert violations[0].kind == "unparseable"
+
+
+def test_check_source_summary_multiple_symbols() -> None:
+    source = "from mvgeos_core.dispatcher import A, B, C\n"
+    violations = check_source(source, location="test.py")
+    assert len(violations) == 1
+    assert violations[0].kind == "unpublished"
+    assert "symbols including" in violations[0].name
+
+
+def test_check_tree_handles_unreadable_file(tmp_path: Path) -> None:
+    file = tmp_path / "broken.py"
+    file.write_text("import os\n", encoding="utf-8")
+    with patch.object(Path, "read_text", side_effect=OSError("permission denied")):
+        violations = check_tree(tmp_path)
+        assert len(violations) == 1
+        assert violations[0].kind == "unreadable"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from mvgeos_core.channel import StopReason
@@ -230,3 +230,198 @@ async def test_rpc_malformed_json_handling(mock_agent: MagicMock) -> None:
     frames = [json.loads(line) for line in output if line]
     err_frame = next(f for f in frames if f.get("type") == "error")
     assert "Malformed JSON" in str(err_frame.get("error"))
+
+
+@pytest.mark.asyncio
+async def test_rpc_commands_model_thinking_and_session(mock_agent: MagicMock) -> None:
+    mock_agent.switch_model = AsyncMock()
+    mock_agent.set_contemplation_level = MagicMock()
+    mock_agent.compact = AsyncMock(return_value="compacted 5 turns")
+    mock_agent.switch_session = AsyncMock()
+
+    mock_tome = MagicMock()
+    mock_tome.fork = MagicMock(return_value="leaf-99")
+    mock_tome.get_tree = MagicMock(return_value={"branches": ["leaf-1", "leaf-99"]})
+    mock_agent.agent_tome = mock_tome
+
+    mock_runner = MagicMock()
+    mock_cmd = MagicMock()
+    mock_cmd.description = "custom rune cmd"
+    mock_runner.commands = {"custom": mock_cmd}
+    mock_agent.runner = mock_runner
+
+    commands = [
+        {"command": "set_model", "id": "c1", "params": {"model": "new-model"}},
+        {"command": "set_thinking_level", "id": "c2", "params": {"level": "high"}},
+        {"command": "compact", "id": "c3"},
+        {"command": "fork", "id": "c4", "params": {"leaf_id": "leaf-1"}},
+        {"command": "switch_session", "id": "c5", "params": {"session_id": "tome-2"}},
+        {"command": "get_tree", "id": "c6"},
+        {"command": "get_commands", "id": "c7"},
+        {"command": "unknown_cmd", "id": "c8"},
+    ]
+    stdin = io.StringIO("\n".join(json.dumps(c) for c in commands) + "\n")
+    stdout = io.StringIO()
+
+    server = RpcServer(mock_agent, stdin=stdin, stdout=stdout)
+    await server.run()
+
+    output = stdout.getvalue().strip().split("\n")
+    frames = [json.loads(line) for line in output if line]
+
+    resp_map = {f.get("id"): f for f in frames if f.get("type") == "response"}
+    assert resp_map["c1"]["success"] is True
+    assert resp_map["c1"]["data"]["model"] == "new-model"
+    mock_agent.switch_model.assert_called_once_with("new-model")
+
+    assert resp_map["c2"]["success"] is True
+    assert resp_map["c2"]["data"]["level"] == "high"
+    mock_agent.set_contemplation_level.assert_called_once_with("high")
+
+    assert resp_map["c3"]["success"] is True
+    assert resp_map["c3"]["data"]["compacted"] is True
+
+    assert resp_map["c4"]["success"] is True
+    assert resp_map["c4"]["data"]["leaf_id"] == "leaf-99"
+
+    assert resp_map["c5"]["success"] is True
+    assert resp_map["c5"]["data"]["session_id"] == "tome-2"
+
+    assert resp_map["c6"]["success"] is True
+    assert resp_map["c6"]["data"]["branches"] == ["leaf-1", "leaf-99"]
+
+    assert resp_map["c7"]["success"] is True
+    cmd_names = [item["name"] for item in resp_map["c7"]["data"]]
+    assert "custom" in cmd_names
+
+    assert resp_map["c8"]["success"] is False
+    assert "Unknown command" in resp_map["c8"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_rpc_extension_ui_command(mock_agent: MagicMock) -> None:
+    stdin = io.StringIO()
+    stdout = io.StringIO()
+    server = RpcServer(mock_agent, stdin=stdin, stdout=stdout)
+
+    req = ApprovalRequest(cast_id="c-1", spell_name="bash", arguments={})
+    fut_approval = asyncio.create_task(server.presenter(req))
+    await asyncio.sleep(0.01)
+
+    req_id = list(server.presenter._pending.keys())[0]
+
+    await server._handle_command(
+        {
+            "command": "extension_ui_response",
+            "id": "ui-1",
+            "params": {"request_id": req_id, "decision": "allow_once"},
+        }
+    )
+
+    decision = await fut_approval
+    assert decision.outcome == ApprovalOutcome.ALLOW
+    assert decision.scope == ApprovalScope.ONCE
+
+
+@pytest.mark.asyncio
+async def test_rpc_approval_presenter_variants() -> None:
+    sent: list[dict[str, object]] = []
+    presenter = RpcApprovalPresenter(lambda f: sent.append(f))
+
+    # Test unknown request_id
+    assert presenter.resolve("unknown", "allow") is False
+
+    # Test always_allow
+    req = ApprovalRequest(cast_id="c-2", spell_name="read", arguments={})
+    fut2 = asyncio.create_task(presenter(req))
+    await asyncio.sleep(0.01)
+    req_id2 = list(presenter._pending.keys())[0]
+    assert presenter.resolve(req_id2, "always_allow") is True
+    dec2 = await fut2
+    assert dec2.outcome == ApprovalOutcome.ALLOW
+    assert dec2.scope == ApprovalScope.SPELL
+
+    # Test deny explicitly
+    fut3 = asyncio.create_task(presenter(req))
+    await asyncio.sleep(0.01)
+    req_id3 = list(presenter._pending.keys())[0]
+    assert presenter.resolve(req_id3, "deny") is True
+    dec3 = await fut3
+    assert dec3.outcome == ApprovalOutcome.DENY
+
+    presenter.close()
+    assert presenter.closed is True
+    dec_closed = await presenter(req)
+    assert dec_closed.outcome == ApprovalOutcome.DENY
+
+
+def test_rpc_json_safe_types() -> None:
+    from dataclasses import dataclass
+    from enum import Enum
+    from pathlib import Path
+
+    from mvgeos_cli.rpc import _json_safe
+
+    class TestEnum(Enum):
+        ALPHA = "a"
+
+    @dataclass
+    class TestDC:
+        count: int
+
+    res = _json_safe(
+        {
+            "num": 42,
+            "str": "test",
+            "path": Path("/test/path"),
+            "enum": TestEnum.ALPHA,
+            "dc": TestDC(count=5),
+            "list": [TestEnum.ALPHA, Path("/sub")],
+        }
+    )
+    assert res["num"] == 42
+    assert res["path"] == "/test/path"
+    assert res["enum"] == "a"
+    assert res["dc"] == {"count": 5}
+    assert res["list"] == ["a", "/sub"]
+
+
+@pytest.mark.asyncio
+async def test_run_rpc_wrapper(mock_agent: MagicMock) -> None:
+    from mvgeos_cli.rpc import run_rpc
+
+    with (
+        patch("sys.stdin", io.StringIO()),
+        patch("sys.stdout", io.StringIO()),
+    ):
+        code = await run_rpc(mock_agent)
+        assert code == 0
+
+
+@pytest.mark.asyncio
+async def test_rpc_missing_command_and_images(mock_agent: MagicMock) -> None:
+    stdout = io.StringIO()
+    server = RpcServer(mock_agent, stdin=io.StringIO(), stdout=stdout)
+
+    # Missing command
+    await server._handle_command({"id": "err-1"})
+    out1 = json.loads(stdout.getvalue().strip())
+    assert out1["type"] == "error"
+    assert "Missing 'command'" in out1["error"]
+
+    # Prompt with images
+    stdout = io.StringIO()
+    server._stdout = stdout
+    await server._handle_command(
+        {
+            "command": "prompt",
+            "id": "p-img",
+            "params": {"content": "see this", "images": ["data:image/png;base64,..."]},
+        }
+    )
+    mock_agent.run.assert_called_with(
+        [
+            {"type": "text", "text": "see this"},
+            {"type": "image", "image": "data:image/png;base64,..."},
+        ]
+    )

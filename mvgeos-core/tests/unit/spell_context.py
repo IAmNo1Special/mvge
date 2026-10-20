@@ -21,6 +21,7 @@ from mvgeos_core.spells import (
     ExecResult,
     ExecutionBackend,
     LocalExecutionBackend,
+    MvgeSpell,
     SpellContext,
 )
 
@@ -301,3 +302,45 @@ async def test_spell_dispatcher_populates_spell_context_and_approval_request(
     assert captured_approval_req.spell_summary == "Main inspection"
     assert captured_approval_req.sub_mvge_id == "sub-mvge-01"
     assert captured_approval_req.parent_spell_cast_id == "parent-cast-99"
+
+
+def test_spell_prepare_arguments_and_type_coercion() -> None:
+    schema = {
+        "type": "object",
+        "properties": {
+            "str_field": {"type": "string"},
+            "int_field": {"type": "integer"},
+            "num_field": {"type": "number"},
+            "bool_field": {"type": "boolean"},
+            "arr_field": {"type": "array", "items": {"type": "string"}},
+            "obj_field": {"type": "object"},
+            "any_field": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+            "int_or_null": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+            "num_or_null": {"anyOf": [{"type": "number"}, {"type": "null"}]},
+            "bool_or_null": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+            "arr_or_null": {"anyOf": [{"type": "array"}, {"type": "null"}]},
+            "obj_or_null": {"anyOf": [{"type": "object"}, {"type": "null"}]},
+        },
+        "required": ["str_field"],
+    }
+    spell = MvgeSpell(
+        name="coercion_spell",
+        description="test",
+        parameters=schema,
+    )
+
+    valid_args = {
+        "str_field": "hello",
+        "int_field": 42,
+        "num_field": 3.14,
+        "bool_field": True,
+        "arr_field": ["a", "b"],
+        "obj_field": {"k": "v"},
+        "any_field": "test",
+    }
+    prepared = spell.prepare_arguments(valid_args)
+    assert prepared["str_field"] == "hello"
+    assert prepared["int_field"] == 42
+
+    with pytest.raises(ValueError, match="Invalid arguments"):
+        spell.prepare_arguments({"int_field": "not an int"})

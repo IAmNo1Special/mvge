@@ -227,3 +227,34 @@ def test_validate_ast_still_permits_allowed_non_forbidden_attribute_calls() -> N
         "import pathlib\np = pathlib.Path('/tmp/x')",
         allowed_modules={"pathlib"},
     )
+
+
+def test_validate_ast_relative_from_import_without_module() -> None:
+    s = MvgeSandbox()
+    s.validate_ast("from . import sibling")
+
+
+def test_worker_target_success_and_error() -> None:
+    from unittest.mock import MagicMock
+
+    from mvgeos_core.sandbox import _sandbox_process_target
+
+    queue = MagicMock()
+    _sandbox_process_target(
+        "x = 42\nimport math\n", {}, queue, allowed_modules={"math"}
+    )
+    queue.put.assert_called_with(("success", {"x": 42}))
+
+    queue.reset_mock()
+    _sandbox_process_target("x = 1 / 0", {}, queue)
+    args, _ = queue.put.call_args
+    assert args[0][0] == "error"
+    assert "division by zero" in args[0][1]
+
+
+def test_execute_sync_allowed_module_success() -> None:
+    s = MvgeSandbox()
+    res = s._execute_sync(
+        "import math\ny = math.floor(3.9)", {}, allowed_modules={"math"}
+    )
+    assert res["y"] == 3
