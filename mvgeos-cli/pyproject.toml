@@ -1,17 +1,17 @@
 [project]
 name = "mvgeos-cli"
-version = "0.7.6"
+version = "0.7.7"
 description = "CLI entry point for MvgeOS"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     # Explicit floors: uv_build does not substitute the workspace version, so
     # bare names ship as unbounded Requires-Dist. Bumped in lockstep by ci.yml.
-    "mvgeos-agent==0.7.6",
-    "mvgeos-core==0.7.6",
-    "mvgeos-provider==0.7.6",
-    "mvgeos-tome==0.7.6",
-    "mvgeos-runes==0.7.6",
+    "mvgeos-agent==0.7.7",
+    "mvgeos-core==0.7.7",
+    "mvgeos-provider==0.7.7",
+    "mvgeos-tome==0.7.7",
+    "mvgeos-runes==0.7.7",
     "rich>=13.0",
     "typer>=0.27.1",
     "prompt-toolkit>=3.0",

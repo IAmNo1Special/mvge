@@ -1,6 +1,6 @@
 [project]
 name = "mvgeos-tome"
-version = "0.7.6"
+version = "0.7.7"
 description = "Session persistence using JSONL storage with file locking and in-memory index"
 requires-python = ">=3.13"
 license = "MIT"
