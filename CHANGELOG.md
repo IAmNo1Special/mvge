@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.8] - 2026-10-21
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (e28149f)
+
+- **release:** v0.7.8 (d5faf7a)
+
+
+### Features
+
+- **engine:** resolve technical debt across determinism, scale, and resilience (phases 1-3) (0d6598c)
+
+
 ## [0.7.7] - 2026-10-20
 
 
