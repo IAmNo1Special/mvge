@@ -56,10 +56,12 @@ from mvgeos_provider.realms import (
 from mvgeos_provider.registry import RealmRegistry, get_default_realm_registry
 from mvgeos_runes.codecs import load_session_codecs
 from mvgeos_runes.rune_runner import RuneRunner
+from mvgeos_runes.trust import WorkspaceTrustStatus, WorkspaceTrustStore
 from mvgeos_runes.types import (
     Diagnostic,
     RegisteredCommand,
     RuneShortcut,
+    SigilHook,
     SkillDiagnostic,
     SpellDefinition,
 )
@@ -93,6 +95,7 @@ from mvgeos_agent.harness._state import MvgeState
 from mvgeos_agent.harness.reload import ReloadCandidate
 from mvgeos_agent.protocol import ReloadResult
 from mvgeos_agent.rune_lifecycle import RuneLifecycle
+from mvgeos_agent.sigil_payloads import payload_for
 from mvgeos_agent.snapshot import RuntimeSnapshot
 
 logger = logging.getLogger(__name__)
@@ -313,7 +316,9 @@ class Mvge:
         shared_realm_registry: RealmRegistry | None = None,
         skip_closing_shared_resources: bool = False,
         model_id: str | None = None,
+        trust_store: Any | None = None,
     ) -> None:
+        self._trust_store = trust_store
         resolved_caller_dir: Path | None = (
             caller_dir.resolve() if caller_dir is not None else None
         )
@@ -1287,6 +1292,28 @@ class Mvge:
 
         self._wire_runtime(final_prompt)
         self._initialized = True
+        await self._check_workspace_trust()
+
+    async def _check_workspace_trust(self) -> None:
+        """Verify workspace trust status, emitting WORKSPACE_UNTRUSTED and steering."""
+        store = self._trust_store or WorkspaceTrustStore()
+        effective_dir = Path(self._effective_cwd()).resolve()
+        status = store.check_trust(effective_dir)
+        if status != WorkspaceTrustStatus.TRUSTED:
+            if self._runner is not None:
+                payload = payload_for(
+                    SigilHook.WORKSPACE_UNTRUSTED,
+                    workspace_root=str(effective_dir),
+                    status=status.value,
+                )
+                await self._runner.emit_async(
+                    SigilHook.WORKSPACE_UNTRUSTED,
+                    payload,
+                )
+            self.steer(
+                f"[Security Steering] Active workspace {effective_dir} is "
+                f"{status.value}. Project-level runes and spells are untrusted."
+            )
 
     def _rebind_runner_context(self) -> None:
         """Synchronize active session/tome context into the bound RuneRunner."""

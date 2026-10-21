@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import tempfile
@@ -475,6 +476,17 @@ class TestRuneRunnerDispatch:
         runner.register_handler(SigilHook.TURN_START, handler)
         await runner.emit_async(SigilHook.TURN_START, {"key": "value"})
         handler.assert_called_once_with({"key": "value"})
+
+    @pytest.mark.asyncio
+    async def test_emit_async_hung_handler_timeout_does_not_deadlock(self) -> None:
+        runner = RuneRunner(hook_timeout_seconds=0.05)
+
+        async def hung_handler(data: Any) -> None:
+            await asyncio.sleep(10.0)
+
+        runner.register_handler(SigilHook.TURN_START, hung_handler)
+        await runner.emit_async(SigilHook.TURN_START, {"test": True})
+        assert any("timeout" in d.message.lower() for d in runner.diagnostics)
 
     @pytest.mark.asyncio
     async def test_emit_chain_transforms_data(self) -> None:

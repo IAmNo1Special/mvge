@@ -681,3 +681,52 @@ def test_api_key_resolution_never_crosses_realms(
 
     # An explicit key is not a guess about which Realm was meant, so it stands.
     assert _resolve_api_key("sk-explicit", realm="opencode") == "sk-explicit"
+
+
+@pytest.mark.asyncio
+async def test_mvge_workspace_untrusted_emits_sigil_and_steers(tmp_path: Path) -> None:
+    from mvgeos_runes.trust import WorkspaceTrustStatus, WorkspaceTrustStore
+    from mvgeos_runes.types import SigilHook
+
+    project_dir = tmp_path / "untrusted_proj"
+    project_dir.mkdir()
+    trust_file = tmp_path / "trust.json"
+    store = WorkspaceTrustStore(trust_file=trust_file)
+    store.set_trust(project_dir, WorkspaceTrustStatus.DECLINED)
+
+    env = MvgeEnvironment.resolve(
+        agent_name="test_agent",
+        project_dir=project_dir,
+        config_dir=tmp_path / "cfg",
+        caller_dir=tmp_path,
+    )
+    registry = RealmRegistry()
+    registry.register_realm_factory(
+        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: MagicMock(spec=Realm)
+    )
+
+    untrusted_events: list[dict[str, Any]] = []
+
+    async def on_untrusted(data: Any) -> None:
+        untrusted_events.append(data)
+
+    agent = Mvge(
+        api_key="k",
+        environment=env,
+        tome_dir=tmp_path / "tomes",
+        provider_registry=registry,
+        trust_store=store,
+    )
+    runner = RuneRunner()
+    runner.register_handler(SigilHook.WORKSPACE_UNTRUSTED, on_untrusted)
+    agent.set_runner(runner)
+
+    await agent.initialize()
+    try:
+        assert len(untrusted_events) == 1
+        assert untrusted_events[0].workspace_root == str(project_dir)
+        assert untrusted_events[0].status == "declined"
+        assert len(agent.harness.state.steer_queue) >= 1
+        assert "untrusted" in agent.harness.state.steer_queue[0].content.lower()
+    finally:
+        await agent.close()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, runtime_checkable
 
@@ -61,6 +62,81 @@ class Realm:
         pass
 
 
+logger = logging.getLogger(__name__)
+
+
+class FallbackRealm(Realm):
+    """Composite Realm routing to a fallback when the primary fails unrecoverably."""
+
+    def __init__(
+        self,
+        primary: Realm,
+        fallback: Realm,
+        fallback_model: Model | None = None,
+    ) -> None:
+        self._primary = primary
+        self._fallback = fallback
+        self._fallback_model = fallback_model
+
+    @property
+    def is_router(self) -> bool:
+        return self._primary.is_router or self._fallback.is_router
+
+    async def complete(
+        self,
+        model: Model,
+        messages: list[dict[str, Any]],
+        config: ChannelConfig,
+        signal: AbortSignal | None = None,
+    ) -> Any:
+        try:
+            return await self._primary.complete(model, messages, config, signal=signal)
+        except Exception as exc:
+            logger.warning(
+                "Primary realm %s failed (%s); routing to fallback realm %s",
+                type(self._primary).__name__,
+                exc,
+                type(self._fallback).__name__,
+            )
+            target_model = self._fallback_model or model
+            return await self._fallback.complete(
+                target_model, messages, config, signal=signal
+            )
+
+    async def stream(
+        self,
+        model: Model,
+        invocations: list[Any],
+        config: ChannelConfig,
+        signal: AbortSignal | None = None,
+    ) -> AsyncIterator[Any]:
+        emitted_any = False
+        try:
+            async for chunk in self._primary.stream(
+                model, invocations, config, signal=signal
+            ):
+                emitted_any = True
+                yield chunk
+        except Exception as exc:
+            if emitted_any:
+                raise
+            logger.warning(
+                "Primary realm %s stream failed (%s); routing to fallback realm %s",
+                type(self._primary).__name__,
+                exc,
+                type(self._fallback).__name__,
+            )
+            target_model = self._fallback_model or model
+            async for chunk in self._fallback.stream(
+                target_model, invocations, config, signal=signal
+            ):
+                yield chunk
+
+    async def close(self) -> None:
+        await self._primary.close()
+        await self._fallback.close()
+
+
 @runtime_checkable
 class RealmFactory(Protocol):
     """Protocol for factories that construct Realm instances."""
@@ -76,6 +152,7 @@ class RealmFactory(Protocol):
 
 
 __all__ = [
+    "FallbackRealm",
     "NoRealmRegisteredError",
     "Realm",
     "RealmFactory",

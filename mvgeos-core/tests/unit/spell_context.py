@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -344,3 +345,46 @@ def test_spell_prepare_arguments_and_type_coercion() -> None:
 
     with pytest.raises(ValueError, match="Invalid arguments"):
         spell.prepare_arguments({"int_field": "not an int"})
+
+
+@pytest.mark.asyncio
+async def test_local_execution_backend_bounded_output(tmp_path: Path) -> None:
+    backend = LocalExecutionBackend()
+    # Output 2 MB of data
+    cmd = (
+        f'{sys.executable} -c "import sys; '
+        "sys.stdout.write('H' * 20000 + 'M' * 1960000 + 'T' * 20000)\""
+    )
+    res = await backend.exec_command(cmd, cwd=tmp_path)
+    assert res.exit_code == 0
+    # Must be bounded around 100 KB (MAX_SPELL_RESULT_BYTES), far less than 2 MB
+    assert len(res.stdout) <= 110_000
+    assert res.stdout.startswith("HHHH")
+    assert res.stdout.endswith("TTTT")
+    assert "truncated" in res.stdout
+
+    # Test with custom max_output_bytes
+    small_cmd = f"{sys.executable} -c \"import sys; sys.stdout.write('X' * 50000)\""
+    res_small = await backend.exec_command(
+        small_cmd, cwd=tmp_path, max_output_bytes=2000
+    )
+    assert res_small.exit_code == 0
+    assert len(res_small.stdout) <= 2500
+    assert "truncated" in res_small.stdout
+
+
+@pytest.mark.asyncio
+async def test_local_execution_backend_heap_allocation_capped(tmp_path: Path) -> None:
+    import tracemalloc
+
+    backend = LocalExecutionBackend()
+    cmd = f"{sys.executable} -c \"import sys; sys.stdout.write('Z' * 3_000_000)\""
+    tracemalloc.start()
+    try:
+        res = await backend.exec_command(cmd, cwd=tmp_path)
+        assert res.exit_code == 0
+        _current, peak = tracemalloc.get_traced_memory()
+        # Peak memory tracked during execution of 3MB output must stay well below 1MB
+        assert peak < 1_000_000
+    finally:
+        tracemalloc.stop()

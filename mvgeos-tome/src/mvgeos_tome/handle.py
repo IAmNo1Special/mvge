@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
 import threading
 import uuid
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -103,19 +104,29 @@ def _timestamp_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _filter_entries_to_leaf(entries: list[TomeEntry], leaf_id: str) -> list[TomeEntry]:
-    """Filter entries to only include the branch ending at leaf_id."""
-    entry_by_id = {e.id: e for e in entries}
+def _filter_entries_to_leaf(
+    entries: Sequence[TomeEntry],
+    leaf_id: str,
+    entry_index: Mapping[str, TomeEntry] | None = None,
+) -> list[TomeEntry]:
+    """Filter entries to only include the branch ending at leaf_id.
+
+    Traverses the parent chain backwards from leaf_id in O(K) time
+    and returns ancestors ordered from root to leaf.
+    """
+    if entry_index is None:
+        entry_index = {e.id: e for e in entries}
     path: list[TomeEntry] = []
     current_id: str | None = leaf_id
     visited: set[str] = set()
     while current_id and current_id not in visited:
         visited.add(current_id)
-        entry = entry_by_id.get(current_id)
+        entry = entry_index.get(current_id)
         if not entry:
             break
-        path.insert(0, entry)
+        path.append(entry)
         current_id = entry.parent_id
+    path.reverse()
     return path
 
 
@@ -170,6 +181,7 @@ class TomeHandle:
             self._path = self._tome_dir / f"{self._tome_id}.jsonl"
         self._revision: Revision | None = None
         self._entries_cache: list[TomeEntry] | None = None
+        self._entry_index: dict[str, TomeEntry] | None = None
         self._header: dict[str, Any] | None = None
         self._lease: portalocker.Lock | None = None
         self._local_lock = threading.RLock()
@@ -267,6 +279,7 @@ class TomeHandle:
         self._header = header
         entries = self._codec.parse_entries(header, lines[1:], source=str(self._path))
         self._entries_cache = entries
+        self._entry_index = None
         self._revision = Revision.from_path(self._path)
         return entries
 
@@ -277,6 +290,14 @@ class TomeHandle:
             if self._entries_cache is not None and self._revision == rev:
                 return list(self._entries_cache)
             return list(self._load_snapshot())
+
+    def get_entries_to_leaf(self, leaf_id: str) -> list[TomeEntry]:
+        """Return the branch ending at leaf_id, using indexed traversal."""
+        with self._local_lock:
+            entries = self.get_entries()
+            if self._entry_index is None or len(self._entry_index) != len(entries):
+                self._entry_index = {e.id: e for e in entries}
+            return _filter_entries_to_leaf(entries, leaf_id, self._entry_index)
 
     def get_metadata(self) -> TomeMetadata | None:
         """Return parsed header metadata."""
@@ -337,6 +358,12 @@ class TomeHandle:
                 for line in plan.lines:
                     self._flush_line(line)
             self._entries_cache.append(plan.stored)
+            if self._entry_index is not None:
+                self._entry_index[plan.stored.id] = plan.stored
+
+    async def append_async(self, entry: TomeEntry) -> None:
+        """Asynchronously append a single entry via background thread."""
+        await asyncio.to_thread(self.append, entry)
 
     def append_leaf(self, target_id: str) -> TomeEntry:
         """Point the session's Leaf at an entry.
@@ -372,12 +399,22 @@ class TomeHandle:
                     self._flush_line(line)
         return leaf
 
+    async def append_leaf_async(self, target_id: str) -> TomeEntry:
+        """Asynchronously point the session's Leaf at an entry via background thread."""
+        return await asyncio.to_thread(self.append_leaf, target_id)
+
     def replace(self, header: dict[str, Any], entries: list[TomeEntry]) -> None:
         """Atomic full rewrite (compaction/fork) via tmp file + rename."""
         if self._mode != "w":
             raise RuntimeError("Read handle cannot replace")
         with self._acquire():
             self._replace_locked(header, entries)
+
+    async def replace_async(
+        self, header: dict[str, Any], entries: list[TomeEntry]
+    ) -> None:
+        """Asynchronously replace the file via background thread."""
+        await asyncio.to_thread(self.replace, header, entries)
 
     def _replace_locked(self, header: dict[str, Any], entries: list[TomeEntry]) -> None:
         """Rewrite the file; caller must hold the lease via _acquire()."""
@@ -395,6 +432,7 @@ class TomeHandle:
             os.replace(tmp, self._path)
             _fsync_dir(self._path.parent)
             self._entries_cache = list(entries)
+            self._entry_index = None
             self._header = dict(header)
             self._revision = Revision.from_path(self._path)
         finally:
@@ -809,7 +847,7 @@ class TomeHandleFactory:
 
         parent_entries = parent_read.get_entries()
         entries = (
-            _filter_entries_to_leaf(parent_entries, fork_from_leaf_id)
+            parent_read.get_entries_to_leaf(fork_from_leaf_id)
             if fork_from_leaf_id
             else list(parent_entries)
         )
@@ -921,9 +959,11 @@ class TomeHandleFactory:
         leaf_id: str | None = None,
         max_entries: int | None = None,
     ) -> list[TomeEntry]:
-        entries = self.get_entries(tome_id)
         if leaf_id:
-            entries = _filter_entries_to_leaf(entries, leaf_id)
+            handle = self.open_read(tome_id)
+            entries = handle.get_entries_to_leaf(leaf_id)
+        else:
+            entries = self.get_entries(tome_id)
         if max_entries is not None:
             entries = entries[-max_entries:]
         return entries

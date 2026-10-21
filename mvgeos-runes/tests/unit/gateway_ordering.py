@@ -168,3 +168,64 @@ def test_has_spell_gateway_and_discoverable_spells() -> None:
     assert "bash" in discoverable_names
     assert "worker_spell" in discoverable_names
     assert "search" not in discoverable_names
+
+
+@pytest.mark.asyncio
+async def test_gateway_deterministic_selection_multiple_claimants() -> None:
+    runner = RuneRunner()
+    # gw_z is loaded first in loads list, but gw_a has alphabetical priority
+    # within same scope
+    loads = [
+        RuneLoad(
+            manifest=RuneManifest(
+                name="gw_z",
+                version="1.0.0",
+                description="",
+                spell_gateway=True,
+                scope=RuneScope.USER,
+            ),
+        ),
+        RuneLoad(
+            manifest=RuneManifest(
+                name="gw_a",
+                version="1.0.0",
+                description="",
+                spell_gateway=True,
+                scope=RuneScope.USER,
+            ),
+        ),
+    ]
+    await runner.load_rune_loads(loads)
+    assert runner.gateway_rune_name == "gw_a"
+    assert any(
+        "gw_z" in d.message and "already claimed" in d.message
+        for d in runner.diagnostics
+    )
+
+
+@pytest.mark.asyncio
+async def test_gateway_explicit_designation_wins() -> None:
+    runner = RuneRunner()
+    runner.set_designated_gateway_rune("gw_custom")
+    loads = [
+        RuneLoad(
+            manifest=RuneManifest(
+                name="gw_a",
+                version="1.0.0",
+                description="",
+                spell_gateway=True,
+                scope=RuneScope.PROJECT,
+            ),
+        ),
+        RuneLoad(
+            manifest=RuneManifest(
+                name="gw_custom",
+                version="1.0.0",
+                description="",
+                spell_gateway=True,
+                scope=RuneScope.USER,
+            ),
+        ),
+    ]
+    await runner.load_rune_loads(loads)
+    assert runner.gateway_rune_name == "gw_custom"

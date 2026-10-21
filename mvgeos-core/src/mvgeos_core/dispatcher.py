@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import hashlib
 import inspect
@@ -26,6 +27,7 @@ from mvgeos_core.errors import (
     to_error,
 )
 from mvgeos_core.events import ContentType, MvgeEvent, MvgeEventType
+from mvgeos_core.spell_schema import unwrap_callable
 from mvgeos_core.spells import (
     SpellContext,
     SpellExecutionMode,
@@ -142,20 +144,66 @@ def _denial_message(
     )
 
 
+def _extract_code_representation(code_obj: Any) -> str:
+    """Serialize code object attributes into a deterministic string representation."""
+    parts = [
+        code_obj.co_code.hex(),
+        str(code_obj.co_varnames),
+        str(code_obj.co_names),
+    ]
+    for const in code_obj.co_consts:
+        if hasattr(const, "co_code"):
+            parts.append(_extract_code_representation(const))
+        else:
+            parts.append(repr(const))
+    return "|".join(parts)
+
+
 def _spell_code_digest(spell: Any) -> str:
     """Engine-owned sha256 digest of the spell's implementation source.
 
-    Never rune-chosen: computed here from the spell class the engine is
-    about to execute, so a code change invalidates persisted allow rules
-    on the next cast. Falls back to the fully-qualified class name when
-    source is unavailable (still stable, still engine-derived).
+    Never rune-chosen: computed here from the underlying executable target or
+    class the engine is about to execute, so a code change invalidates persisted
+    allow rules on the next cast.
     """
-    cls = spell.__class__
-    try:
-        source = inspect.getsource(cls)
-    except (OSError, TypeError):
-        source = f"{cls.__module__}.{cls.__qualname__}"
-    return "sha256:" + hashlib.sha256(source.encode("utf-8")).hexdigest()
+    candidate = None
+    if hasattr(spell, "func") and spell.func is not None:
+        candidate = spell.func
+    elif hasattr(spell, "spell_def") and spell.spell_def is not None:
+        defn = spell.spell_def
+        candidate = getattr(defn, "_handler", None) or getattr(defn, "execute", None)
+    elif hasattr(spell, "execute") and callable(spell.execute):
+        candidate = spell.execute
+
+    target: Any = unwrap_callable(candidate) if candidate is not None else None
+
+    code_repr = ""
+    if target is not None and hasattr(target, "__code__"):
+        code_repr = _extract_code_representation(target.__code__)
+
+    source_payload = ""
+    if target is not None:
+        with contextlib.suppress(OSError, TypeError):
+            source_payload = inspect.getsource(target)
+
+    if not source_payload:
+        cls = spell.__class__
+        with contextlib.suppress(OSError, TypeError):
+            source_payload = inspect.getsource(cls)
+
+    components: list[str] = []
+    if source_payload:
+        components.append(source_payload)
+    if code_repr:
+        components.append(code_repr)
+    if not components:
+        cls = spell.__class__
+        components.append(f"{cls.__module__}.{cls.__qualname__}")
+        if target is not None:
+            components.append(str(getattr(target, "__qualname__", target)))
+
+    raw = "\n---\n".join(components)
+    return "sha256:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _spell_identity(spell: Any) -> dict[str, str]:

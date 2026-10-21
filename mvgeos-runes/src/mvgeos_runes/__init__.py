@@ -52,6 +52,7 @@ from mvgeos_runes.types import (
     SkillManifest,
     SkillScope,
     SpellDefinition,
+    WorkspaceUntrustedData,
 )
 from mvgeos_runes.watcher import RuneWatcher
 
@@ -100,6 +101,7 @@ __all__ = [
     "WorkspaceTrustRecord",
     "WorkspaceTrustStatus",
     "WorkspaceTrustStore",
+    "WorkspaceUntrustedData",
     "canonicalize_workspace_path",
     "compute_project_agents_digest",
 ]

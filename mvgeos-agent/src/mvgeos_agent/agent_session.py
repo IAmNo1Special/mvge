@@ -249,7 +249,14 @@ class MvgeTome:
         self._tome_id = write_handle.tome_id
         self._rune_runner = rune_runner
         self._started = False
+        self._async_lock: asyncio.Lock | None = None
         self.last_compatibility_report: SessionCompatibilityReport | None = None
+
+    @property
+    def _lock(self) -> asyncio.Lock:
+        if self._async_lock is None:
+            self._async_lock = asyncio.Lock()
+        return self._async_lock
 
     @property
     def version(self) -> int:
@@ -597,7 +604,8 @@ class MvgeTome:
             timestamp=_timestamp_now(),
             payload=payload,
         )
-        self._write_handle.append(entry)
+        with self._write_handle.locked():
+            self._write_handle.append(entry)
         return entry
 
     def record_custom(
@@ -617,7 +625,8 @@ class MvgeTome:
             timestamp=_timestamp_now(),
             payload={"type": custom_type, "data": data or {}},
         )
-        self._write_handle.append(entry)
+        with self._write_handle.locked():
+            self._write_handle.append(entry)
         return entry
 
     def record_tome_info(self, payload: dict[str, Any]) -> TomeEntry | None:
@@ -630,7 +639,8 @@ class MvgeTome:
             timestamp=_timestamp_now(),
             payload=payload,
         )
-        self._write_handle.append(entry)
+        with self._write_handle.locked():
+            self._write_handle.append(entry)
         return entry
 
     async def active_leaf_id_async(self) -> str | None:
@@ -644,9 +654,10 @@ class MvgeTome:
         model: str | None = None,
         provider: str | None = None,
     ) -> TomeEntry | None:
-        return await asyncio.to_thread(
-            self.record_message, role, content, parent_id, model, provider
-        )
+        async with self._lock:
+            return await asyncio.to_thread(
+                self.record_message, role, content, parent_id, model, provider
+            )
 
     async def record_compaction_async(
         self,
@@ -656,14 +667,15 @@ class MvgeTome:
         first_kept_entry_id: str | None = None,
         parent_id: str | None = None,
     ) -> TomeEntry | None:
-        return await asyncio.to_thread(
-            self.record_compaction,
-            summary,
-            mana_before,
-            retained_tail,
-            first_kept_entry_id,
-            parent_id,
-        )
+        async with self._lock:
+            return await asyncio.to_thread(
+                self.record_compaction,
+                summary,
+                mana_before,
+                retained_tail,
+                first_kept_entry_id,
+                parent_id,
+            )
 
     async def record_custom_async(
         self,
@@ -671,10 +683,14 @@ class MvgeTome:
         data: dict[str, Any] | None = None,
         parent_id: str | None = None,
     ) -> TomeEntry | None:
-        return await asyncio.to_thread(self.record_custom, custom_type, data, parent_id)
+        async with self._lock:
+            return await asyncio.to_thread(
+                self.record_custom, custom_type, data, parent_id
+            )
 
     async def record_tome_info_async(self, payload: dict[str, Any]) -> TomeEntry | None:
-        return await asyncio.to_thread(self.record_tome_info, payload)
+        async with self._lock:
+            return await asyncio.to_thread(self.record_tome_info, payload)
 
     async def _safe_emit(self, hook: SigilHook, data: Any) -> None:
         if self._rune_runner is None:

@@ -20,6 +20,7 @@ from mvgeos_core.approval import (
     allow,
     deny,
 )
+from mvgeos_core.layers import scope_rank
 from mvgeos_core.spells import MvgeSpell
 
 from mvgeos_runes.installer import read_or_create_install_id
@@ -64,14 +65,39 @@ async def _safe_await(awaitable: Any) -> Any:
     return await awaitable
 
 
+DEFAULT_HOOK_TIMEOUT_SECONDS: float = 15.0
+
+
 async def _safe_call_handler_async(
     handler: Any,
     hook: SigilHook,
     data: Any,
     diagnostics: list[Diagnostic] | None = None,
+    timeout_seconds: float = DEFAULT_HOOK_TIMEOUT_SECONDS,
 ) -> Any | None:
     try:
-        return await _call_handler_async(handler, hook, data)
+        return await asyncio.wait_for(
+            _call_handler_async(handler, hook, data),
+            timeout=timeout_seconds,
+        )
+    except TimeoutError:
+        logger.warning(
+            "Sigil handler for hook %s timed out after %.2fs",
+            hook.value,
+            timeout_seconds,
+        )
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=getattr(handler, "__name__", "sigil_handler"),
+                    message=(
+                        f"Sigil handler timeout on {hook.value} after "
+                        f"{timeout_seconds}s"
+                    ),
+                )
+            )
+        return None
     except asyncio.CancelledError:
         raise
     except Exception as err:
@@ -114,7 +140,12 @@ Handler = Callable[..., Any | None | Awaitable[Any | None]]
 
 
 class RuneRunner:
-    def __init__(self, sandbox_factory: Callable[[], Sandbox] | None = None) -> None:
+    def __init__(
+        self,
+        sandbox_factory: Callable[[], Sandbox] | None = None,
+        hook_timeout_seconds: float = DEFAULT_HOOK_TIMEOUT_SECONDS,
+    ) -> None:
+        self._hook_timeout_seconds = hook_timeout_seconds
         self._sigil_handlers: dict[SigilHook, list[Handler]] = {}
         self._spells: dict[str, SpellDefinition | MvgeSpell] = {}
         self._commands: dict[str, RegisteredCommand] = {}
@@ -150,6 +181,7 @@ class RuneRunner:
         # engine narrows the model's spell view to this rune's spells and the
         # gateway reveals discovered spells via widen_global_allowlist.
         self._gateway_rune_name: str | None = None
+        self._explicit_gateway_rune: str | None = None
         # Host-privileged accessor registry: a rune factory may return its
         # public rune instance object; the runner records non-None results
         # here, keyed by manifest name, so the host can reach a loaded rune
@@ -164,12 +196,14 @@ class RuneRunner:
         # Host-bound approval presenter slot. Owned by the engine and set only
         # by the host (never through RuneAPI); None means headless.
         self._approval_presenter: ApprovalPresenter | None = None
+        self._session_presenters: dict[str, tuple[ApprovalPresenter, int]] = {}
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # Presenter generation: bumped every time the slot changes. A pending
         # request is honored only by the exact binding it started under; any
         # rebind or unbind fails it as denied so hot reload and host
         # shutdown can never orphan a pending approval future.
         self._presenter_generation: int = 0
-        self._pending_approvals: set[asyncio.Future[None]] = set()
+        self._pending_approvals: set[tuple[asyncio.Future[None], str | None]] = set()
         self._presenter_lock: asyncio.Lock = asyncio.Lock()
         self._disposable_scopes: dict[str, RuneDisposableScope] = {}
 
@@ -220,9 +254,10 @@ class RuneRunner:
         # has_ui is derived from the host-bound presenter slot, never from
         # the incoming context: a rebind must neither drop a live binding
         # nor fabricate UI capability when no presenter is bound.
-        self._context = dataclasses.replace(
-            context, has_ui=self._approval_presenter is not None
+        has_any_ui = self._approval_presenter is not None or bool(
+            self._session_presenters
         )
+        self._context = dataclasses.replace(context, has_ui=has_any_ui)
 
     def register_handler(
         self, hook: SigilHook, handler: Any, rune_name: str | None = None
@@ -534,17 +569,23 @@ class RuneRunner:
                 return result
         return allow(request)
 
-    def set_approval_presenter(self, presenter: ApprovalPresenter) -> None:
+    def set_approval_presenter(
+        self, presenter: ApprovalPresenter, tome_id: str | None = None
+    ) -> None:
         """Bind the host-owned approval presenter (host-privileged).
 
-        Never exposed through RuneAPI: if any rune could write this slot it
-        could install an auto-approver. Binding marks the rune context as
-        UI-capable (``RuneContext.has_ui``). Rebinding fails every request
-        that is still waiting on the previous presenter as denied.
+        When ``tome_id`` is supplied, binds specifically for that session,
+        leaving other sessions' presenters and in-flight approvals intact.
+        When ``tome_id`` is None, binds as the default fallback presenter.
         """
-        self._approval_presenter = presenter
+        self._presenter_generation += 1
+        if tome_id is not None:
+            self._session_presenters[tome_id] = (presenter, self._presenter_generation)
+            self._invalidate_pending_approvals(tome_id=tome_id)
+        else:
+            self._approval_presenter = presenter
+            self._invalidate_pending_approvals(tome_id=None)
         self._context = dataclasses.replace(self._context, has_ui=True)
-        self._invalidate_pending_approvals()
 
     @property
     def approval_presenter(self) -> ApprovalPresenter | None:
@@ -559,47 +600,73 @@ class RuneRunner:
     def share_approval_presenter_from(self, other: RuneRunner) -> None:
         """Share approval presenter and mutex lock from another runner."""
         self._approval_presenter = other._approval_presenter
+        self._session_presenters = dict(other._session_presenters)
+        self._session_locks = dict(other._session_locks)
         self._presenter_lock = other._presenter_lock
-        self._context = dataclasses.replace(
-            self._context, has_ui=other._approval_presenter is not None
+        has_any_ui = other._approval_presenter is not None or bool(
+            other._session_presenters
         )
+        self._context = dataclasses.replace(self._context, has_ui=has_any_ui)
 
-    def clear_approval_presenter(self) -> None:
+    def clear_approval_presenter(self, tome_id: str | None = None) -> None:
         """Unbind the presenter; pending requests resolve as denied."""
-        self._approval_presenter = None
-        self._context = dataclasses.replace(self._context, has_ui=False)
-        self._invalidate_pending_approvals()
+        if tome_id is not None:
+            self._session_presenters.pop(tome_id, None)
+            self._session_locks.pop(tome_id, None)
+            self._invalidate_pending_approvals(tome_id=tome_id)
+        else:
+            self._approval_presenter = None
+            self._invalidate_pending_approvals(tome_id=None)
+        has_any_ui = self._approval_presenter is not None or bool(
+            self._session_presenters
+        )
+        self._context = dataclasses.replace(self._context, has_ui=has_any_ui)
 
-    def _invalidate_pending_approvals(self) -> None:
-        """Fail every in-flight approval request as denied.
+    def _invalidate_pending_approvals(self, tome_id: str | None = None) -> None:
+        """Fail in-flight approval requests as denied.
 
-        The presenter slot changed (bind, rebind, or unbind): a request may
-        only be authorized by the exact binding it started under.
+        If ``tome_id`` is specified, only pending requests for that session
+        are invalidated; otherwise all pending requests are invalidated.
         """
         self._presenter_generation += 1
-        pending = list(self._pending_approvals)
-        self._pending_approvals.clear()
-        for future in pending:
+        to_invalidate = []
+        for pair in list(self._pending_approvals):
+            future, req_tome_id = pair
+            if tome_id is None or req_tome_id == tome_id:
+                to_invalidate.append(pair)
+        for pair in to_invalidate:
+            self._pending_approvals.discard(pair)
+            future = pair[0]
             if not future.done():
                 future.set_result(None)
 
     async def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
         """Await the host-bound presenter for one approval request.
 
-        The rune never imports UI code; it goes through this engine-owned
-        slot. With no presenter bound (headless/CI) the request is denied.
-        If the host rebinds or unbinds the presenter while a request is
-        pending, the request resolves as denied immediately instead of
-        waiting on the orphaned presenter. Concurrent requests serialize
-        through _presenter_lock.
+        Routes to a session-specific presenter when available, falling back
+        to the default presenter. With no presenter bound (headless/CI)
+        the request is denied.
         """
-        async with self._presenter_lock:
+        presenter: ApprovalPresenter | None = None
+        generation: int = 0
+        is_session_scoped: bool = False
+        if request.tome_id and request.tome_id in self._session_presenters:
+            lock = self._session_locks.setdefault(request.tome_id, asyncio.Lock())
+            presenter, generation = self._session_presenters[request.tome_id]
+            is_session_scoped = True
+        else:
+            lock = self._presenter_lock
             presenter = self._approval_presenter
+            generation = self._presenter_generation
+            is_session_scoped = False
+
+        async with lock:
             if presenter is None:
                 return deny(request, ApprovalReasonCode.FAILURE)
-            generation = self._presenter_generation
+
             invalidated = asyncio.get_running_loop().create_future()
-            self._pending_approvals.add(invalidated)
+            pair = (invalidated, request.tome_id)
+            self._pending_approvals.add(pair)
             task = asyncio.ensure_future(presenter(request))
             try:
                 try:
@@ -617,11 +684,18 @@ class RuneRunner:
                         with contextlib.suppress(asyncio.CancelledError, Exception):
                             await task
                     return deny(request, ApprovalReasonCode.FAILURE)
-                if (
-                    self._presenter_generation != generation
-                    or self._approval_presenter is not presenter
-                ):
-                    return deny(request, ApprovalReasonCode.FAILURE)
+                if is_session_scoped:
+                    if request.tome_id not in self._session_presenters:
+                        return deny(request, ApprovalReasonCode.FAILURE)
+                    active_p, active_gen = self._session_presenters[request.tome_id]
+                    if active_p is not presenter or active_gen != generation:
+                        return deny(request, ApprovalReasonCode.FAILURE)
+                else:
+                    if (
+                        self._presenter_generation != generation
+                        or self._approval_presenter is not presenter
+                    ):
+                        return deny(request, ApprovalReasonCode.FAILURE)
                 try:
                     decision = task.result()
                 except asyncio.CancelledError:
@@ -634,9 +708,13 @@ class RuneRunner:
                     or decision.request_digest != request.argument_digest
                 ):
                     return deny(request, ApprovalReasonCode.FAILURE)
-                if decision.outcome is ApprovalOutcome.ALLOW and (
-                    self._context.session_id != request.tome_id
-                    or self._context.project_root != request.project_root
+                if (
+                    decision.outcome is ApprovalOutcome.ALLOW
+                    and not is_session_scoped
+                    and (
+                        self._context.session_id != request.tome_id
+                        or self._context.project_root != request.project_root
+                    )
                 ):
                     # The active Tome or project changed while the prompt was
                     # open: a late decision bound to the old context must not
@@ -647,7 +725,7 @@ class RuneRunner:
                     return deny(request, ApprovalReasonCode.FAILURE)
                 return decision
             finally:
-                self._pending_approvals.discard(invalidated)
+                self._pending_approvals.discard(pair)
 
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
@@ -896,30 +974,63 @@ class RuneRunner:
                 self._current_loading_rune = None
         self._designate_spell_gateway()
 
+    def set_designated_gateway_rune(self, rune_name: str | None) -> None:
+        """Explicitly configure the designated spell-gateway rune name.
+
+        Wins over auto-discovery from loaded manifests.
+        """
+        self._explicit_gateway_rune = rune_name
+        self._designate_spell_gateway()
+
     def _designate_spell_gateway(self) -> None:
         """Designate the spell-gateway rune from loaded manifests.
 
-        The first loaded rune declaring ``spell_gateway`` wins; additional
-        claimants are reported via diagnostics and ignored, so the model's
-        narrowed spell view stays predictable.
+        When explicitly configured, the designated rune wins if loaded.
+        Otherwise, gateway claimants are ordered deterministically by scope
+        precedence (lower rank wins) and canonical name. Additional claimants
+        are reported via diagnostics and ignored, keeping the model's
+        narrowed spell view predictable and platform-independent.
         """
-        for manifest in self._loaded_manifests:
-            if not manifest.spell_gateway:
-                continue
-            if self._gateway_rune_name is None:
-                self._gateway_rune_name = manifest.name
-            elif manifest.name != self._gateway_rune_name:
-                self._diagnostics.append(
-                    Diagnostic(
-                        kind=DiagnosticKind.PARSE_WARNING,
-                        rune_name=manifest.name,
-                        message=(
-                            f"Rune '{manifest.name}' declares spell_gateway, "
-                            f"but '{self._gateway_rune_name}' already claimed "
-                            "it; ignoring."
-                        ),
+        claimants = [m for m in self._loaded_manifests if m.spell_gateway]
+        if not claimants and self._explicit_gateway_rune is None:
+            self._gateway_rune_name = None
+            return
+
+        winner: RuneManifest | None = None
+        if self._explicit_gateway_rune is not None:
+            winner = next(
+                (
+                    m
+                    for m in self._loaded_manifests
+                    if m.name == self._explicit_gateway_rune
+                ),
+                None,
+            )
+
+        if winner is None and claimants:
+
+            def _rank(m: RuneManifest) -> tuple[int, str]:
+                r = scope_rank(m.scope) if getattr(m, "scope", None) is not None else 99
+                return (r, m.name)
+
+            claimants_sorted = sorted(claimants, key=_rank)
+            winner = claimants_sorted[0]
+
+        if winner is not None:
+            self._gateway_rune_name = winner.name
+            for manifest in claimants:
+                if manifest.name != winner.name:
+                    self._diagnostics.append(
+                        Diagnostic(
+                            kind=DiagnosticKind.PARSE_WARNING,
+                            rune_name=manifest.name,
+                            message=(
+                                f"Rune '{manifest.name}' declares spell_gateway, "
+                                f"but '{winner.name}' already claimed "
+                                "it; ignoring."
+                            ),
+                        )
                     )
-                )
 
     @property
     def gateway_rune_name(self) -> str | None:
@@ -944,30 +1055,46 @@ class RuneRunner:
             if getattr(spell, "source_rune", None) == self._gateway_rune_name
         )
 
+    @property
+    def hook_timeout_seconds(self) -> float:
+        return self._hook_timeout_seconds
+
+    @hook_timeout_seconds.setter
+    def hook_timeout_seconds(self, value: float) -> None:
+        self._hook_timeout_seconds = value
+
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
         # Payloads arrive typed from mvgeos_agent.sigil_payloads; the runner
         # fans them out unchanged. Rune *returns* are never re-validated.
         for handler in self.get_sigil_handlers(hook):
-            await _safe_call_handler_async(handler, hook, data)
+            await _safe_call_handler_async(
+                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+            )
 
     async def emit_chain(self, hook: SigilHook, initial: Any) -> Any:
         current = initial
         for handler in self.get_sigil_handlers(hook):
-            result = await _safe_call_handler_async(handler, hook, current)
+            result = await _safe_call_handler_async(
+                handler, hook, current, self._diagnostics, self._hook_timeout_seconds
+            )
             if result is not None:
                 current = result
         return current
 
     async def emit_first(self, hook: SigilHook, data: Any) -> Any | None:
         for handler in self.get_sigil_handlers(hook):
-            result = await _safe_call_handler_async(handler, hook, data)
+            result = await _safe_call_handler_async(
+                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+            )
             if result is not None:
                 return result
         return None
 
     async def emit_block(self, hook: SigilHook, data: Any) -> dict[str, Any] | None:
         for handler in self.get_sigil_handlers(hook):
-            result = await _safe_call_handler_async(handler, hook, data)
+            result = await _safe_call_handler_async(
+                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+            )
             if isinstance(result, dict) and result.get("block"):
                 return result
         return None

@@ -4,6 +4,8 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from mvgeos_tome.handle import TomeHandleFactory
 from mvgeos_tome.types import TomeEntry, TomeEntryType
 
@@ -197,3 +199,51 @@ class TestParentIdAndBranching:
             assert meta2.model == "openai/gpt-4o"
             assert meta2.contemplation_level == "low"
             assert meta2.spells == ["bash"]
+
+    def test_get_entries_to_leaf_indexed_deep_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            factory = _factory(tmp)
+            write = factory.create_tome("/tmp", tome_id="t1")
+            prev_id: str | None = None
+            branch_a: list[str] = []
+            for i in range(50):
+                eid = f"a_{i}"
+                _message(write, eid, "user", f"msg {i}", parent_id=prev_id)
+                branch_a.append(eid)
+                prev_id = eid
+
+            # Create side branch B branching off a_25
+            prev_b: str | None = "a_25"
+            branch_b: list[str] = list(branch_a[:26])
+            for j in range(20):
+                eid = f"b_{j}"
+                _message(write, eid, "user", f"side {j}", parent_id=prev_b)
+                branch_b.append(eid)
+                prev_b = eid
+
+            read = factory.open_read("t1")
+            res_a = read.get_entries_to_leaf("a_49")
+            assert [e.id for e in res_a] == branch_a
+
+            res_b = read.get_entries_to_leaf("b_19")
+            assert [e.id for e in res_b] == branch_b
+
+    @pytest.mark.asyncio
+    async def test_tome_handle_async_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            factory = _factory(tmp)
+            write = factory.create_tome("/tmp", tome_id="t_async")
+            e1 = TomeEntry(
+                id="e1",
+                parent_id=None,
+                type=TomeEntryType.MESSAGE,
+                timestamp=1000.0,
+                payload={"role": "user", "content": "hi async"},
+            )
+            await write.append_async(e1)
+            leaf = await write.append_leaf_async("e1")
+            assert leaf.payload["targetId"] == "e1"
+
+            read = factory.open_read("t_async")
+            entries = read.get_entries()
+            assert any(e.id == "e1" for e in entries)

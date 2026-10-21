@@ -89,6 +89,10 @@ PAYLOAD_FIELDS: dict[SigilHook, dict[str, Any]] = {
         "reason": "checkout",
         "workspace_root": "/w",
     },
+    SigilHook.WORKSPACE_UNTRUSTED: {
+        "workspace_root": "/w",
+        "status": "declined",
+    },
 }
 
 

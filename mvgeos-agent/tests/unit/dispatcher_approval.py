@@ -564,3 +564,49 @@ async def test_gate_request_identity_rune_spell_scope_and_digest() -> None:
     assert identity["source_scope"] == "rune"
     assert identity["source_id"] != ""
     assert identity["code_digest"].startswith("sha256:")
+
+
+@pytest.mark.asyncio
+async def test_gate_request_identity_digest_changes_for_different_rune_handlers() -> (
+    None
+):
+    d1 = SpellDefinition(
+        name="rune_spell", description="desc", handler=lambda: "action_1"
+    )
+    d2 = SpellDefinition(
+        name="rune_spell", description="desc", handler=lambda: "action_2"
+    )
+    id1 = await _capture_identity(RuneSpellWrapper(d1))
+    id2 = await _capture_identity(RuneSpellWrapper(d2))
+    assert id1["code_digest"] != id2["code_digest"]
+
+
+@pytest.mark.asyncio
+async def test_gate_request_identity_digest_changes_for_different_function_spells() -> (
+    None
+):
+    from mvgeos_agent.function_spell import FunctionSpell
+
+    f1 = FunctionSpell(func=lambda x: x + 1, name="calc")
+    f2 = FunctionSpell(func=lambda x: x * 10, name="calc")
+    seen: list[ApprovalRequest] = []
+    events, emit = await _emit_collector()
+    await SpellDispatcher().dispatch_batch(
+        _response("c1", "calc", {"x": 1}),
+        _context(f1),
+        LoopCallbacks(approval_gate=_deny_and_capture(seen)),
+        emit,
+    )
+    id1 = dict(seen[0].spell_identity)
+
+    seen2: list[ApprovalRequest] = []
+    events2, emit2 = await _emit_collector()
+    await SpellDispatcher().dispatch_batch(
+        _response("c2", "calc", {"x": 1}),
+        _context(f2),
+        LoopCallbacks(approval_gate=_deny_and_capture(seen2)),
+        emit2,
+    )
+    id2 = dict(seen2[0].spell_identity)
+
+    assert id1["code_digest"] != id2["code_digest"]

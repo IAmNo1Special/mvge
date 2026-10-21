@@ -7,6 +7,7 @@ import httpx
 from mvgeos_core.channel import Model
 
 from mvgeos_provider.base import (
+    FallbackRealm,
     NoRealmRegisteredError,
     Realm,
     RealmFactory,
@@ -67,6 +68,7 @@ class RealmRegistry:
         self._model_registry.load_cache()
         self._extension_providers: dict[str, dict[str, Any]] = {}
         self._realm_factories: dict[str, RealmFactory] = {}
+        self._fallback_chains: dict[str, list[str]] = {}
 
     @property
     def cache_ttl_seconds(self) -> int:
@@ -226,11 +228,20 @@ class RealmRegistry:
                 return self._realm_factories[candidate]
         return None
 
+    def set_fallback_chain(self, primary_realm: str, fallbacks: list[str]) -> None:
+        """Register a list of fallback realm prefixes for a primary realm prefix."""
+        self._fallback_chains[primary_realm.strip()] = [f.strip() for f in fallbacks]
+
+    def get_fallback_chain(self, primary_realm: str) -> list[str]:
+        """Get the configured fallback realm prefixes for a primary realm prefix."""
+        return list(self._fallback_chains.get(primary_realm.strip(), []))
+
     def create_realm(
         self,
         model: Model | str,
         api_key: str = "",
         provider_name: str | None = None,
+        with_fallback: bool = False,
     ) -> Realm:
         if isinstance(model, str):
             model = self.compose_model(
@@ -252,9 +263,35 @@ class RealmRegistry:
 
         factory = self._find_realm_factory(model, provider_name)
         if factory is not None:
-            return factory(api_key=key, base_url=base_url)
+            primary_realm = factory(api_key=key, base_url=base_url)
+            if with_fallback:
+                realm_key = provider_name or model.realm
+                for fallback_prefix in self.get_fallback_chain(realm_key):
+                    fb_factory = self.get_realm_factory(fallback_prefix)
+                    if fb_factory is not None:
+                        fb_realm = fb_factory(api_key=key, base_url=base_url)
+                        return FallbackRealm(primary_realm, fb_realm)
+            return primary_realm
+
+        # If primary factory is not registered, try fallback chain
+        realm_key = provider_name or model.realm
+        for fallback_prefix in self.get_fallback_chain(realm_key):
+            fb_factory = self.get_realm_factory(fallback_prefix)
+            if fb_factory is not None:
+                return fb_factory(api_key=key, base_url=base_url)
 
         raise no_realm_registered(model, provider_name)
+
+    def create_resilient_realm(
+        self,
+        model: Model | str,
+        api_key: str = "",
+        provider_name: str | None = None,
+    ) -> Realm:
+        """Create a Realm configured with automatic failover to fallback chains."""
+        return self.create_realm(
+            model, api_key=api_key, provider_name=provider_name, with_fallback=True
+        )
 
     def compose_model(
         self,

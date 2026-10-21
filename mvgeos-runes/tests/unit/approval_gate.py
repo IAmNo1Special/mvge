@@ -352,3 +352,49 @@ async def test_request_approval_denies_when_project_changed_mid_prompt() -> None
     decision = await task
     assert decision.outcome is ApprovalOutcome.DENY
     assert decision.reason_code.value == "failure"
+
+
+@pytest.mark.asyncio
+async def test_session_scoped_presenter_routing_and_isolation() -> None:
+    runner, api = _runner_with_api()
+    release_t1 = asyncio.Event()
+
+    async def presenter_t1(request: ApprovalRequest) -> ApprovalDecision:
+        await release_t1.wait()
+        return allow(request)
+
+    async def presenter_t2(request: ApprovalRequest) -> ApprovalDecision:
+        return allow(request)
+
+    runner.bind_context(RuneContext(session_id="t1", project_root="/proj"))
+    runner.set_approval_presenter(presenter_t1, tome_id="t1")
+    runner.set_approval_presenter(presenter_t2, tome_id="t2")
+
+    req1 = _request()  # tome_id="t1"
+    req2 = ApprovalRequest(
+        cast_id="call_2",
+        spell_name="write",
+        spell_identity=MappingProxyType({"name": "write", "source_kind": "builtin"}),
+        arguments=MappingProxyType({"path": "b.txt"}),
+        argument_digest="sha256:def",
+        project_root="/proj",
+        tome_id="t2",
+        agent_name="m1",
+    )
+
+    task1 = asyncio.create_task(api.request_approval(req1))
+    await asyncio.sleep(0)
+
+    # Rebinding presenter for t2 must NOT invalidate t1's pending request
+    runner.set_approval_presenter(presenter_t2, tome_id="t2")
+    await asyncio.sleep(0)
+    assert not task1.done()
+
+    # t2's request completes immediately using presenter_t2
+    dec2 = await api.request_approval(req2)
+    assert dec2.outcome is ApprovalOutcome.ALLOW
+
+    # release t1
+    release_t1.set()
+    dec1 = await task1
+    assert dec1.outcome is ApprovalOutcome.ALLOW

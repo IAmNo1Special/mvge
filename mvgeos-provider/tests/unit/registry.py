@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -649,3 +650,55 @@ def test_clear_realm_factories() -> None:
     )
     with pytest.raises(NoRealmRegisteredError):
         reg.create_realm(model, api_key="test-key")
+
+
+def test_fallback_chain_unregistered_primary() -> None:
+    reg = RealmRegistry()
+    mock_openrouter = MockStreamingRealm(api_key="or-key")
+    reg.register_realm_factory("openrouter", lambda **kw: mock_openrouter)
+    reg.set_fallback_chain("anthropic", ["openrouter"])
+
+    model = Model(
+        id="anthropic/claude-3-5-sonnet",
+        name="Claude",
+        realm="anthropic",
+        base_url="https://api.anthropic.com",
+        api_key="key",
+    )
+    # Primary "anthropic" has no factory, so it falls back to "openrouter"
+    realm = reg.create_realm(model, api_key="test-key")
+    assert realm is mock_openrouter
+
+
+@pytest.mark.asyncio
+async def test_fallback_realm_runtime_failover() -> None:
+    from mvgeos_provider.base import FallbackRealm
+
+    class FailingRealm(Realm):
+        async def complete(self, *args: Any, **kwargs: Any) -> Any:
+            raise ConnectionError("Primary upstream down")
+
+        async def stream(self, *args: Any, **kwargs: Any) -> Any:
+            raise ConnectionError("Primary stream failed")
+            yield  # type: ignore[unreachable]
+
+    class WorkingRealm(Realm):
+        async def complete(self, *args: Any, **kwargs: Any) -> Any:
+            return "fallback-response"
+
+        async def stream(self, *args: Any, **kwargs: Any) -> Any:
+            yield "chunk-from-fallback"
+
+    composite = FallbackRealm(primary=FailingRealm(), fallback=WorkingRealm())
+    model = Model(id="test/model", name="test", realm="test", base_url="", api_key="")
+    cfg = ChannelConfig(model=model)
+
+    # Test complete failover
+    result = await composite.complete(model, [], cfg)
+    assert result == "fallback-response"
+
+    # Test stream failover
+    chunks = []
+    async for chunk in composite.stream(model, [], cfg):
+        chunks.append(chunk)
+    assert chunks == ["chunk-from-fallback"]

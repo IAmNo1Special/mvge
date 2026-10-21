@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from typing import Any, Protocol, runtime_checkable
 from pydantic import BaseModel, ValidationError, create_model
 
 from mvgeos_core.abort import AbortSignal
+from mvgeos_core.truncate import MAX_SPELL_RESULT_BYTES
 
 
 class ExecutionMode(StrEnum):
@@ -50,6 +52,7 @@ class ExecutionBackend(Protocol):
         timeout_ms: int | None = None,
         signal: AbortSignal | None = None,
         on_output: Callable[[str], None] | None = None,
+        max_output_bytes: int = ...,
     ) -> ExecResult: ...
 
     async def read_bytes(self, path: Path) -> bytes: ...
@@ -83,6 +86,66 @@ def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
         pass
 
 
+class _BoundedBuffer:
+    """Bounded stream buffer retaining head and tail up to max_bytes total."""
+
+    def __init__(
+        self,
+        max_bytes: int = MAX_SPELL_RESULT_BYTES,
+        head_ratio: float = 0.2,
+    ) -> None:
+        self.max_bytes = max_bytes
+        self.head_limit = int(max_bytes * head_ratio)
+        self.tail_limit = max_bytes - self.head_limit
+        self.head = bytearray()
+        self.tail = bytearray()
+        self.total_bytes = 0
+
+    def feed(self, chunk: bytes) -> None:
+        if not chunk:
+            return
+        self.total_bytes += len(chunk)
+        if len(self.head) < self.head_limit:
+            head_needed = self.head_limit - len(self.head)
+            self.head += chunk[:head_needed]
+            remainder = chunk[head_needed:]
+        else:
+            remainder = chunk
+
+        if remainder:
+            self.tail += remainder
+            overflow = len(self.tail) - self.tail_limit
+            if overflow > 0:
+                del self.tail[:overflow]
+
+    def getvalue(self) -> str:
+        if self.total_bytes <= self.max_bytes:
+            raw = bytes(self.head + self.tail)
+            return raw.decode("utf-8", errors="replace")
+
+        head_str = self.head.decode("utf-8", errors="replace")
+        tail_str = self.tail.decode("utf-8", errors="replace")
+        omitted = self.total_bytes - len(self.head) - len(self.tail)
+        marker = f"\n... [truncated {omitted} bytes] ...\n"
+        return f"{head_str}{marker}{tail_str}"
+
+
+async def _drain_stream(
+    stream: asyncio.StreamReader | None,
+    buf: _BoundedBuffer,
+    on_output: Callable[[str], None] | None = None,
+) -> None:
+    if stream is None:
+        return
+    while True:
+        chunk = await stream.read(65536)
+        if not chunk:
+            break
+        buf.feed(chunk)
+        if on_output is not None:
+            on_output(chunk.decode("utf-8", errors="replace"))
+
+
 class LocalExecutionBackend:
     """Local host OS execution backend."""
 
@@ -95,6 +158,7 @@ class LocalExecutionBackend:
         timeout_ms: int | None = None,
         signal: AbortSignal | None = None,
         on_output: Callable[[str], None] | None = None,
+        max_output_bytes: int = MAX_SPELL_RESULT_BYTES,
     ) -> ExecResult:
         if signal is not None and signal.aborted:
             return ExecResult(
@@ -121,36 +185,35 @@ class LocalExecutionBackend:
 
             signal.on_abort(_on_abort)
 
+        stdout_buf = _BoundedBuffer(max_bytes=max_output_bytes)
+        stderr_buf = _BoundedBuffer(max_bytes=max_output_bytes)
+
         timed_out = False
         try:
+            drain_task = asyncio.gather(
+                _drain_stream(proc.stdout, stdout_buf, on_output=on_output),
+                _drain_stream(proc.stderr, stderr_buf, on_output=None),
+                proc.wait(),
+            )
             if timeout_ms is not None:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=timeout_ms / 1000.0
-                )
+                await asyncio.wait_for(drain_task, timeout=timeout_ms / 1000.0)
             else:
-                stdout_b, stderr_b = await proc.communicate()
+                await drain_task
         except TimeoutError:
             timed_out = True
             _kill_process_tree(proc)
-            try:
-                stdout_b, stderr_b = await asyncio.wait_for(
-                    proc.communicate(), timeout=2.0
-                )
-            except (TimeoutError, Exception):
-                stdout_b, stderr_b = b"", b"Execution timed out"
+            with contextlib.suppress(TimeoutError, Exception):
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            if not stderr_buf.total_bytes:
+                stderr_buf.feed(b"Execution timed out")
         except asyncio.CancelledError:
             _kill_process_tree(proc)
             raise
 
-        stdout = stdout_b.decode("utf-8", errors="replace")
-        stderr = stderr_b.decode("utf-8", errors="replace")
-        if on_output is not None and stdout:
-            on_output(stdout)
-
         return ExecResult(
             exit_code=proc.returncode if proc.returncode is not None else -1,
-            stdout=stdout,
-            stderr=stderr,
+            stdout=stdout_buf.getvalue(),
+            stderr=stderr_buf.getvalue(),
             timed_out=timed_out,
         )
 

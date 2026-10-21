@@ -61,6 +61,7 @@ class SigilHook(StrEnum):
     PREPARE_NEXT_TURN = "prepare_next_turn"
     RESOURCES_DISCOVER = "resources_discover"
     SESSION_LEAF_CHANGED = "session_leaf_changed"
+    WORKSPACE_UNTRUSTED = "workspace_untrusted"
 
 
 @dataclass
@@ -275,6 +276,14 @@ class SessionLeafChangedData:
     workspace_root: str | None = None
 
 
+@dataclass
+class WorkspaceUntrustedData:
+    """Data passed to WORKSPACE_UNTRUSTED sigil hook."""
+
+    workspace_root: str
+    status: str
+
+
 # Mapping from SigilHook to its typed data class
 SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.BEFORE_INVOCATION: BeforeInvocationData,
@@ -301,6 +310,7 @@ SIGIL_HOOK_DATA_CLASSES: dict[SigilHook, type] = {
     SigilHook.PREPARE_NEXT_TURN: PrepareNextTurnData,
     SigilHook.RESOURCES_DISCOVER: ResourcesDiscoverData,
     SigilHook.SESSION_LEAF_CHANGED: SessionLeafChangedData,
+    SigilHook.WORKSPACE_UNTRUSTED: WorkspaceUntrustedData,
 }
 
 
