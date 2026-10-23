@@ -392,6 +392,35 @@ class PluginManifest:
     path: str = ""
 
 
+@dataclass(frozen=True)
+class RuneUIView:
+    """A sidebar view navigation entry contributed by a rune."""
+
+    id: str
+    title: str
+    icon: str = "extension"
+    order: int = 100
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class RuneUICanvasTab:
+    """An adaptive canvas surface/tab contributed by a rune."""
+
+    id: str
+    title: str
+    icon: str = "extension"
+    order: int = 100
+
+
+@dataclass(frozen=True)
+class RuneUIContributions:
+    """UI entry points declared in manifest.json."""
+
+    views: list[RuneUIView] = field(default_factory=list)
+    canvas_tabs: list[RuneUICanvasTab] = field(default_factory=list)
+
+
 @dataclass
 class RuneManifest:
     name: str
@@ -411,6 +440,7 @@ class RuneManifest:
     spell_gateway: bool = False
     commands: list[str] = field(default_factory=list)
     session_codecs: list[str] = field(default_factory=list)
+    ui: RuneUIContributions = field(default_factory=RuneUIContributions)
 
 
 @dataclass(frozen=True)

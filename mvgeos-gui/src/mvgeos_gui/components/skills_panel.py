@@ -47,7 +47,7 @@ def _render_skills_lists(state: AppState, refresh: object) -> None:
         with ui.column().classes("gap-1 mt-1"):
             ui.label("No skills loaded").classes("text-xs text-[var(--text-muted)]")
             ui.label(
-                "Skills are reusable capabilities the agent can invoke. "
+                "Skills are reusable capabilities the Mvge can invoke. "
                 "Use Install Skill above to install one from a git URL or "
                 "local folder."
             ).classes("text-[11px] text-[var(--text-muted-a70)]")

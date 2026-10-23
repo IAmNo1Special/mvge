@@ -18,7 +18,7 @@ def render_file_tree(state: AppState) -> None:
         )
         return
 
-    with ui.column().classes("w-full h-full overflow-y-auto p-2"):
+    with ui.column().classes("w-full flex-1 min-h-0 overflow-y-auto p-2"):
         _render_tree(state, root, root, 0)
 
 

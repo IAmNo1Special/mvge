@@ -10,6 +10,9 @@ from mvgeos_core.spells import ExecutionMode
 from mvgeos_runes.types import (
     RuneManifest,
     RuneShortcut,
+    RuneUICanvasTab,
+    RuneUIContributions,
+    RuneUIView,
     SigilHook,
 )
 
@@ -19,6 +22,38 @@ def _extract_string_list(data: dict[str, Any], key: str) -> list[str]:
     if not isinstance(raw, list):
         return []
     return [dep for dep in raw if isinstance(dep, str)]
+
+
+def _parse_ui_contributions(raw_ui: Any) -> RuneUIContributions:
+    if not isinstance(raw_ui, dict):
+        return RuneUIContributions()
+
+    views: list[RuneUIView] = []
+    for item in raw_ui.get("views", []):
+        if isinstance(item, dict) and "id" in item and "title" in item:
+            views.append(
+                RuneUIView(
+                    id=str(item["id"]),
+                    title=str(item["title"]),
+                    icon=str(item.get("icon", "extension")),
+                    order=int(item.get("order", 100)),
+                    description=str(item.get("description", "")),
+                )
+            )
+
+    canvas_tabs: list[RuneUICanvasTab] = []
+    for item in raw_ui.get("canvas_tabs", []):
+        if isinstance(item, dict) and "id" in item and "title" in item:
+            canvas_tabs.append(
+                RuneUICanvasTab(
+                    id=str(item["id"]),
+                    title=str(item["title"]),
+                    icon=str(item.get("icon", "extension")),
+                    order=int(item.get("order", 100)),
+                )
+            )
+
+    return RuneUIContributions(views=views, canvas_tabs=canvas_tabs)
 
 
 def load_manifest(path: Path) -> RuneManifest | None:
@@ -79,6 +114,7 @@ def load_manifest(path: Path) -> RuneManifest | None:
 
     commands = _extract_string_list(data, "commands")
     session_codecs = _extract_string_list(data, "session_codecs")
+    ui = _parse_ui_contributions(data.get("ui"))
 
     return RuneManifest(
         name=data["name"],
@@ -96,4 +132,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         spell_gateway=spell_gateway,
         commands=commands,
         session_codecs=session_codecs,
+        ui=ui,
     )

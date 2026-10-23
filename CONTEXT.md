@@ -169,3 +169,17 @@ _Avoid_: Execution Backend, container
 **Execution Backend**:
 The runtime substrate (such as the local host OS, a persistent container, or an ephemeral micro-VM) on which Spells execute commands and file operations.
 _Avoid_: Code Sandbox, AST guard
+
+### Desktop & Interaction Surface
+
+**Canvas**:
+A docked or slide-over interactive workspace surface in the MvgeOS GUI positioned alongside the Tome transcript, used for reading, editing, and previewing Artifacts, unified diffs, and live documents without modal interruption.
+_Avoid_: Popup, modal dialog, preview window
+
+**Steering Control**:
+An in-flight Composer interaction in the MvgeOS GUI that dispatches guidance directly to an actively Channeling Mvge at the next turn boundary without aborting the run.
+_Avoid_: Interruption button, cancel-and-replace
+
+**Summoning Card**:
+An in-stream transcript card that visually represents a child Mvge's execution under a Summoning delegation, displaying live status attribution and offering one-click inspection into its child Tome.
+_Avoid_: Sub-agent box, nested chat

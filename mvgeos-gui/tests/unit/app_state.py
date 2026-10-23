@@ -2628,3 +2628,165 @@ def test_scan_skill_manifests_uppercase_still_works(
     manifests = state_module._scan_skill_manifests(project)
 
     assert [m.name for m in manifests] == ["upper-skill"]
+
+
+def test_steer_prompt_dispatches_to_service() -> None:
+    """Verify steer_prompt calls agent_service.steer with stripped text."""
+    state = AppState()
+    mock_service = MagicMock()
+    state.agent_service = mock_service
+
+    state.steer_prompt("  Refactor math logic instead  ")
+
+    mock_service.steer.assert_called_once_with("Refactor math logic instead")
+
+
+def test_steer_prompt_ignores_blank() -> None:
+    """Verify steer_prompt does nothing when text is empty or blank."""
+    state = AppState()
+    mock_service = MagicMock()
+    state.agent_service = mock_service
+
+    state.steer_prompt("   ")
+
+    mock_service.steer.assert_not_called()
+
+
+def test_queue_follow_up_adds_and_dispatches() -> None:
+    """Verify queue_follow_up adds prompt to queued_follow_ups list."""
+    state = AppState()
+    mock_service = MagicMock()
+    state.agent_service = mock_service
+
+    state.queue_follow_up("Run pytest after this")
+
+    assert state.queued_follow_ups == ["Run pytest after this"]
+    mock_service.follow_up.assert_called_once_with("Run pytest after this")
+
+
+def test_remove_follow_up_removes_by_index() -> None:
+    """Verify remove_follow_up removes the specified item from queued_follow_ups."""
+    state = AppState()
+    state.queued_follow_ups = ["Prompt 1", "Prompt 2", "Prompt 3"]
+
+    state.remove_follow_up(1)
+
+    assert state.queued_follow_ups == ["Prompt 1", "Prompt 3"]
+
+
+def test_get_contributed_views_from_installed_runes() -> None:
+    """Verify get_contributed_views extracts and sorts views from enabled runes."""
+    state = AppState()
+    mock_runes = [
+        {
+            "name": "disabled-rune",
+            "enabled": False,
+            "ui": {
+                "views": [{"id": "hidden", "title": "Hidden", "order": 10}],
+            },
+        },
+        {
+            "name": "skills-bridge",
+            "enabled": True,
+            "ui": {
+                "views": [
+                    {
+                        "id": "skills",
+                        "title": "Skills",
+                        "icon": "auto_awesome",
+                        "order": 50,
+                        "description": "Agent skills",
+                    }
+                ],
+            },
+        },
+        {
+            "name": "custom-scheduler",
+            "enabled": True,
+            "ui": {
+                "views": [
+                    {
+                        "id": "scheduler",
+                        "title": "Scheduler",
+                        "icon": "schedule",
+                        "order": 20,
+                        "description": "Cron tasks",
+                    }
+                ],
+            },
+        },
+    ]
+
+    with patch("mvgeos_gui.state.list_installed_runes", return_value=mock_runes):
+        views = state.get_contributed_views()
+        assert len(views) == 2
+        # Sorted by order: scheduler (20) first, then skills (50)
+        assert views[0].id == "scheduler"
+        assert views[0].title == "Scheduler"
+        assert views[0].icon == "schedule"
+        assert views[1].id == "skills"
+        assert views[1].title == "Skills"
+        assert views[1].icon == "auto_awesome"
+
+        assert state.has_contributed_view("skills") is True
+        assert state.has_contributed_view("scheduler") is True
+        assert state.has_contributed_view("hidden") is False
+        assert state.has_contributed_view("nonexistent") is False
+
+
+def test_get_contributed_canvas_tabs_from_installed_runes() -> None:
+    """Verify get_contributed_canvas_tabs extracts and sorts tabs from enabled runes."""
+    state = AppState()
+    mock_runes = [
+        {
+            "name": "disabled-tab-rune",
+            "enabled": False,
+            "ui": {
+                "canvas_tabs": [
+                    {"id": "disabled_tab", "title": "Disabled", "order": 5}
+                ],
+            },
+        },
+        {
+            "name": "submvge-bridge",
+            "enabled": True,
+            "ui": {
+                "canvas_tabs": [
+                    {
+                        "id": "sub_mvge",
+                        "title": "Sub-Mvge",
+                        "icon": "hub",
+                        "order": 30,
+                    }
+                ],
+            },
+        },
+        {
+            "name": "checkpoint-bridge",
+            "enabled": True,
+            "ui": {
+                "canvas_tabs": [
+                    {
+                        "id": "review",
+                        "title": "Review",
+                        "icon": "rate_review",
+                        "order": 10,
+                    }
+                ],
+            },
+        },
+    ]
+
+    with patch("mvgeos_gui.state.list_installed_runes", return_value=mock_runes):
+        tabs = state.get_contributed_canvas_tabs()
+        assert len(tabs) == 2
+        # Sorted by order: review (10) first, then sub_mvge (30)
+        assert tabs[0].id == "review"
+        assert tabs[0].title == "Review"
+        assert tabs[1].id == "sub_mvge"
+        assert tabs[1].title == "Sub-Mvge"
+
+        assert state.has_contributed_canvas_tab("review") is True
+        assert state.has_contributed_canvas_tab("sub_mvge") is True
+        assert state.has_contributed_canvas_tab("disabled_tab") is False
+        assert state.has_contributed_canvas_tab("nonexistent") is False

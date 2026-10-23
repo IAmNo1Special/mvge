@@ -45,26 +45,14 @@ def render_chat_panel(state: AppState) -> ui.column:
                     "w-full h-11 items-center justify-between px-3 "
                     "border-b border-[var(--border-subtle)] shrink-0"
                 ),
-                ui.row().classes("items-center gap-1"),
+                ui.row().classes("items-center gap-2"),
             ):
-                if state.project_path:
-                    with ui.row().classes(
-                        "items-center gap-1.5 mr-2 px-2 py-0.5 rounded "
-                        "bg-[var(--bg-card-a60)]"
-                    ):
-                        ui.icon("folder_open", size="12px").classes(
-                            "text-[var(--text-secondary)]"
-                        )
-                        ui.label(state.project_display_name).classes(
-                            "text-xs text-[var(--text-secondary)] max-w-[300px] "
-                            "truncate"
-                        )
-
-                _toolbar_button(
-                    icon="shield",
-                    title="Review panel",
-                    active=state.review_open,
-                    on_click=state.toggle_review,
+                ui.icon("chat_bubble_outline", size="14px").classes(
+                    "text-[var(--accent-primary)]"
+                )
+                ui.label(state.tome_title).classes(
+                    "text-xs font-medium text-[var(--text-primary)] "
+                    "max-w-[320px] truncate"
                 )
 
                 # Right toolbar actions
@@ -99,18 +87,17 @@ def render_chat_panel(state: AppState) -> ui.column:
                     _toolbar_button(
                         icon="folder_open",
                         title="Browse files",
-                        active=state.chat_side_panel == "files",
-                        on_click=lambda: state.set_chat_side_panel(
-                            None if state.chat_side_panel == "files" else "files"
-                        ),
+                        active=state.review_open and state.active_canvas_tab == "files",
+                        on_click=state.toggle_canvas_files,
+                    )
+                    is_review = (
+                        state.review_open and state.active_canvas_tab == "review"
                     )
                     _toolbar_button(
                         icon="difference",
                         title="View changes",
-                        active=state.chat_side_panel == "diff",
-                        on_click=lambda: state.set_chat_side_panel(
-                            None if state.chat_side_panel == "diff" else "diff"
-                        ),
+                        active=is_review,
+                        on_click=state.toggle_review,
                     )
                     _toolbar_button(
                         icon="tune",
@@ -394,6 +381,11 @@ def _render_user_message(msg: object) -> None:
                 ui.label("Summoner").classes(
                     "text-xs font-semibold text-[var(--text-primary)]"
                 )
+                if getattr(msg, "is_steering", False):
+                    ui.badge("Steering").props("rounded dense size=xs").classes(
+                        "bg-[var(--accent-primary)] text-white text-[9px] "
+                        "uppercase tracking-wider font-mono"
+                    )
             if timestamp:
                 ui.label(timestamp).classes(
                     "text-[10px] text-[var(--text-muted)] font-mono"

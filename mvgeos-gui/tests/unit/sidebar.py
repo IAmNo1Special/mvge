@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
+from mvgeos_runes import RuneUIView
 from nicegui import app as nicegui_app
 from nicegui import ui
 from nicegui.testing import User
@@ -44,14 +45,39 @@ async def test_sidebar_expanded_rendering(user: User) -> None:
     await user.should_see("Chat")
     await user.should_see("Sessions")
     await user.should_see("Marketplace")
-    await user.should_see("Skills")
     await user.should_see("Diagnostics")
     await user.should_see("Settings")
+    # Rune-dependent surfaces like Skills should NOT appear when uninstalled:
+    await user.should_not_see("Skills")
     # Placeholder panels were removed: they had no reason to exist.
     await user.should_not_see("Timeline")
     await user.should_not_see("Notes")
     btn = user.find(marker="collapse_sidebar_btn")
     assert btn is not None
+
+
+@pytest.mark.asyncio
+async def test_sidebar_contributed_views_rendering(user: User) -> None:
+    """Sidebar renders navigation items contributed by installed runes."""
+    state = AppState(project_path=Path("C:/demo/project"), sidebar_open=True)
+    state.current_user = _mock_user()
+
+    contributed = [
+        RuneUIView(id="skills", title="Skills", icon="auto_awesome", order=50),
+        RuneUIView(id="scheduler", title="Scheduler", icon="schedule", order=20),
+    ]
+
+    with patch.object(state, "get_contributed_views", return_value=contributed):
+
+        @ui.page("/test_sidebar_contributed")
+        def page() -> None:
+            render_sidebar(state)
+
+        await user.open("/test_sidebar_contributed")
+        await user.should_see("Home")
+        await user.should_see("Scheduler")
+        await user.should_see("Skills")
+        await user.should_see("Settings")
 
 
 @pytest.mark.asyncio
@@ -248,3 +274,42 @@ async def test_sidebar_refreshes_on_login(user: User, tmp_path: Path) -> None:
     state.current_user = _mock_user()
     state.notify()
     await user.should_see("+ New Conversation")
+
+
+@pytest.mark.asyncio
+async def test_sidebar_tomes_search_filters_list(user: User, tmp_path: Path) -> None:
+    """Typing in the sidebar tomes search field should filter the displayed tomes."""
+    from types import SimpleNamespace
+
+    state = AppState(project_path=tmp_path, sidebar_open=True)
+    state.current_user = _mock_user()
+    state.loaded_tomes = [
+        SimpleNamespace(
+            tome_id="t1",
+            title="Alpha Tome Project",
+            relative_time="1h ago",
+            git_branch="main",
+            is_active=True,
+        ),
+        SimpleNamespace(
+            tome_id="t2",
+            title="Beta Tome Fix",
+            relative_time="2h ago",
+            git_branch="feat",
+            is_active=False,
+        ),
+    ]
+
+    @ui.page("/test_sidebar_tomes_search")
+    def page() -> None:
+        render_sidebar(state)
+
+    await user.open("/test_sidebar_tomes_search")
+    await user.should_see("Alpha Tome Project")
+    await user.should_see("Beta Tome Fix")
+
+    search_inp = user.find(marker="tomes_search_input")
+    assert search_inp is not None
+    search_inp.type("Alpha")
+    await user.should_see("Alpha Tome Project")
+    await user.should_not_see("Beta Tome Fix")

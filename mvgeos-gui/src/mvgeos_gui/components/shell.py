@@ -1,5 +1,9 @@
 """Application shell layout: sidebar + main + review rail + status bar."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from nicegui import ui
 
 from mvgeos_gui.components.approval_dialog import mount_approval_overlay
@@ -37,8 +41,9 @@ def render_shell(state: AppState) -> None:
         with ui.row().classes(
             "flex-1 w-full h-full overflow-hidden m-0 p-0 flex flex-row no-wrap"
         ):
-            last_sidebar_state = [
-                (
+
+            def _sidebar_snapshot() -> tuple[Any, ...]:
+                return (
                     state.sidebar_open,
                     state.current_view,
                     state.active_tome_id,
@@ -46,34 +51,20 @@ def render_shell(state: AppState) -> None:
                     len(state.loaded_tomes),
                     str(state.project_path),
                     state.current_user,
+                    tuple(v.id for v in state.get_contributed_views()),
                 )
-            ]
+
+            last_sidebar_state = [_sidebar_snapshot()]
 
             @ui.refreshable
             def sidebar_container() -> None:
                 render_sidebar(state)
-                last_sidebar_state[0] = (
-                    state.sidebar_open,
-                    state.current_view,
-                    state.active_tome_id,
-                    state.tome_title,
-                    len(state.loaded_tomes),
-                    str(state.project_path),
-                    state.current_user,
-                )
+                last_sidebar_state[0] = _sidebar_snapshot()
 
             sidebar_container()
 
             def _on_sidebar_check() -> None:
-                cur = (
-                    state.sidebar_open,
-                    state.current_view,
-                    state.active_tome_id,
-                    state.tome_title,
-                    len(state.loaded_tomes),
-                    str(state.project_path),
-                    state.current_user,
-                )
+                cur = _sidebar_snapshot()
                 if cur != last_sidebar_state[0]:
                     sidebar_container.refresh()
 
@@ -98,6 +89,8 @@ def render_shell(state: AppState) -> None:
                         render_diagnostics_panel(state)
                     elif view == "packages":
                         render_packages_panel(state)
+                    elif state.has_contributed_view(view):
+                        _render_contributed_rune_view(state, view)
                     else:
                         render_chat_panel(state)
 
@@ -113,6 +106,10 @@ def render_shell(state: AppState) -> None:
                 (
                     state.review_open,
                     state.current_view,
+                    state.active_canvas_tab,
+                    state._selected_artifact_id,
+                    state.inspected_sub_tome_id,
+                    state.canvas_docked,
                     len(state.changed_files),
                     state._selected_diff_path,
                 )
@@ -125,6 +122,10 @@ def render_shell(state: AppState) -> None:
                 last_review_state[0] = (
                     state.review_open,
                     state.current_view,
+                    state.active_canvas_tab,
+                    state._selected_artifact_id,
+                    state.inspected_sub_tome_id,
+                    state.canvas_docked,
                     len(state.changed_files),
                     state._selected_diff_path,
                 )
@@ -135,6 +136,10 @@ def render_shell(state: AppState) -> None:
                 cur = (
                     state.review_open,
                     state.current_view,
+                    state.active_canvas_tab,
+                    state._selected_artifact_id,
+                    state.inspected_sub_tome_id,
+                    state.canvas_docked,
                     len(state.changed_files),
                     state._selected_diff_path,
                 )
@@ -243,3 +248,23 @@ def render_shell(state: AppState) -> None:
 
     # Approval Rune overlay: one modal per cast, mounted once per page.
     mount_approval_overlay(state)
+
+
+def _render_contributed_rune_view(state: AppState, view_id: str) -> None:
+    """Render a generic panel for a rune-contributed view."""
+    matching = [v for v in state.get_contributed_views() if v.id == view_id]
+    title = matching[0].title if matching else view_id.title()
+    desc = (
+        matching[0].description
+        if matching and matching[0].description
+        else f"Custom view provided by the {view_id} extension."
+    )
+
+    with ui.column().classes("w-full h-full overflow-y-auto p-6 gap-4"):
+        ui.label(title).classes("text-2xl font-semibold text-[var(--text-primary)]")
+        ui.label(desc).classes("text-sm text-[var(--text-secondary)]")
+        with ui.row().classes("mt-4"):
+            ui.button(
+                "Back to Chat",
+                on_click=lambda: state.set_current_view("chat"),
+            ).props("flat no-caps text-color=grey-5")

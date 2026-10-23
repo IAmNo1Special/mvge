@@ -21,7 +21,7 @@ Today, running `uvx mvgeos` on a clean machine offers to install `opencode-realm
 1. **Dual-Crown Microkernel + Flagship Marketplace Profiles (`mvgeos-cli`, `mvgeos-agent`, `mvgeos-marketplace`)**:
    - `mvgeos` remains a strict microkernel shipping zero concrete Mvges, Realms, coding Spells, or Capability Bridges in its wheel distributions.
    - First-run interactive startup (when `agents_dir()` has no installed Mvge) and `mvgeos setup --profile <name>` bootstrap a named **Profile** from `mvgeos-marketplace` (with an interactive TTY confirmation prompt and `--bootstrap` / `--no-bootstrap` flags for CI):
-     - `minimal`: `coding_mvge`, `opencode-realm`, `approval-rune`, `steering-bridge`.
+     - `minimal`: `coding_mvge`, `openrouter-realm`, `opencode-realm`, `approval-rune`, `steering-bridge`.
      - `coding` (**default bootstrap profile**): `minimal` + `seeker`, `skills-bridge`, `session-search`, `session-title`, `lsp-bridge`, `checkpoint-bridge`, `submvge-bridge`.
      - `autonomous`: `coding` + `okf-bridge`, `adr-bridge`, `mcp-bridge`, `selfmod-bridge`, `skill-evolution`, `opentelemetry-bridge`, `codeact-rune`, `eval-bridge`.
 

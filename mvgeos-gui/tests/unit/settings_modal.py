@@ -467,3 +467,22 @@ async def test_app_settings_modal_save_rekeys_every_connected_client(
     for service, client in zip(services, clients, strict=True):
         assert service.get_or_create_agent(client) is not None
     assert seen_keys == ["sk-old-key", "sk-old-key", "sk-new-key", "sk-new-key"]
+
+
+@pytest.mark.asyncio
+async def test_settings_modal_tabs_switching(user: User, tmp_path: Path) -> None:
+    """Settings modal contains Application and Workspace tabs."""
+    state = _make_state(tmp_path)
+    state.project_path = tmp_path
+
+    @ui.page("/test_settings_tabs")
+    def page() -> None:
+        render_app_settings_modal(state)
+
+    await user.open("/test_settings_tabs")
+    assert user.find(marker="settings_tab_app")
+    assert user.find(marker="settings_tab_workspace")
+
+    user.find(marker="settings_tab_workspace").click()
+    await user.should_see("Project Name")
+    assert user.find(marker="project_name_input")

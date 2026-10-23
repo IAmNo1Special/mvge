@@ -17,6 +17,7 @@ from mvgeos_runes.catalog import (
     DEFAULT_MARKETPLACE_URL,
     RUNES_SECTION,
     fetch_catalog,
+    local_catalog_candidate,
     resolve_artifact,
     section_of,
 )
@@ -257,6 +258,7 @@ def list_installed_runes(
                     "updated_at": manifest.get(
                         "updated_at", manifest.get("last_updated", "")
                     ),
+                    "ui": manifest.get("ui", {}),
                 }
             )
 
@@ -377,13 +379,19 @@ def install_rune(
         # key) decides the install directory.
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             if subpath:
-                subprocess.run(
-                    ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                try:
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    )
+                    staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                except (subprocess.CalledProcessError, OSError):
+                    candidate = local_catalog_candidate(subpath)
+                    if candidate is None:
+                        raise
+                    staged = candidate
             else:
                 subprocess.run(
                     ["git", "clone", "--", git_url, str(tmp_dir)],

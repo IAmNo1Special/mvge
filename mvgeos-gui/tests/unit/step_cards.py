@@ -9,6 +9,7 @@ from mvgeos_gui.components.step_cards import (
     render_contemplation_card,
     render_files_card,
     render_step_card,
+    render_summoning_card,
     render_worked_card,
 )
 from mvgeos_gui.models import (
@@ -161,7 +162,7 @@ async def test_render_contemplation_card(user: User) -> None:
         render_contemplation_card(thought_text, is_streaming=False)
 
     await user.open("/test_thought_card")
-    await user.should_see("Thought")
+    await user.should_see("Contemplation")
     await user.should_see("The user said 'hey' - I should respond politely.")
 
 
@@ -253,3 +254,59 @@ async def test_render_files_card_with_long_details(user: User) -> None:
     await user.open("/test_files_long")
     await user.should_see("Explored 1 file")
     await user.should_see("more lines, expand to view")
+
+
+@pytest.mark.asyncio
+async def test_render_summoning_card(user: User) -> None:
+    """Verify Sub-Mvge summoning card renders name, status, spell, and actions."""
+    from unittest.mock import MagicMock
+
+    state = AppState()
+    state.inspect_sub_tome = MagicMock()  # type: ignore[attr-defined]
+    state.switch_to_tome = MagicMock()  # type: ignore[method-assign]
+
+    step = ExecutionStep(
+        step_type=StepType.SUMMONING,
+        title="Codebase Researcher",
+        sub_mvge_id="researcher_1",
+        child_tome_id="child_tome_123",
+        spell_name="search_code",
+        mana_spent=420,
+        is_complete=False,
+    )
+
+    @ui.page("/test_summoning_card")
+    def page() -> None:
+        render_summoning_card(step, card_id="summon_1", state=state)
+
+    await user.open("/test_summoning_card")
+    await user.should_see("Codebase Researcher")
+    await user.should_see("search_code")
+    await user.should_see("420 Mana")
+    assert user.find(marker="inspect_sub_mvge_btn")
+    assert user.find(marker="open_full_tome_btn")
+
+    user.find(marker="inspect_sub_mvge_btn").click()
+    state.inspect_sub_tome.assert_called_once_with(
+        "child_tome_123", "Codebase Researcher"
+    )
+
+    user.find(marker="open_full_tome_btn").click()
+    state.switch_to_tome.assert_called_once_with("child_tome_123")
+
+
+@pytest.mark.asyncio
+async def test_render_step_card_dispatches_summoning(user: User) -> None:
+    """Verify render_step_card dispatches StepType.SUMMONING to summoning card."""
+    step = ExecutionStep(
+        step_type=StepType.SUMMONING,
+        title="Database Specialist",
+        sub_mvge_id="db_spec_1",
+    )
+
+    @ui.page("/test_dispatch_summoning")
+    def page() -> None:
+        render_step_card(step)
+
+    await user.open("/test_dispatch_summoning")
+    await user.should_see("Database Specialist")

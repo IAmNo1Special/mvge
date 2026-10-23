@@ -94,7 +94,7 @@ async def test_full_shell_layout_rendering(user: User) -> None:
     await user.should_see("Home")
     await user.should_see("Chat")
     await user.should_see("Sessions")
-    await user.should_see("Skills")
+    await user.should_see("Marketplace")
     await user.should_see("Settings")
 
     # Status bar and model info. The status bar shows a prefix of the selected

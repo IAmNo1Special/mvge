@@ -19,7 +19,9 @@ __all__ = [
     "resolve_git_branch",
 ]
 
-_DIFF_HEADER_RE = re.compile(r"^diff --git a/(.+) b/(.+)$")
+_DIFF_HEADER_RE = re.compile(
+    r"^diff --git (?:\"?[a-zA-Z]/(.+?)\"? \"?[a-zA-Z]/(.+?)\"?|(.+?) (.+))$"
+)
 _HUNK_HEADER_RE = re.compile(
     r"^@@ -(?P<src_start>\d+)(?:,(?P<src_len>\d+))? "
     r"\+(?P<tgt_start>\d+)(?:,(?P<tgt_len>\d+))? @@"
@@ -53,7 +55,9 @@ def parse_git_diff(diff_text: str) -> list[DiffView]:
             if current_view is not None:
                 views.append(current_view)
             match = _DIFF_HEADER_RE.match(raw_line)
-            file_path = match.group(2) if match else raw_line
+            file_path = (
+                (match.group(2) or match.group(4) or raw_line) if match else raw_line
+            )
             current_view = DiffView(file_path=file_path)
             current_hunk = None
             old_line = 0
@@ -178,7 +182,15 @@ def get_changed_files(project_path: Path) -> list[ChangedFile]:
 
 def get_diff_for_file(project_path: Path, file_path: str) -> DiffView | None:
     """Return parsed diff for a single file, or None if unchanged."""
-    output = _run_git(project_path, "diff", "--no-ext-diff", "--", file_path)
+    output = _run_git(
+        project_path,
+        "diff",
+        "--no-ext-diff",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        "--",
+        file_path,
+    )
     if not output.strip():
         return None
     views = parse_git_diff(output)

@@ -44,7 +44,7 @@ def render_contemplation_card(
     card_id: str | None = None,
     state: AppState | None = None,
 ) -> ui.expansion:
-    """Render a collapsible 'Thought' reasoning card."""
+    """Render a collapsible 'Contemplation' reasoning card."""
     initial_val = (
         state.is_card_expanded(card_id, default=is_streaming)
         if (state is not None and card_id is not None)
@@ -52,7 +52,7 @@ def render_contemplation_card(
     )
     with (
         ui.expansion(
-            text="Thought",
+            text="Contemplation",
             icon="psychology",
             value=initial_val,
         )
@@ -319,12 +319,102 @@ def render_commands_card(
     return expansion
 
 
+def render_summoning_card(
+    step: ExecutionStep,
+    card_id: str | None = None,
+    state: AppState | None = None,
+) -> ui.expansion:
+    """Render a collapsible Sub-Mvge summoning card."""
+    title = step.title or step.sub_mvge_id or "Sub-Mvge"
+    initial_val = (
+        state.is_card_expanded(card_id, default=True)
+        if (state is not None and card_id is not None)
+        else True
+    )
+    with (
+        ui.expansion(
+            text=f"Summoned Sub-Mvge: {title}",
+            icon="hub",
+            value=initial_val,
+        )
+        .props("dense dense-toggle header-class=bg-[var(--bg-card)]")
+        .classes(
+            "w-full rounded-xl bg-[var(--bg-card)] border "
+            "border-[var(--accent-primary-a30)] "
+            "text-xs text-[var(--text-secondary)] my-1"
+        ) as expansion,
+        ui.column().classes("w-full p-3 bg-[var(--bg-card)] rounded-b-xl gap-2"),
+    ):
+        with ui.row().classes("items-center justify-between w-full"):
+            with ui.row().classes("items-center gap-2"):
+                # Live status indicator
+                dot_color = (
+                    "bg-[var(--addition-green)]"
+                    if step.is_complete
+                    else "bg-[var(--accent-primary)] animate-pulse"
+                )
+                ui.element("div").classes(f"w-2.5 h-2.5 rounded-full {dot_color}")
+                ui.label(title).classes(
+                    "text-xs font-semibold text-[var(--text-primary)]"
+                )
+                if step.spell_name:
+                    ui.badge(f"Spell: {step.spell_name}", color="indigo-9").props(
+                        "rounded dense size=xs"
+                    )
+            with ui.row().classes("items-center gap-2"):
+                if step.mana_spent > 0:
+                    ui.label(f"{step.mana_spent} Mana").classes(
+                        "text-[10px] text-[var(--text-muted)] font-mono"
+                    )
+
+        if step.details:
+            with ui.column().classes("w-full gap-1 pl-4"):
+                for detail in step.details:
+                    ui.label(f"• {detail}").classes(
+                        "text-xs text-[var(--text-secondary)]"
+                    )
+
+        with ui.row().classes("items-center gap-2 pt-1"):
+            if step.child_tome_id:
+                (
+                    ui.button(
+                        "Inspect",
+                        icon="visibility",
+                        on_click=lambda: (
+                            state.inspect_sub_tome(step.child_tome_id, title)
+                            if state and step.child_tome_id
+                            else None
+                        ),
+                    )
+                    .props("unelevated dense size=xs color=primary")
+                    .mark("inspect_sub_mvge_btn")
+                )
+                (
+                    ui.button(
+                        "Open as Full Tome",
+                        icon="open_in_new",
+                        on_click=lambda: (
+                            state.switch_to_tome(step.child_tome_id)
+                            if state and step.child_tome_id
+                            else None
+                        ),
+                    )
+                    .props("flat dense size=xs")
+                    .mark("open_full_tome_btn")
+                )
+
+    _bind_expansion(expansion, card_id, state)
+    return expansion
+
+
 def render_step_card(
     step: ExecutionStep,
     card_id: str | None = None,
     state: AppState | None = None,
 ) -> ui.expansion:
     """Dispatch step rendering to the appropriate card renderer."""
+    if step.step_type == StepType.SUMMONING:
+        return render_summoning_card(step, card_id=card_id, state=state)
     if step.step_type == StepType.FILES:
         return render_files_card(step, card_id=card_id, state=state)
     if step.step_type == StepType.COMMANDS:

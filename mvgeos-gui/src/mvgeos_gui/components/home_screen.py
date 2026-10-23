@@ -21,7 +21,7 @@ def render_home_screen(state: AppState) -> None:
         ui.label("Welcome to MvgeOS").classes(
             "text-3xl font-semibold text-[var(--text-primary)] tracking-tight"
         )
-        ui.label("Your AI coding agent desktop.").classes(
+        ui.label("Your AI coding Mvge workspace.").classes(
             "text-sm text-[var(--text-secondary)] mt-1 mb-8"
         )
 

@@ -20,6 +20,7 @@ def test_default_profiles_definitions() -> None:
 
     minimal = DEFAULT_PROFILES["minimal"]
     assert minimal["mvges"] == ["coding_mvge"]
+    assert "openrouter-realm" in minimal["runes"]
     assert "opencode-realm" in minimal["runes"]
     assert "approval-rune" in minimal["runes"]
     assert "steering-bridge" in minimal["runes"]

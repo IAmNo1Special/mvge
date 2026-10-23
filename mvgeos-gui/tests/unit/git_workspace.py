@@ -128,6 +128,57 @@ def test_parse_git_diff_deleted_file() -> None:
     assert views[0].additions == 0
 
 
+def test_parse_git_diff_mnemonic_prefixes() -> None:
+    """Verify git mnemonic prefixes (i/ and w/) parse clean file paths."""
+    mnemonic_diff = """\
+diff --git i/src/calc.py w/src/calc.py
+index abc1234..def5678 100644
+--- i/src/calc.py
++++ w/src/calc.py
+@@ -1,2 +1,3 @@
+ def add(a, b):
++    return a + b
+"""
+    views = parse_git_diff(mnemonic_diff)
+    assert len(views) == 1
+    assert views[0].file_path == "src/calc.py"
+    assert views[0].additions == 1
+
+
+def test_parse_git_diff_quoted_paths_with_spaces() -> None:
+    """Verify quoted file paths with spaces parse cleanly."""
+    quoted_diff = """\
+diff --git "a/my module/calc.py" "b/my module/calc.py"
+index abc1234..def5678 100644
+--- "a/my module/calc.py"
++++ "b/my module/calc.py"
+@@ -1,2 +1,3 @@
+ def add(a, b):
++    return a + b
+"""
+    views = parse_git_diff(quoted_diff)
+    assert len(views) == 1
+    assert views[0].file_path == "my module/calc.py"
+    assert views[0].additions == 1
+
+
+def test_parse_git_diff_no_prefix() -> None:
+    """Verify git diff without prefixes parses correctly."""
+    no_prefix_diff = """\
+diff --git calc.py calc.py
+index abc1234..def5678 100644
+--- calc.py
++++ calc.py
+@@ -1,2 +1,3 @@
+ def add(a, b):
++    return a + b
+"""
+    views = parse_git_diff(no_prefix_diff)
+    assert len(views) == 1
+    assert views[0].file_path == "calc.py"
+    assert views[0].additions == 1
+
+
 class TestGetChangedFiles:
     def test_parses_numstat_output(self, tmp_path: Path) -> None:
         """Verify get_changed_files parses numstat output correctly."""
@@ -186,13 +237,16 @@ index abc1234..def5678 100644
  print('hello')
 """
         mock_result = MagicMock(stdout=diff_text, returncode=0)
-        with patch("subprocess.run", return_value=mock_result):
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
             view = get_diff_for_file(tmp_path, "src/main.py")
         assert view is not None
         assert view.file_path == "src/main.py"
         assert view.status == "modified"
         assert view.additions == 1
         assert view.deletions == 0
+        args = mock_run.call_args[0][0]
+        assert "--src-prefix=a/" in args
+        assert "--dst-prefix=b/" in args
 
     def test_returns_none_for_unchanged_file(self, tmp_path: Path) -> None:
         """Verify get_diff_for_file returns None when file has no diff."""

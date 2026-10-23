@@ -7,14 +7,13 @@ mvgeos/
 ├── mvgeos-core/            # Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps)
 ├── mvgeos-agent/         # Mvge class, session lifecycle, harness, environment (depends on core + leafs)
 ├── mvgeos-provider/      # Realm protocol + repository of realms (depends on core)
-├── mvgeos-tome/          # JSONL session persistence with locking + index (zero first-party deps)
+├── mvgeos-tome/          # JSONL session persistence with locking (zero first-party deps)
 ├── mvgeos-runes/         # Extension manifest, loader, sigil hooks (depends on core)
 ├── mvgeos-cli/           # CLI entry point (mvgeos command)
 ├── mvgeos-gui/           # Desktop GUI application (NiceGUI + PyWebView)
-├── coding-mvge/         # Coding agent package (BaseMvge subclass)
-├── .agents/.mvgeos/      # dotagents protocol compliance (created at runtime)
-│   ├── runes/              # Rune extensions
-│   ├── tomes/            # Tome JSONL files
+├── .agents/              # dotagents protocol compliance (created at runtime)
+│   ├── extensions/       # Rune extensions
+│   ├── sessions/         # Tome JSONL files
 │   └── auth/             # API keys and credentials
 └── docs/adr/             # Architecture Decision Records
 ```
@@ -59,20 +58,19 @@ abort primitives) is canonical in `mvgeos-core`.
 **Entry point**: `Realm.stream(model, invocations, config)`
 → returns async generator of `RealmResponse`
 
-**Dependencies**: mvgeos-core, httpx, filelock
+**Dependencies**: mvgeos-core, httpx
 
 ### mvgeos-tome
 
-Manages session (tome) persistence. `TomeLedger` creates, opens, and manages tomes.
-Each tome is stored as a single JSONL file (`{tome_id}.jsonl`) — a Pi-inspired format that is not byte-compatible with Pi session files — with a
-header line followed by entry lines. An in-memory index (`Index`) accelerates queries
-and is rebuilt on startup from the JSONL files. File locking via `filelock` ensures
-cross-platform concurrency safety.
+Manages session (tome) persistence. `TomeHandleFactory` creates, opens, and forks tomes.
+Each tome is stored as a single JSONL file (`{tome_id}.jsonl`) — a format inspired by
+Pi but with an independent schema — with a header line followed by entry lines.
+File locking via `portalocker` kernel leases ensures cross-platform concurrency safety.
 
-**Entry point**: `TomeLedger(tome_dir)` → `create_tome(cwd)` → `append(tome_id, entry)`
+**Entry point**: `TomeHandleFactory(tome_dir)` → `create(cwd)` → `handle.append(entry)`
 → persists to JSONL
 
-**Dependencies**: filelock
+**Dependencies**: portalocker
 
 ### mvgeos-runes
 
@@ -107,34 +105,31 @@ mvgeos-runes, rich, typer, prompt_toolkit
 ### mvgeos-gui
 
 Native desktop graphical user interface matching the 1:1 Google Antigravity IDE
-design. Connects directly to `CodingMvge` and `MvgeHarness` in-process with a live
+design. Connects directly to `Mvge` and `MvgeHarness` in-process with a live
 event bus. Provides a three-column layout with project navigation, interactive chat
 viewport with step cards, floating autocomplete input dock (`@` mentions, `/` commands),
 git diff viewer, and slide-over artifact markdown inspector.
 
 **Entry point**: `mvgeos-gui` command → `mvgeos_gui.main:main`
 
-**Dependencies**: nicegui, pywebview, pathspec, coding-mvge, mvgeos-agent,
+**Dependencies**: nicegui, pywebview, pathspec, mvgeos-agent,
 mvgeos-core, mvgeos-provider, mvgeos-runes, mvgeos-tome
 
-### coding-mvge
+### coding_mvge (Marketplace Mvge)
 
-Pre-configured coding agent package providing `root_mvge = Mvge(name="coding_mvge")`.
-Decomposes built-in development spells (`bash`, `read`, `write`, `edit`, `find`,
-`list_files`, `grep`) into modular files within `coding_mvge/spells/` and colocates
-`SYSTEM.md`, `GUIDELINES.md`, and authoring guides (`AGENTS.md`) for autonomous
-self-modification and zero-boilerplate instantiation.
+Flagship coding agent package hosted in `mvgeos-marketplace` (`mvges/coding_mvge`).
+Provides built-in development spells (`bash`, `read`, `write`, `edit`, `find`,
+`list_files`, `grep`, `read_url`, `search_web`) and colocates `SYSTEM.md` and
+`GUIDELINES.md` for zero-boilerplate coding task execution.
 
-**Entry point**: `from coding_mvge import root_mvge` → `root_mvge.run(prompt)`
-
-**Dependencies**: mvgeos-agent, mvgeos-core, mvgeos-provider, mvgeos-runes
+**Installation**: `mvgeos mvge install coding_mvge`
 
 ## Data Flow
 
 ### Invocation Flow
 
-1. User provides input via CLI or TUI
-2. CLI creates `BaseMvge`/`CodingMvge` instance with configured realms
+1. User provides input via CLI, GUI, or RPC
+2. CLI/GUI resolves active `Mvge` instance with configured realms
 3. `BaseMvge.run(prompt)` → normalizes input to `SummonerRequest`
 4. `BaseMvge.initialize()` creates `MvgeHarness` (owns lifecycle, compaction, and turn driving)
 5. `BaseMvge._run_impl()` delegates to `MvgeHarness.run()`
@@ -151,10 +146,10 @@ self-modification and zero-boilerplate instantiation.
 ### Tome Persistence Flow
 
 1. `MvgeHarness` emits `turn_end` / `message_end` event
-2. `TomeLedger` writes each new entry to JSONL file (one JSON object per line)
-3. In-memory index is updated with each new entry
-4. On session resume, `TomeLedger` reads JSONL, rebuilds index, restores MvgeState
-5. All writes are file-locked using `filelock` for cross-platform concurrency safety
+2. `TomeHandle` writes each new entry to JSONL file (one JSON object per line)
+3. Reads revalidate revision against the filesystem without caching
+4. On session resume, `TomeHandleFactory` opens the JSONL file, reads the header, and restores `MvgeState`
+5. Writes acquire kernel lease locks via `portalocker` for cross-platform concurrency safety
 
 ### Extension Rune Flow
 
@@ -212,16 +207,16 @@ turn_end, agent_end, compaction_start/end, queue_update.
 
 - **Python**: >= 3.13
 - **Package manager**: uv exclusively
-- **Build system**: hatchling
+- **Build system**: uv_build / hatchling
 - **Testing**: pytest with pytest-asyncio
 - **Linting/formatting**: ruff
 - **Type checking**: mypy (strict)
-- **File locking**: filelock (cross-platform)
+- **File locking**: portalocker (cross-platform kernel lease)
 - **HTTP client**: httpx (provider realm)
 - **CLI**: typer, rich (console rendering), prompt_toolkit (TUI)
 - **Desktop GUI**: nicegui, pywebview (OS-native windowing)
 - **Pre-commit**: pre-commit framework (ruff + mypy + pytest checks)
-- **Config compliance**: dotagents protocol at `.agents/.mvgeos/`
+- **Config compliance**: dotagents protocol at `.agents/`
 - **Changelog**: git-cliff at `cliff.toml` — conventional commits
   → CHANGELOG.md
 - **Releases**: `.github/workflows/release.yml` — tags `v*`

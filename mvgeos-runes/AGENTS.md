@@ -13,10 +13,10 @@ This package implements the Rune system: extension manifest parsing, dynamic loa
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-runes/tests/
+uv run python -m pytest mvgeos-runes/tests/
 
 # Run with coverage
-uv run pytest mvgeos-runes/tests/ --cov
+uv run python -m pytest mvgeos-runes/tests/ --cov
 ```
 
 Test paths follow pattern: `mvgeos-runes/tests/unit/<module>.py` and `mvgeos-runes/tests/integration/<module>.py`

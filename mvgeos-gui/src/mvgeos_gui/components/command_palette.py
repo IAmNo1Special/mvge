@@ -205,10 +205,18 @@ def get_palette_commands() -> list[PaletteCommand]:
         ("Go to Chat", "chat", "chat_bubble_outline"),
         ("Go to Sessions", "sessions", "history"),
         ("Go to Marketplace", "marketplace", "storefront"),
-        ("Go to Skills", "skills", "auto_awesome"),
         ("Go to Diagnostics", "diagnostics", "troubleshoot"),
     ):
         commands.append(PaletteCommand(label, icon, _make_navigator(view)))
+    commands.append(
+        PaletteCommand(
+            "Go to Skills",
+            "auto_awesome",
+            _make_navigator("skills"),
+            enabled=lambda s: s.has_contributed_view("skills"),
+            hint="Agent skills (requires skills-bridge)",
+        )
+    )
     commands.append(
         PaletteCommand("Settings", "settings", _open_settings, hint="App settings")
     )

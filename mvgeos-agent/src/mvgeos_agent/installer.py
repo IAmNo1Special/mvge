@@ -33,7 +33,12 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
             "Minimal coding environment with standard safety gate and steering"
         ),
         "mvges": ["coding_mvge"],
-        "runes": ["opencode-realm", "approval-rune", "steering-bridge"],
+        "runes": [
+            "openrouter-realm",
+            "opencode-realm",
+            "approval-rune",
+            "steering-bridge",
+        ],
     },
     "coding": {
         "name": "coding",
@@ -43,6 +48,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         ),
         "mvges": ["coding_mvge"],
         "runes": [
+            "openrouter-realm",
             "opencode-realm",
             "approval-rune",
             "steering-bridge",
@@ -63,6 +69,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
         ),
         "mvges": ["coding_mvge"],
         "runes": [
+            "openrouter-realm",
             "opencode-realm",
             "approval-rune",
             "steering-bridge",

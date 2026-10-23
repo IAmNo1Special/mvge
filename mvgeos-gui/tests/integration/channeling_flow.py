@@ -229,7 +229,7 @@ async def test_contemplation_card_in_conversation(user: User) -> None:
         build_page(state)
 
     await user.open("/test_thought_rendering")
-    await user.should_see("Thought")
+    await user.should_see("Contemplation")
     await user.should_see("User wants greeting. Respond politely.")
     await user.should_see("Hey there! How can I help you today?")
 
@@ -258,7 +258,7 @@ async def test_multiple_contemplation_segments(user: User) -> None:
         build_page(state)
 
     await user.open("/test_multi_thought")
-    await user.should_see("Thought")
+    await user.should_see("Contemplation")
     await user.should_see("First, I need to understand the request.")
     await user.should_see("Now I will plan the implementation.")
     await user.should_see("Here is the implementation plan.")

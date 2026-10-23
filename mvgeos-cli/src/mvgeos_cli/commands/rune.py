@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import typer
-from mvgeos_runes.installer import install_rune, uninstall_rune
+from mvgeos_runes.installer import install_rune, list_installed_runes, uninstall_rune
+from rich.table import Table
 
 from mvgeos_cli.console import format_error, get_console
 
@@ -34,6 +35,44 @@ def rune_install(
     try:
         dest = install_rune(spec, confirm_python_deps=confirm_python_deps)
         console.print(f"[green]Successfully installed rune '{spec}' to {dest}[/green]")
+    except Exception as exc:
+        console.print(format_error(exc))
+        raise typer.Exit(1) from exc
+
+
+@rune_app.command("list")
+def rune_list() -> None:
+    """List installed extension runes."""
+    try:
+        installed = list_installed_runes()
+        if not installed:
+            console.print(
+                "[yellow]No extension runes installed in ~/.agents/extensions[/yellow]"
+            )
+            return
+
+        table = Table(
+            title="Installed Runes", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Name", style="cyan")
+        table.add_column("Version", style="green")
+        table.add_column("Types", style="yellow")
+        table.add_column("Description")
+
+        for r in installed:
+            raw_types = r.get("types", [])
+            types_str = (
+                ", ".join(raw_types)
+                if isinstance(raw_types, list) and raw_types
+                else str(r.get("type", "") or "none")
+            )
+            table.add_row(
+                str(r.get("name", "")),
+                str(r.get("version", "unknown")),
+                types_str,
+                str(r.get("description", "")),
+            )
+        console.print(table)
     except Exception as exc:
         console.print(format_error(exc))
         raise typer.Exit(1) from exc

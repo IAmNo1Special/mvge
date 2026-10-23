@@ -14,6 +14,7 @@ class StepType(StrEnum):
     WORKED = "worked"
     FILES = "files"
     COMMANDS = "commands"
+    SUMMONING = "summoning"
 
 
 class TaskStatus(StrEnum):
@@ -75,3 +76,7 @@ class ExecutionStep:
     spell_name: str = ""
     result: str = ""
     params: dict[str, Any] = field(default_factory=dict)
+    sub_mvge_id: str | None = None
+    child_tome_id: str | None = None
+    status: str = "running"
+    mana_spent: int = 0

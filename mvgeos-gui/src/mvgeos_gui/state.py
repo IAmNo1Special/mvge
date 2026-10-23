@@ -46,6 +46,8 @@ from mvgeos_provider import (
 )
 from mvgeos_provider.realms import DEFAULT_REALM, REALM_RUNES, realm_for_model_id
 from mvgeos_runes import (
+    RuneUICanvasTab,
+    RuneUIView,
     fetch_marketplace_runes,
     install_rune,
     install_skill,
@@ -384,6 +386,7 @@ class AppState:
         default_factory=dict, repr=False
     )
     selected_mentions: list[MentionChip] = field(default_factory=list)
+    queued_follow_ups: list[str] = field(default_factory=list)
     active_skills: list[SkillInfo] = field(default_factory=list)
     agent_service: AgentService | None = field(default=None, repr=False, compare=False)
     active_task: asyncio.Task[Any] | None = field(
@@ -431,6 +434,10 @@ class AppState:
     current_view: str = "chat"
     sidebar_open: bool = True
     review_open: bool = False
+    active_canvas_tab: str = "review"
+    inspected_sub_tome_id: str | None = None
+    inspected_sub_tome_title: str | None = None
+    canvas_docked: bool = True
     mvge_status: str = "idle"
     chat_side_panel: str | None = None
     _sidebar_width: int = 260
@@ -1360,6 +1367,7 @@ class AppState:
             self.messages.pop()
             self.is_channeling = False
             self.channeling_started_at = None
+            self.mvge_status = "idle"
             self.notify()
             return
         if loop is not None:
@@ -1376,6 +1384,7 @@ class AppState:
                         assistant_msg.is_streaming = False
                         self.is_channeling = False
                         self.channeling_started_at = None
+                        self.mvge_status = "idle"
                         self.notify()
 
             task.add_done_callback(_on_done)
@@ -1397,7 +1406,35 @@ class AppState:
 
         self.is_channeling = False
         self.channeling_started_at = None
+        self.mvge_status = "idle"
         self.notify()
+
+    def steer_prompt(self, text: str) -> None:
+        """Inject mid-flight steering guidance into the actively channeling Mvge."""
+        stripped = text.strip()
+        if not stripped:
+            return
+        service = self.get_agent_service()
+        service.steer(stripped)
+        steering_msg = InvocationTranscript.for_steering(stripped)
+        self.messages.append(steering_msg)
+        self.notify()
+
+    def queue_follow_up(self, text: str) -> None:
+        """Queue a follow-up prompt for execution when the active run settles."""
+        stripped = text.strip()
+        if not stripped:
+            return
+        self.queued_follow_ups.append(stripped)
+        service = self.get_agent_service()
+        service.follow_up(stripped)
+        self.notify()
+
+    def remove_follow_up(self, index: int) -> None:
+        """Remove a queued follow-up by index."""
+        if 0 <= index < len(self.queued_follow_ups):
+            self.queued_follow_ups.pop(index)
+            self.notify()
 
     def elapsed_channeling_seconds(self) -> float | None:
         """Seconds since channeling started, or None when not channeling."""
@@ -1501,14 +1538,44 @@ class AppState:
         return None
 
     def open_artifact(self, artifact_id: str) -> None:
-        """Select an artifact for preview in the drawer."""
+        """Select an artifact for preview in the drawer/canvas."""
         if self.get_artifact(artifact_id) is not None:
             self._selected_artifact_id = artifact_id
+            self.active_canvas_tab = "artifact"
+            self.review_open = True
             self.notify()
 
     def close_artifact(self) -> None:
         """Clear the selected artifact preview."""
         self._selected_artifact_id = None
+        if self.active_canvas_tab == "artifact":
+            self.active_canvas_tab = "review"
+        self.notify()
+
+    def inspect_sub_tome(self, child_tome_id: str, title: str | None = None) -> None:
+        """Project a child Mvge's Tome into the side Canvas."""
+        self.inspected_sub_tome_id = child_tome_id
+        self.inspected_sub_tome_title = title or "Sub-Mvge"
+        self.active_canvas_tab = "sub_mvge"
+        self.review_open = True
+        self.notify()
+
+    def close_sub_tome(self) -> None:
+        """Clear the inspected child Mvge Tome from the Canvas."""
+        self.inspected_sub_tome_id = None
+        self.inspected_sub_tome_title = None
+        if self.active_canvas_tab == "sub_mvge":
+            self.active_canvas_tab = "review"
+        self.notify()
+
+    def set_canvas_tab(self, tab: str) -> None:
+        """Switch active canvas tab ('review', 'artifact', 'sub_mvge')."""
+        self.active_canvas_tab = tab
+        self.notify()
+
+    def toggle_canvas_docked(self) -> None:
+        """Toggle Canvas between docked split-pane and floating drawer."""
+        self.canvas_docked = not self.canvas_docked
         self.notify()
 
     def get_selected_artifact(self) -> Artifact | None:
@@ -1537,8 +1604,20 @@ class AppState:
         self.notify()
 
     def toggle_review(self) -> None:
-        """Toggle right review rail visibility."""
+        """Toggle right review rail / canvas visibility."""
         self.review_open = not self.review_open
+        if self.review_open:
+            self.chat_side_panel = None
+        self.notify()
+
+    def toggle_canvas_files(self) -> None:
+        """Toggle Canvas workspace files surface."""
+        if self.review_open and self.active_canvas_tab == "files":
+            self.review_open = False
+        else:
+            self.active_canvas_tab = "files"
+            self.review_open = True
+            self.chat_side_panel = None
         self.notify()
 
     def set_plan_mode(self, enabled: bool) -> list[str] | None:
@@ -1589,6 +1668,8 @@ class AppState:
     def set_chat_side_panel(self, panel: str | None) -> None:
         """Set the active side panel in chat (files, diff, or None)."""
         self.chat_side_panel = panel
+        if panel is not None:
+            self.review_open = False
         self.notify()
 
     # ------------------------------------------------------------------
@@ -1807,6 +1888,77 @@ class AppState:
             self._drop_autocomplete_cache()
         self.notify()
         return result
+
+    def get_contributed_views(self) -> list[RuneUIView]:
+        """Collect and sort UI views contributed by installed, enabled runes."""
+        try:
+            installed = list_installed_runes()
+        except Exception:
+            return []
+
+        views: list[RuneUIView] = []
+        for rune in installed:
+            if not rune.get("enabled", True):
+                continue
+            ui_block = rune.get("ui")
+            if not isinstance(ui_block, dict):
+                continue
+            raw_views = ui_block.get("views", [])
+            if not isinstance(raw_views, list):
+                continue
+            for item in raw_views:
+                if isinstance(item, dict) and "id" in item and "title" in item:
+                    views.append(
+                        RuneUIView(
+                            id=str(item["id"]),
+                            title=str(item["title"]),
+                            icon=str(item.get("icon", "extension")),
+                            order=int(item.get("order", 100)),
+                            description=str(item.get("description", "")),
+                        )
+                    )
+
+        views.sort(key=lambda v: (v.order, v.title))
+        return views
+
+    def has_contributed_view(self, view_id: str) -> bool:
+        """Check if a specific view id is contributed by an active rune."""
+        return any(v.id == view_id for v in self.get_contributed_views())
+
+    def get_contributed_canvas_tabs(self) -> list[RuneUICanvasTab]:
+        """Collect and sort canvas tabs contributed by installed, enabled runes."""
+        try:
+            installed = list_installed_runes()
+        except Exception:
+            return []
+
+        tabs: list[RuneUICanvasTab] = []
+        for rune in installed:
+            if not rune.get("enabled", True):
+                continue
+            ui_block = rune.get("ui")
+            if not isinstance(ui_block, dict):
+                continue
+            raw_tabs = ui_block.get("canvas_tabs", [])
+            if not isinstance(raw_tabs, list):
+                continue
+            for item in raw_tabs:
+                if isinstance(item, dict) and "id" in item and "title" in item:
+                    tabs.append(
+                        RuneUICanvasTab(
+                            id=str(item["id"]),
+                            title=str(item["title"]),
+                            icon=str(item.get("icon", "extension")),
+                            order=int(item.get("order", 100)),
+                        )
+                    )
+
+        tabs.sort(key=lambda t: (t.order, t.title))
+        return tabs
+
+    def has_contributed_canvas_tab(self, tab_id: str) -> bool:
+        """Check if a specific canvas tab id is contributed by an active rune."""
+        return any(t.id == tab_id for t in self.get_contributed_canvas_tabs())
 
     async def install_skill_async(
         self, source: str, name: str | None = None

@@ -61,7 +61,7 @@ def render_rune_settings_dialog(
                 ui.label("Enabled").classes(
                     "text-sm font-medium text-[var(--text-primary)]"
                 )
-                ui.label("Disabled runes are not loaded by the agent.").classes(
+                ui.label("Disabled runes are not loaded by the Mvge.").classes(
                     "text-xs text-[var(--text-muted)]"
                 )
             enabled_switch = ui.switch(value=bool(enabled)).props("color=purple-6")

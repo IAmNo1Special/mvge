@@ -13,7 +13,7 @@ def render_diff_viewer(state: AppState) -> None:
             ui.label("No diff selected").classes("text-xs text-[var(--text-muted)]")
             ui.label(
                 "Select a changed file from the review rail. Diffs track "
-                "changes made by the agent in this session."
+                "changes made by the Mvge in this Tome."
             ).classes("text-[11px] text-[var(--text-muted-a70)]")
         return
 

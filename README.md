@@ -5,7 +5,7 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-2200%2B%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-3700%2B%20passed-brightgreen.svg)]()
 
 > **An open coding-agent microkernel and runtime. Read it, fork it, self-host it, and run it on a model you already pay for.**
 
@@ -239,7 +239,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 - 🔮 **Rune Extension Ecosystem (<code>mvgeos-runes</code>)**: Hot-reloadable extensions with 24+ lifecycle `SigilHook` points, per-Rune disposable registration scopes, Workspace Trust gating for project-scoped extensions, and deterministic gateway-last loading for `SpellGateway` Runes (`seeker`).
 - 🖥️ **Desktop GUI (<code>mvgeos-gui</code>)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
 - ⌨️ **Rich CLI, TUI &amp; Stdio RPC (<code>mvgeos-cli</code>)**: Interactive REPL with `prompt-toolkit`, terminal dashboard, marketplace installer (`mvgeos mvge`, `mvgeos rune`, `mvgeos setup`), and headless JSONL stdio RPC server.
-- 🛠️ **Full-Featured Coding Agent (<code>coding-mvge</code>)**: Pre-configured agent with built-in spells for bash execution, file reading, editing, creation, grep searching, and directory listing.
+- 🛠️ **Full-Featured Coding Agent (<code>coding_mvge</code>)**: Flagship agent package distributed via <code>mvgeos-marketplace</code> with built-in spells for bash execution, file reading, editing, creation, grep searching, directory listing, URL fetching, and web searching.
 
 </details>
 

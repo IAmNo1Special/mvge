@@ -13,10 +13,10 @@ This package implements the Realm protocol (provider interface), model registry,
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-provider/tests/
+uv run python -m pytest mvgeos-provider/tests/
 
 # Run with coverage
-uv run pytest mvgeos-provider/tests/ --cov
+uv run python -m pytest mvgeos-provider/tests/ --cov
 ```
 
 Test paths follow pattern: `mvgeos-provider/tests/unit/<module>.py` and `mvgeos-provider/tests/integration/<module>.py`

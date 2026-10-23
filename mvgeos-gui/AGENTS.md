@@ -13,10 +13,10 @@ This package implements the native desktop graphical interface for MvgeOS powere
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-gui/tests/
+uv run python -m pytest mvgeos-gui/tests/
 
 # Run with coverage
-uv run pytest mvgeos-gui/tests/ --cov
+uv run python -m pytest mvgeos-gui/tests/ --cov
 ```
 
 Test paths follow pattern: `mvgeos-gui/tests/unit/<module>.py` and `mvgeos-gui/tests/integration/<module>.py`
@@ -26,7 +26,7 @@ Test paths follow pattern: `mvgeos-gui/tests/unit/<module>.py` and `mvgeos-gui/t
 | Type | Purpose |
 | --- | --- |
 | `AppState` | Central reactive UI state (project, conversations, streaming tokens, artifacts, git diff, settings) |
-| `AgentService` | Async execution bridge running `CodingMvge` and `MvgeHarness`, consuming event bus |
+| `AgentService` | Async execution bridge running `Mvge` and `MvgeHarness`, consuming event bus |
 | `TomeService` | Session persistence, conversation loading, and branch forking via `TomeHandleFactory` |
 | `ConfigService` | Provider and workspace configuration manager |
 | `GitDiffService` | Workspace Git diff calculation, staged/unstaged changes, and diff line stats |
@@ -61,7 +61,6 @@ Test paths follow pattern: `mvgeos-gui/tests/unit/<module>.py` and `mvgeos-gui/t
 - `nicegui` — Python UI framework
 - `pywebview` — Native OS window container without browser chrome
 - `pathspec` — Path and pattern matching
-- `coding-mvge` — Concrete coding agent
 - `mvgeos-agent` — Core agent loop, types, and harness
 - `mvgeos-provider` — Realm protocol and providers
 - `mvgeos-tome` — JSONL session persistence

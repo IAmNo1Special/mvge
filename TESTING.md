@@ -6,8 +6,7 @@ comment, or tooling configuration conflicts with this charter, this charter
 wins; the conflicting artifact is a bug to fix, not license to deviate.
 
 Applies to every package in the uv workspace (`mvgeos-core`, `mvgeos-agent`,
-`mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, `mvgeos-gui`,
-`coding-mvge`).
+`mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, `mvgeos-gui`).
 
 ## 1. Tier model
 
@@ -62,7 +61,7 @@ pyproject to avoid "couldn't parse" coverage warnings.
 - The hermetic whole — unit + integration combined — must clear **90%**
   coverage measured with branch analysis enabled
   (`[tool.coverage.run] branch = true`) over first-party source only
-  (`[tool.coverage.run] source` lists the eight workspace packages). Test
+  (`[tool.coverage.run] source` lists the seven workspace packages). Test
   files are verification artifacts, not shipped code; counting their
   near-100% lines inflated the denominator and hid gaps in `src/`. The
   floor is a ratchet: it rises as measured gaps close and never falls.

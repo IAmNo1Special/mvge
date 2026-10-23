@@ -359,6 +359,7 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "types": [],
         "created_at": "",
         "updated_at": "",
+        "ui": {},
     }
     assert installed[1] == {
         "name": "beta-rune",
@@ -374,6 +375,7 @@ def test_list_installed_runes_success(tmp_path: Path) -> None:
         "types": ["planner"],
         "created_at": "",
         "updated_at": "",
+        "ui": {},
     }
 
 
@@ -654,3 +656,42 @@ def test_list_installed_runes_commands_defaults_to_empty(tmp_path: Path) -> None
     installed = list_installed_runes(target_dir=tmp_path / "extensions")
     assert len(installed) == 1
     assert installed[0]["commands"] == []
+
+
+def test_install_rune_falls_back_to_local_candidate_on_clone_failure(
+    tmp_path: Path,
+) -> None:
+    local_rune = tmp_path / "candidate_dir"
+    _create_mock_rune_dir(local_rune, "openrouter-realm")
+    target_dir = tmp_path / "extensions"
+    marketplace_payload = {
+        "runes": {
+            "openrouter-realm": {
+                "name": "openrouter-realm",
+                "git": "https://github.com/IAmNo1Special/openrouter-realm.git",
+                "path": "runes/openrouter-realm",
+                "description": "OpenRouter provider realm",
+            }
+        }
+    }
+
+    mock_resp = MagicMock(spec=httpx.Response)
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = marketplace_payload
+    mock_resp.raise_for_status = MagicMock()
+
+    with (
+        patch("httpx.get", return_value=mock_resp),
+        patch(
+            "subprocess.run",
+            side_effect=subprocess.CalledProcessError(1, ["git", "clone"]),
+        ),
+        patch(
+            "mvgeos_runes.installer.local_catalog_candidate", return_value=local_rune
+        ),
+        patch("mvgeos_runes.installer.install_python_deps"),
+    ):
+        dest = install_rune("openrouter-realm", target_dir=target_dir)
+
+    assert dest == target_dir / "openrouter-realm"
+    assert (dest / "manifest.json").is_file()

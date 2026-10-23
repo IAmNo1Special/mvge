@@ -188,16 +188,21 @@ def render_sidebar(state: AppState) -> ui.column:
                         "text-white text-xs font-medium py-2 rounded-lg"
                     ).mark("sign_in_btn")
 
-        # Navigation items
-        nav_items = [
+        # Navigation items: Core items + Rune-contributed items + Footer items
+        core_nav_items = [
             ("Home", "home", "home"),
             ("Chat", "chat", "chat_bubble_outline"),
             ("Sessions", "sessions", "history"),
             ("Marketplace", "packages", "storefront"),
-            ("Skills", "skills", "auto_awesome"),
+        ]
+        contributed_nav_items = [
+            (v.title, v.id, v.icon) for v in state.get_contributed_views()
+        ]
+        footer_nav_items = [
             ("Diagnostics", "diagnostics", "troubleshoot"),
             ("Settings", "settings", "settings"),
         ]
+        nav_items = core_nav_items + contributed_nav_items + footer_nav_items
 
         with ui.column().classes("w-full px-2 py-1 gap-0.5 shrink-0"):
             for label, view, icon in nav_items:
@@ -248,52 +253,81 @@ def render_sidebar(state: AppState) -> ui.column:
 
             # Recent Sessions
             with ui.column().classes("mt-4 flex-1 min-h-0 overflow-y-auto px-2 w-full"):
-                ui.label("Recent Sessions").classes(
-                    "text-[10px] font-semibold uppercase tracking-wider "
-                    "text-[var(--text-muted)] px-2 py-1"
-                )
-                if not state.loaded_tomes:
-                    ui.label("No sessions yet").classes(
-                        "text-[11px] text-[var(--text-muted)] px-2 py-2"
+                with ui.row().classes("w-full items-center justify-between px-2 py-1"):
+                    ui.label("Recent Sessions").classes(
+                        "text-[10px] font-semibold uppercase tracking-wider "
+                        "text-[var(--text-muted)]"
                     )
-                else:
-                    for entry in state.loaded_tomes:
-                        bg = (
-                            "bg-[var(--bg-card-a70)] "
-                            "border "
-                            "border-[var(--border-subtle-a60)]"
-                            if entry.is_active
-                            else "hover:bg-[var(--bg-card-a40)]"
-                        )
-                        with (
-                            ui.row()
-                            .classes(
-                                f"w-full items-center px-2 py-1.5 rounded-md "
-                                f"cursor-pointer text-xs {bg} no-wrap"
+
+                search_query = [""]
+
+                @ui.refreshable
+                def _render_recent_tomes() -> None:
+                    q = search_query[0].strip().lower()
+                    tomes = state.loaded_tomes
+                    if q:
+                        tomes = [t for t in tomes if q in t.title.lower()]
+                    if not tomes:
+                        if q:
+                            ui.label(f"No sessions match '{search_query[0]}'").classes(
+                                "text-[11px] text-[var(--text-muted)] px-2 py-2"
                             )
-                            .on(
-                                "click",
-                                lambda _, e=entry: state.switch_to_tome(e.tome_id),
+                        else:
+                            ui.label("No sessions yet").classes(
+                                "text-[11px] text-[var(--text-muted)] px-2 py-2"
                             )
-                        ):
-                            ui.icon("chat_bubble_outline", size="12px").classes(
-                                "text-[var(--text-secondary)] shrink-0"
+                    else:
+                        for entry in tomes:
+                            bg = (
+                                "bg-[var(--bg-card-a70)] "
+                                "border "
+                                "border-[var(--border-subtle-a60)]"
+                                if entry.is_active
+                                else "hover:bg-[var(--bg-card-a40)]"
                             )
-                            ui.label(entry.title).classes(
-                                "text-[var(--text-primary)] truncate text-[11px] flex-1"
-                            )
-                            with ui.row().classes("items-center gap-1 shrink-0"):
-                                ui.label(entry.relative_time).classes(
-                                    "text-[10px] text-[var(--text-muted)]"
+                            with (
+                                ui.row()
+                                .classes(
+                                    f"w-full items-center px-2 py-1.5 rounded-md "
+                                    f"cursor-pointer text-xs {bg} no-wrap"
                                 )
-                                if entry.git_branch:
-                                    ui.label(entry.git_branch).classes(
-                                        "text-[10px] px-1 py-0.5 rounded "
-                                        "bg-[var(--accent-primary-a10)] "
-                                        "text-[var(--accent-primary)] "
-                                        "border border-[var(--accent-primary-a30)] "
-                                        "font-mono"
+                                .on(
+                                    "click",
+                                    lambda _, e=entry: state.switch_to_tome(e.tome_id),
+                                )
+                            ):
+                                ui.icon("chat_bubble_outline", size="12px").classes(
+                                    "text-[var(--text-secondary)] shrink-0"
+                                )
+                                ui.label(entry.title).classes(
+                                    "text-[var(--text-primary)] truncate "
+                                    "text-[11px] flex-1"
+                                )
+                                with ui.row().classes("items-center gap-1 shrink-0"):
+                                    ui.label(entry.relative_time).classes(
+                                        "text-[10px] text-[var(--text-muted)]"
                                     )
+                                    if entry.git_branch:
+                                        ui.label(entry.git_branch).classes(
+                                            "text-[10px] px-1 py-0.5 rounded "
+                                            "bg-[var(--accent-primary-a10)] "
+                                            "text-[var(--accent-primary)] "
+                                            "border border-[var(--accent-primary-a30)] "
+                                            "font-mono"
+                                        )
+
+                if len(state.loaded_tomes) > 0:
+                    ui.input(
+                        placeholder="Search tomes...",
+                        on_change=lambda e: (
+                            search_query.__setitem__(0, e.value or ""),
+                            _render_recent_tomes.refresh(),
+                        ),
+                    ).props("dense outlined rounded").classes(
+                        "w-full text-xs px-1 mb-1"
+                    ).mark("tomes_search_input")
+
+                _render_recent_tomes()
         else:
             ui.element("div").classes("flex-1")
 

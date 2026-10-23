@@ -13,10 +13,10 @@ This package implements the CLI entry point (`mvgeos` command): one-shot prompt 
 
 ```bash
 # Run this package's tests
-uv run pytest mvgeos-cli/tests/
+uv run python -m pytest mvgeos-cli/tests/
 
 # Run with coverage
-uv run pytest mvgeos-cli/tests/ --cov
+uv run python -m pytest mvgeos-cli/tests/ --cov
 ```
 
 Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/tests/integration/<module>.py`
@@ -68,11 +68,10 @@ Test paths follow pattern: `mvgeos-cli/tests/unit/<module>.py` and `mvgeos-cli/t
 - `mvgeos-agent` — Mvge, harness, environment
 - `mvgeos-provider` — Realm protocol and providers
 - `mvgeos-runes` — Rune system
-- `coding-mvge` — Concrete coding agent
 
 ## Architecture
 
-- One-shot path: `main.py` → creates `CodingMvge` → runs single prompt
+- One-shot path: `main.py` → resolves active agent via `agent_factory.py` (`Mvge`) → runs single prompt
 - REPL path: `commands/repl.py` → interactive loop with streaming
 - TUI path: `commands/tui.py` — full-screen interface
 - All paths use `MvgeHarness` for the core turn loop

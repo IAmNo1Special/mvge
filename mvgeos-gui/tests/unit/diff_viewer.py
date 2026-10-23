@@ -66,4 +66,4 @@ async def test_render_diff_viewer_empty_state_names_what_it_tracks(
 
     await user.open("/test_diff_empty_guidance")
     await user.should_see("No diff selected")
-    await user.should_see("changes made by the agent in this session")
+    await user.should_see("changes made by the Mvge in this Tome")

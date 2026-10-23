@@ -938,6 +938,9 @@ class AgentService:
                 state.tome_title = state.tome_service.get_tome_title(agent_tome_id)
                 state.load_tomes()
             state.notify()
+            if state.queued_follow_ups:
+                next_prompt = state.queued_follow_ups.pop(0)
+                state.submit_prompt(next_prompt)
 
     def cancel(self) -> None:
         """Cancel the active turn, if any.
@@ -946,6 +949,22 @@ class AgentService:
         slot released. A turn started afterwards is unaffected.
         """
         self._turns.stop()
+
+    def steer(self, text: str) -> bool:
+        """Inject in-flight steering guidance into the active Mvge."""
+        agent = self._agent
+        if agent is not None and hasattr(agent, "steer"):
+            agent.steer(text)
+            return True
+        return False
+
+    def follow_up(self, text: str) -> bool:
+        """Queue follow-up prompt into the active Mvge."""
+        agent = self._agent
+        if agent is not None and hasattr(agent, "follow_up"):
+            agent.follow_up(text)
+            return True
+        return False
 
     async def compact_active_tome(self, state: AppState) -> str:
         """Compact the active session's mana pool via the engine.

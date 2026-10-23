@@ -59,6 +59,49 @@ def render_composer(state: AppState) -> None:
             ui.element("div").classes("mvge-white")
             ui.element("div").classes("mvge-border")
             with ui.element("div").classes("mvge-main").mark("composer-main"):
+                # Queued follow-ups tray
+                @ui.refreshable
+                def queued_tray_view() -> None:
+                    if not state.queued_follow_ups:
+                        return
+                    with (
+                        ui.row()
+                        .classes("items-center gap-1.5 flex-wrap mb-2")
+                        .mark("queued_follow_ups_tray")
+                    ):
+                        for idx, text in enumerate(state.queued_follow_ups):
+                            with ui.row().classes(
+                                "items-center gap-1 px-2 py-0.5 rounded-md "
+                                "bg-[var(--accent-primary-a10)] border "
+                                "border-[var(--accent-primary-a30)]"
+                            ):
+                                ui.icon("schedule", size="12px").classes(
+                                    "text-[var(--accent-primary)]"
+                                )
+                                ui.label(f"Queued: {text}").classes(
+                                    "text-xs text-[var(--text-primary)] truncate "
+                                    "max-w-[200px]"
+                                )
+                                ui.icon("close", size="10px").classes(
+                                    "text-[var(--text-muted)] cursor-pointer "
+                                    "hover:text-[var(--text-primary)]"
+                                ).on(
+                                    "click",
+                                    lambda _, i=idx: state.remove_follow_up(i),
+                                )
+
+                queued_tray_view()
+
+                last_queued_tray_state = [len(state.queued_follow_ups)]
+
+                def _on_queued_tray_check() -> None:
+                    cur = len(state.queued_follow_ups)
+                    if cur != last_queued_tray_state[0]:
+                        last_queued_tray_state[0] = cur
+                        queued_tray_view.refresh()
+
+                state.subscribe_view("composer_queued_tray", _on_queued_tray_check)
+
                 # Attachment and Mention chips
                 @ui.refreshable
                 def chips_view() -> None:
@@ -197,6 +240,24 @@ def render_composer(state: AppState) -> None:
                         _scroll_to_bottom(element_id=None, force=True)
                         state.submit_prompt(text)
 
+                    def handle_steer() -> None:
+                        text = prompt_input.value or ""
+                        if not text.strip():
+                            return
+                        prompt_input.value = ""
+                        state.composer_draft = ""
+                        ac_service.close()
+                        state.steer_prompt(text)
+
+                    def handle_queue_follow_up() -> None:
+                        text = prompt_input.value or ""
+                        if not text.strip():
+                            return
+                        prompt_input.value = ""
+                        state.composer_draft = ""
+                        ac_service.close()
+                        state.queue_follow_up(text)
+
                     def handle_enter(e: object) -> None:
                         # If autocomplete popup is open, enter selects the item
                         if ac_service.is_open:
@@ -206,8 +267,15 @@ def render_composer(state: AppState) -> None:
                                     ac_service, prompt_input, item, state
                                 )
                             return
+                        if state.is_channeling:
+                            handle_steer()
+                            return
                         # Shift+Enter inserts newline, normal Enter submits
                         handle_submit()
+
+                    def handle_ctrl_enter(e: object) -> None:
+                        if state.is_channeling:
+                            handle_queue_follow_up()
 
                     def handle_arrow_down(e: object) -> None:
                         if ac_service.is_open:
@@ -230,6 +298,8 @@ def render_composer(state: AppState) -> None:
                     )
 
                     prompt_input.on("keydown.enter.exact.prevent", handle_enter)
+                    prompt_input.on("keydown.enter.ctrl.prevent", handle_ctrl_enter)
+                    prompt_input.on("keydown.enter.meta.prevent", handle_ctrl_enter)
                     # Note: no element-level keydown.escape here. Escape is owned
                     # by the global keyboard dispatcher (components/keyboard.py),
                     # which closes autocomplete before palette before interrupt —
@@ -303,7 +373,7 @@ def render_composer(state: AppState) -> None:
                     @ui.refreshable
                     def action_btn_view() -> None:
                         if state.is_channeling:
-                            with ui.row().classes("items-center gap-2"):
+                            with ui.row().classes("items-center gap-1.5"):
                                 with (
                                     ui.button(
                                         icon="stop",
@@ -314,6 +384,26 @@ def render_composer(state: AppState) -> None:
                                     .mark("stop_channeling_btn")
                                 ):
                                     ui.tooltip("Stop generation")
+                                with (
+                                    ui.button(
+                                        icon="bolt",
+                                        on_click=handle_steer,
+                                    )
+                                    .props("unelevated dense size=sm")
+                                    .classes("mvge-send-btn")
+                                    .mark("steer_mvge_btn")
+                                ):
+                                    ui.tooltip("Steer Mvge immediately (Enter)")
+                                with (
+                                    ui.button(
+                                        icon="playlist_add",
+                                        on_click=handle_queue_follow_up,
+                                    )
+                                    .props("unelevated dense size=sm")
+                                    .classes("mvge-send-btn")
+                                    .mark("queue_follow_up_btn")
+                                ):
+                                    ui.tooltip("Queue Follow-up (Ctrl/Cmd+Enter)")
                                 elapsed = state.elapsed_channeling_seconds()
                                 elapsed_label[0] = (
                                     ui.label(

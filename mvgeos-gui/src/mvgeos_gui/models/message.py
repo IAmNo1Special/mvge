@@ -51,6 +51,7 @@ class ChatMessage:
     artifacts: list[Artifact] = field(default_factory=list)
     parts: list[MessagePart] = field(default_factory=list)
     missing_rune: str | None = None
+    is_steering: bool = False
 
     @property
     def content(self) -> str:

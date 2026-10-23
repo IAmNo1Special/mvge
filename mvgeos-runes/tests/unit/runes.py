@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import py_compile
 import sys
 import tempfile
@@ -968,3 +969,76 @@ def test_cross_home_does_not_load_cwd_project_runes(
         [(path, RuneScope.PROJECT) for path in paths]
     )
     assert "cwd_marker" not in [load.manifest.name for load in loads]
+
+
+def test_load_manifest_with_ui_contributions() -> None:
+    """Rune UI contributions (views, canvas_tabs) are parsed into typed structures."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "test_rune"
+        rune_dir.mkdir()
+        manifest_data = {
+            "name": "test-ui-rune",
+            "version": "1.0.0",
+            "description": "Test UI Contributions",
+            "entry_point": "rune.py",
+            "ui": {
+                "views": [
+                    {
+                        "id": "skills",
+                        "title": "Skills",
+                        "icon": "auto_awesome",
+                        "order": 50,
+                        "description": "Skill Manager",
+                    }
+                ],
+                "canvas_tabs": [
+                    {
+                        "id": "review",
+                        "title": "Review",
+                        "icon": "rate_review",
+                        "order": 20,
+                    }
+                ],
+            },
+        }
+        (rune_dir / "manifest.json").write_text(
+            json.dumps(manifest_data), encoding="utf-8"
+        )
+        manifest = load_manifest(rune_dir)
+
+        assert manifest is not None
+        assert len(manifest.ui.views) == 1
+        view = manifest.ui.views[0]
+        assert view.id == "skills"
+        assert view.title == "Skills"
+        assert view.icon == "auto_awesome"
+        assert view.order == 50
+        assert view.description == "Skill Manager"
+
+        assert len(manifest.ui.canvas_tabs) == 1
+        tab = manifest.ui.canvas_tabs[0]
+        assert tab.id == "review"
+        assert tab.title == "Review"
+        assert tab.icon == "rate_review"
+        assert tab.order == 20
+
+
+def test_load_manifest_ui_contributions_defaults() -> None:
+    """Missing or non-dict ui field defaults to empty RuneUIContributions."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        rune_dir = Path(tmpdir) / "test_rune"
+        rune_dir.mkdir()
+        manifest_data = {
+            "name": "test-no-ui",
+            "version": "1.0.0",
+            "description": "No UI",
+            "entry_point": "rune.py",
+        }
+        (rune_dir / "manifest.json").write_text(
+            json.dumps(manifest_data), encoding="utf-8"
+        )
+        manifest = load_manifest(rune_dir)
+
+        assert manifest is not None
+        assert manifest.ui.views == []
+        assert manifest.ui.canvas_tabs == []

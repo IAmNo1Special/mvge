@@ -162,6 +162,13 @@ class InvocationTranscript:
         message.parts.append(MessagePart(part_type=MessagePartType.TEXT, text=text))
         return message
 
+    @classmethod
+    def for_steering(cls, text: str) -> ChatMessage:
+        """Build an in-flight Summoner steering bubble."""
+        message = ChatMessage(role="user", is_steering=True)
+        message.parts.append(MessagePart(part_type=MessagePartType.TEXT, text=text))
+        return message
+
     def apply_message_update(self, data: TextDeltaPayload | Mapping[str, Any]) -> None:
         """Consume a MESSAGE_UPDATE payload (text or contemplation delta)."""
         text = str(data.get("text", "") or "")

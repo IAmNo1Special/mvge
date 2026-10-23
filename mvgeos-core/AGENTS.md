@@ -11,7 +11,7 @@ injected `StreamFn` and `emit` sink). It has zero first-party dependencies.
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
 - Mock sync methods with `MagicMock()`, async methods with `AsyncMock()` — mixing causes "coroutine never awaited" warnings
 - Zero first-party dependencies: never import `mvgeos-agent`, `mvgeos-provider`,
-  `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, `mvgeos-gui`, or `coding-mvge` from
+  `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, or `mvgeos-gui` from
   this package. Leaf packages (`provider`, `runes`, `tome`) depend on core, not
   the reverse.
 
