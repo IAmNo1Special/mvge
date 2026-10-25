@@ -10,10 +10,10 @@ Accepted
 
 ## Context
 
-`mvgeos-core/src/mvgeos_core/telemetry.py` published the OpenTelemetry
+`mvge-core/src/mvge_core/telemetry.py` published the OpenTelemetry
 Generative AI semantic conventions: nineteen `gen_ai.*` attribute-name
-constants, one `mvgeos.orchestrator`, and three helpers. All of it was
-re-exported from `mvgeos_core/__init__.py`.
+constants, one `mvge.orchestrator`, and three helpers. All of it was
+re-exported from `mvge_core/__init__.py`.
 
 Nothing in the engine consumed any of it. The only references in the whole
 repository were the re-export, the module's own test file, and the line in the
@@ -47,8 +47,8 @@ truth for the vocabulary; it was only a mirror.
 ## Decision
 
 The vocabulary moves to the consumer. `opentelemetry-bridge` now owns
-`mvgeos_runes_opentelemetry_bridge/genai_attributes.py`, and
-`mvgeos_core.telemetry` is deleted along with its test file, its re-export, its
+`mvge_runes_opentelemetry_bridge/genai_attributes.py`, and
+`mvge_core.telemetry` is deleted along with its test file, its re-export, its
 entry in the dependency-direction guard, and its declaration in
 `RUNE_IMPORTABLE_MODULES`.
 
@@ -60,7 +60,7 @@ companions for callers that do not exist. Carrying them forward would relocate
 dead weight, and the Rune has no reason to inherit it.
 
 The ordering was deliberate and load-bearing. The marketplace migrated first,
-against an engine that still declared `mvgeos_core.telemetry`, so the
+against an engine that still declared `mvge_core.telemetry`, so the
 marketplace's contract gate passed both before and after the engine dropped the
 declaration. Reversing the two commits breaks the marketplace's main on the
 next engine push, which is precisely the failure the declared surface exists to
@@ -76,12 +76,12 @@ engine.
 The engine no longer publishes a telemetry module, and the Rune-importable
 surface is the only place that promise is checked:
 
-- `RUNE_IMPORTABLE_MODULES` does not admit `mvgeos_core.telemetry`.
+- `RUNE_IMPORTABLE_MODULES` does not admit `mvge_core.telemetry`.
 - `check_source` reports any Rune importing a module absent from it.
 - `Violation` and `check_tree` carry the unpublished and undeclared kinds.
 
 The symbols a Rune must use instead are the marketplace's, in
-`mvgeos_runes_opentelemetry_bridge.genai_attributes`, and are outside this
+`mvge_runes_opentelemetry_bridge.genai_attributes`, and are outside this
 repository's checkable surface.
 
 <!-- adr-contract: RUNE_IMPORTABLE_MODULES, check_source, Violation, check_tree -->

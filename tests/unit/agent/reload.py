@@ -3,7 +3,7 @@
 Reload is engine machinery: it rebuilds runes, the system prompt, spells,
 and the harness mid-session, transactionally. Every executed reload writes
 exactly one record to the user-scope audit log
-(``$MVGEOS_GLOBAL_DIR/extensions/audit.jsonl`` when set, else
+(``$MVGE_GLOBAL_DIR/extensions/audit.jsonl`` when set, else
 ``~/.agents/extensions/audit.jsonl``).
 """
 
@@ -97,12 +97,12 @@ def _config_dir(tmp_path: Path) -> Path:
     """The agent's config directory under whichever global layer is in force.
 
     Mirrors production resolution rather than restating it: the layer is
-    ``$MVGEOS_GLOBAL_DIR`` when set and ``~/.agents`` otherwise. Hardcoding
+    ``$MVGE_GLOBAL_DIR`` when set and ``~/.agents`` otherwise. Hardcoding
     one of the two here silently diverged the moment ``resolve_config_dir``
     started honouring the override, and the tests wrote a SYSTEM.md the
     agent was not watching.
     """
-    override = os.environ.get("MVGEOS_GLOBAL_DIR")
+    override = os.environ.get("MVGE_GLOBAL_DIR")
     root = Path(override).expanduser() if override else tmp_path / ".agents"
     return root / "agents" / "reload-test"
 
@@ -374,7 +374,7 @@ async def test_failed_reload_preserves_rune_registrations(
 async def test_reload_queues_while_turn_in_flight(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     realm = _BlockingRealm()
     agent = _make_agent(tmp_path, monkeypatch, realm=realm)
     await agent.initialize()
@@ -417,7 +417,7 @@ async def test_turn_boundary_reload_failure_keeps_request_pending(
 ) -> None:
     """If the drained reload raises unexpectedly at the turn boundary, the
     pending flag is preserved: the request is not silently dropped."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     realm = _BlockingRealm()
     agent = _make_agent(tmp_path, monkeypatch, realm=realm)
     await agent.initialize()
@@ -447,7 +447,7 @@ async def test_turn_boundary_reload_failure_keeps_request_pending(
 async def test_reload_requires_initialization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     result = await agent.reload()
     assert not result.ok
@@ -471,7 +471,7 @@ def _audit_records(tmp_path: Path) -> list[dict[str, Any]]:
 async def test_reload_writes_exactly_one_audit_record_per_attempt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     try:
@@ -492,7 +492,7 @@ async def test_reload_writes_exactly_one_audit_record_per_attempt(
 async def test_failed_reload_writes_failed_audit_record(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     original = mvge_module.resolve_system_prompt
@@ -605,7 +605,7 @@ async def test_watcher_handover_failure_is_live_but_loud(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Post-swap watcher failure: the new state IS live, loudly reported."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     (_config_dir(tmp_path) / "SYSTEM.md").write_text(
@@ -693,7 +693,7 @@ async def test_retired_shutdown_failure_surfaces_in_audit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A retired-watcher shutdown failure is recorded, not swallowed."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     try:
@@ -728,7 +728,7 @@ async def test_retired_shutdown_retries_back_off_between_attempts(
 ) -> None:
     """The retired-shutdown attempts are spaced by a backoff delay instead of
     firing back-to-back, so a transient teardown race gets a beat to settle."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     original_shutdown = RuneLifecycle.shutdown
@@ -754,7 +754,7 @@ async def test_retired_shutdown_transient_failure_retries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A transient retired-watcher shutdown failure is retried, not recorded."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     try:
@@ -1113,7 +1113,7 @@ async def test_concurrent_reloads_do_not_interleave(
     """Two concurrent reload() calls serialize: the second waits for the
     in-progress execution instead of interleaving its build over the
     shared provider registry."""
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)
     await agent.initialize()
     try:

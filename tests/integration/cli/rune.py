@@ -207,7 +207,7 @@ async def test_no_realm_registered_print_mode_no_prompt() -> None:
 async def test_no_realm_registered_no_tty_installs_without_asking() -> None:
     """A run with nobody at the terminal installs the Rune instead of giving up.
 
-    This is the documented first run: `mvgeos --agent-name coding_mvge "task"`.
+    This is the documented first run: `mvge --agent-name coding_mvge "task"`.
     There is no TTY to ask on, `input()` raises EOFError, and the old code read
     that as "no" and exited 1 with no next step. The remedy is the same one a
     Summoner typing "y" would have chosen.

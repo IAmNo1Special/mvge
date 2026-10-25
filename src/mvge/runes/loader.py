@@ -228,7 +228,7 @@ def load_factory_from_manifest(
         return None
 
     spec = importlib.util.spec_from_file_location(
-        f"mvgeos_rune_{manifest.name}", str(entry)
+        f"mvge_rune_{manifest.name}", str(entry)
     )
 
     if spec is None or spec.loader is None:

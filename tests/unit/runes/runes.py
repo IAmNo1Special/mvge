@@ -567,7 +567,7 @@ def test_load_factory_supports_module_level_dataclass() -> None:
             assert factory is not None
             assert factory.__name__ == "rune_factory"
     finally:
-        sys.modules.pop("mvgeos_rune_dataclass_rune", None)
+        sys.modules.pop("mvge_rune_dataclass_rune", None)
         sys.path.clear()
         sys.path.extend(orig_sys_path)
 
@@ -600,9 +600,9 @@ def test_failed_entry_point_does_not_leave_module_in_sys_modules() -> None:
 
             assert factory is None
             assert diagnostics, "a failing entry point must report a diagnostic"
-            assert "mvgeos_rune_boom_rune" not in sys.modules
+            assert "mvge_rune_boom_rune" not in sys.modules
     finally:
-        sys.modules.pop("mvgeos_rune_boom_rune", None)
+        sys.modules.pop("mvge_rune_boom_rune", None)
         sys.path.clear()
         sys.path.extend(orig_sys_path)
 
@@ -949,7 +949,7 @@ def test_cross_home_does_not_load_cwd_project_runes(
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(home / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(home / "global"))
 
     cwd_dir = tmp_path / "cwd"
     marker = cwd_dir / ".agents" / "extensions" / "cwd_marker"

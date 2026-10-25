@@ -650,7 +650,7 @@ async def run_repl(
 
         dispatcher = CliCommandDispatcher(agent, registry, out=console.print)
 
-        console.print("[green]MvgeOS REPL[/green]")
+        console.print("[green]Mvge REPL[/green]")
         console.print(f"[dim]Model: {model}[/dim]")
         levels = registry.get_supported_contemplation_levels(model)
         if levels:

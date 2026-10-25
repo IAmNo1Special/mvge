@@ -41,7 +41,7 @@ def test_global_agents_dir_defaults_to_home_agents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Without the override, the global layer is ``~/.agents``."""
-    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+    monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
 
     assert global_agents_dir() == Path("~/.agents").expanduser()
 
@@ -49,9 +49,9 @@ def test_global_agents_dir_defaults_to_home_agents(
 def test_global_agents_dir_honours_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``$MVGEOS_GLOBAL_DIR`` relocates the whole global layer."""
+    """``$MVGE_GLOBAL_DIR`` relocates the whole global layer."""
     relocated = tmp_path / "relocated_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
 
     assert global_agents_dir() == relocated
     assert extensions_dir() == relocated / "extensions"
@@ -68,7 +68,7 @@ def test_global_dir_override_relocates_user_layers(
     A rune could then be installed successfully and load nowhere.
     """
     relocated = tmp_path / "relocated_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
 
     paths = resolve_rune_paths("test-agent")
 
@@ -88,7 +88,7 @@ def test_sessions_dir_follows_the_global_layer(
     nothing at all.
     """
     relocated = tmp_path / "relocated_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
 
     assert sessions_dir() == relocated / "sessions"
 
@@ -96,7 +96,7 @@ def test_sessions_dir_follows_the_global_layer(
 def test_sessions_dir_defaults_to_home_agents(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+    monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
 
     assert sessions_dir() == Path("~/.agents/sessions").expanduser()
 
@@ -109,11 +109,11 @@ def test_sessions_dir_reads_the_environment_at_call_time(
     The old constant could not satisfy this: it was resolved once, when
     ``mvge.core.layers`` was first imported.
     """
-    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+    monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
     before = sessions_dir()
 
     relocated = tmp_path / "late_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
 
     assert sessions_dir() == relocated / "sessions"
     assert sessions_dir() != before
@@ -129,7 +129,7 @@ def test_every_layer_resolver_follows_the_override(
     credentials, skills, and session history.
     """
     relocated = tmp_path / "relocated_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
 
     assert extensions_dir() == relocated / "extensions"
     assert sessions_dir() == relocated / "sessions"
@@ -167,7 +167,7 @@ def test_global_dir_override_relocates_every_rune_search_path(
     own installation.
     """
     relocated = tmp_path / "relocated_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(relocated))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(relocated))
     project = tmp_path / "project"
     project.mkdir()
 
@@ -382,7 +382,7 @@ class TestResolvedLayerScopes:
         ``agents/<name>/extensions`` was reported as the agent layer. Scope
         comes from which layer the resolver placed it in, never from its text.
         """
-        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+        monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
         decoy = tmp_path / "agents" / "coder" / "extensions"
         decoy.mkdir(parents=True)
 

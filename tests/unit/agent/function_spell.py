@@ -168,7 +168,7 @@ class TestMvgeApiKeyAndEnvLoading:
     API_KEY_ENV_VARS = (
         "OPENCODE_API_KEY",
         "OPENROUTER_API_KEY",
-        "MVGEOS_API_KEY",
+        "MVGE_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
     )
@@ -298,7 +298,7 @@ class TestMvgeApiKeyAndEnvLoading:
     ) -> None:
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
-        monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+        monkeypatch.delenv("MVGE_API_KEY", raising=False)
 
         # The default model is served by the `openrouter` Realm, so that is the
         # Realm whose variable is read. What is under test is that a `.env`

@@ -1,9 +1,9 @@
-"""Integration tests for the ``mvgeos rune install`` round trip.
+"""Integration tests for the ``mvge rune install`` round trip.
 
 The invariant under test is that the layer the installer writes to and
 the layer the runtime discovers from are the same directory. They were
 two independent decisions — install hardcoded ``~/.agents/extensions``
-while discovery read ``$MVGEOS_GLOBAL_DIR`` — so a rune installed with
+while discovery read ``$MVGE_GLOBAL_DIR`` — so a rune installed with
 the override set reported success and then loaded nowhere.
 """
 
@@ -58,7 +58,7 @@ def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     global_dir = tmp_path / "global_agents"
     global_dir.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
     return global_dir
 
 

@@ -10,11 +10,11 @@ Accepted (amended 2026-10-25: GUI extracted to companion repository mvge-desktop
 
 ## Context
 
-MvgeOS GUI (`mvgeos-gui`) provides a native desktop interface modeled on Google Antigravity IDE per ADR-0008. However, modern AI agent interfaces (Google Antigravity, OpenAI Canvas, Meta Muse, and Cursor Agent) have evolved past static three-column layouts and synchronous batch turn-taking:
+Mvge GUI (`mvge-gui`) provides a native desktop interface modeled on Google Antigravity IDE per ADR-0008. However, modern AI agent interfaces (Google Antigravity, OpenAI Canvas, Meta Muse, and Cursor Agent) have evolved past static three-column layouts and synchronous batch turn-taking:
 
 1. **Artifact Modal Obstruction**: Artifacts (Implementation Plans, Code Reviews, Walkthroughs) currently render in a blocking modal dialog (`ui.dialog` in `artifact_drawer.py`). Inspecting an artifact obscures the conversation and prevents observing live Spells and Channeling output.
-2. **Locked In-Flight Composer**: While `mvgeos-core` and `mvgeos-agent` provide native microkernel support for `get_steering_messages` and `get_follow_up_messages`, `mvgeos-gui` disables the composer textarea entirely during Channeling and exposes only a hard Stop button. Summoners cannot interject mid-flight guidance or queue follow-up prompts while a Mvge is working.
-3. **Sub-Mvge Invisibility**: ADR-0022 established Sub-Mvge Summoning, but `mvgeos-gui` provides zero visual representation of child Mvges, leaving delegated tasks hidden or flattened.
+2. **Locked In-Flight Composer**: While `mvge-core` and `mvge-agent` provide native microkernel support for `get_steering_messages` and `get_follow_up_messages`, `mvge-gui` disables the composer textarea entirely during Channeling and exposes only a hard Stop button. Summoners cannot interject mid-flight guidance or queue follow-up prompts while a Mvge is working.
+3. **Sub-Mvge Invisibility**: ADR-0022 established Sub-Mvge Summoning, but `mvge-gui` provides zero visual representation of child Mvges, leaving delegated tasks hidden or flattened.
 4. **Terminology Leaks**: Visible UI copy currently leaks generic terms ("agent", "user", "thought") into user-facing labels and tooltips, violating the domain boundary defined in `CONTEXT.md`.
 
 ## Decision
@@ -54,4 +54,4 @@ The key GUI abstractions that anchor the Canvas, Composer, and Step Card interfa
 - Summoners gain an adaptive side-by-side workspace combining Antigravity IDE developer ergonomics with OpenAI Canvas / Meta Muse interactive document capabilities.
 - Long-running Mvge operations become steerable in real time without losing turn progress or requiring destructive aborts.
 - Sub-Mvge delegations become transparently inspectable in parallel with the main conversation.
-- UI presentation 100% conforms with the MvgeOS ubiquitous language.
+- UI presentation 100% conforms with the Mvge ubiquitous language.

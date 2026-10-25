@@ -1,7 +1,7 @@
 """Where the marketplace catalog lives, and how to get an artifact from it.
 
 Both installers used to answer this for themselves. ``mvge.agent.installer``
-carried three fetch tiers and a local-checkout probe; ``mvgeos_runs.installer``
+carried three fetch tiers and a local-checkout probe; ``mvge.runes.installer``
 carried one ``httpx.get`` that swallowed its errors and raised on a bad URL. The
 same catalog, reached two different ways, with one copy of the URL in each. A
 change to the transport — a CDN that starts caching a branch, a repository that
@@ -49,7 +49,7 @@ def local_catalog_candidate(subpath: str) -> Path | None:
     repositories at once keeps testing without waiting on a CDN.
     """
     for base in (
-        os.environ.get("MVGEOS_MARKETPLACE_DIR"),
+        os.environ.get("MVGE_MARKETPLACE_DIR"),
         str(Path.home() / "Desktop" / "mvge-marketplace"),
     ):
         if not base:

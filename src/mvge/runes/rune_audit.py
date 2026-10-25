@@ -12,10 +12,10 @@ write, ``fsync`` before release, restrictive permissions, and
 size/age rotation that archives (never deletes) old records.
 
 Location is the user-scope ``.agents`` directory — the global per-user
-layer — plus ``extensions``: ``$MVGEOS_GLOBAL_DIR`` is the ``.agents`` dir
+layer — plus ``extensions``: ``$MVGE_GLOBAL_DIR`` is the ``.agents`` dir
 itself when set, else ``~/.agents`` (the skills-bridge scope convention).
-Resolved log path: ``$MVGEOS_GLOBAL_DIR/extensions/audit.jsonl`` when
-``$MVGEOS_GLOBAL_DIR`` is set, else ``~/.agents/extensions/audit.jsonl``.
+Resolved log path: ``$MVGE_GLOBAL_DIR/extensions/audit.jsonl`` when
+``$MVGE_GLOBAL_DIR`` is set, else ``~/.agents/extensions/audit.jsonl``.
 Rune-op audit records are agent-level mutations that outlive any single
 session, so session-scoped tome storage is the wrong home.
 

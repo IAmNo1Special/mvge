@@ -29,7 +29,7 @@ def test_uninstalled_rune_command_not_in_help(
 ) -> None:
     empty_global = tmp_path / "global_empty"
     empty_global.mkdir()
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(empty_global))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(empty_global))
 
     result = cli_runner.invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -65,7 +65,7 @@ def test_installed_rune_command_via_cli_py(
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
 
     # Test that --help shows the dynamic command
     help_res = cli_runner.invoke(app, ["--help"])
@@ -105,7 +105,7 @@ def test_installed_rune_command_via_rune_factory(
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
 
     res = cli_runner.invoke(app, ["factory-cmd", "hello-world"])
     assert res.exit_code == 0
@@ -143,14 +143,14 @@ class TestLoadingAndDiscoveryAgree:
                 ),
                 encoding="utf-8",
             )
-        monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+        monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
         WorkspaceTrustStore().set_trust(project, WorkspaceTrustStatus.TRUSTED)
         return {"global_dir": global_dir, "project": project}
 
     def test_discovery_dirs_equal_the_resolved_rune_stack(
         self, tree: dict, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+        monkeypatch.delenv("MVGE_EXTENSION_DIR", raising=False)
 
         dirs = get_extension_dirs(
             "coder", project_dir=tree["project"], global_dir=tree["global_dir"]
@@ -215,7 +215,7 @@ class TestLoadingAndDiscoveryAgree:
         compares the directories it would load from against the directories
         discovery scans.
         """
-        monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+        monkeypatch.delenv("MVGE_EXTENSION_DIR", raising=False)
 
         # Built the way the CLI builds it: the project anchor is passed in
         # explicitly. An agent constructed without one has no project layer at
@@ -255,7 +255,7 @@ class TestLoadingAndDiscoveryAgree:
         """
         extra = tmp_path / "bespoke"
         extra.mkdir()
-        monkeypatch.setenv("MVGEOS_EXTENSION_DIR", str(extra))
+        monkeypatch.setenv("MVGE_EXTENSION_DIR", str(extra))
 
         dirs = get_extension_dirs(
             "coder", project_dir=tree["project"], global_dir=tree["global_dir"]
@@ -271,7 +271,7 @@ class TestLoadingAndDiscoveryAgree:
 
         It is not a standard protocol name, and worse, any repository with an
         ordinary ``extensions/`` folder had its Rune manifests CLI-scanned
-        whether or not the author meant MvgeOS to look there. Asserted as
+        whether or not the author meant Mvge to look there. Asserted as
         absent so it cannot come back unnoticed.
         """
         project = tmp_path / "project"
@@ -287,7 +287,7 @@ class TestLoadingAndDiscoveryAgree:
             ),
             encoding="utf-8",
         )
-        monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+        monkeypatch.delenv("MVGE_EXTENSION_DIR", raising=False)
 
         commands = discover_installed_rune_commands("coder", project_dir=project)
 
@@ -297,7 +297,7 @@ class TestLoadingAndDiscoveryAgree:
         self, tree: dict, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """No project dir means no project layer -- not the working directory."""
-        monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+        monkeypatch.delenv("MVGE_EXTENSION_DIR", raising=False)
         monkeypatch.chdir(tree["project"])
 
         dirs = get_extension_dirs("coder", global_dir=tree["global_dir"])

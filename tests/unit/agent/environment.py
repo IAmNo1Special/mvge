@@ -459,7 +459,7 @@ class TestConfigDirAndSeeding:
         monkeypatch.setenv("HOME", str(tmp_path))
         monkeypatch.setenv("USERPROFILE", str(tmp_path))
         # This asserts the default location, so no override may be in play.
-        monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+        monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
 
         resolved = resolve_config_dir("my-mvge")
         assert resolved == tmp_path / ".agents" / "agents" / "my-mvge"
@@ -788,7 +788,7 @@ class TestSteeringDecoupled:
         )
         (cwd_dir / "AGENTS.md").write_text("Root rules", encoding="utf-8")
 
-        pkg_core = cwd_dir / "mvgeos-core"
+        pkg_core = cwd_dir / "mvge-core"
         pkg_core.mkdir()
         (pkg_core / "AGENTS.md").write_text("Core secret internals", encoding="utf-8")
 

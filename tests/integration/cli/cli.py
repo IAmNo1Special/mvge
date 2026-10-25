@@ -181,7 +181,7 @@ def test_a_paid_model_on_zen_still_refuses_and_names_its_own_variable() -> None:
         "OPENCODE_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
-        "MVGEOS_API_KEY",
+        "MVGE_API_KEY",
     ):
         env.pop(name, None)
     with (
@@ -214,7 +214,7 @@ def test_the_default_model_demands_its_own_credential() -> None:
     env = dict(os.environ)
     env.pop("OPENROUTER_API_KEY", None)
     env.pop("OPENCODE_API_KEY", None)
-    env.pop("MVGEOS_API_KEY", None)
+    env.pop("MVGE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
         patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
@@ -248,7 +248,7 @@ def test_a_google_key_is_not_handed_to_the_realm_that_serves_a_google_slug() -> 
     env["GEMINI_API_KEY"] = "AIza-google-key-for-the-wrong-realm"
     for name in ("OPENROUTER_API_KEY", "OPENCODE_API_KEY", "GOOGLE_API_KEY"):
         env.pop(name, None)
-    env.pop("MVGEOS_API_KEY", None)
+    env.pop("MVGE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
         patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
@@ -277,7 +277,7 @@ def test_openrouter_key_is_not_handed_to_another_realm() -> None:
     env = dict(os.environ)
     env["OPENROUTER_API_KEY"] = "sk-or-v1-openrouter-secret"
     env.pop("OPENCODE_API_KEY", None)
-    env.pop("MVGEOS_API_KEY", None)
+    env.pop("MVGE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
         patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
@@ -573,7 +573,7 @@ def test_a_routed_slug_reads_the_credential_of_the_realm_that_serves_it() -> Non
     ``nvidia/nemotron-3-ultra-550b-a55b:free`` is routed: ``nvidia`` is the
     *provider* and the shipped catalog serves it as ``openrouter``. Reading the
     Realm off the slug made the CLI ask for ``NVIDIA_API_KEY`` and read
-    ``~/.agents/auth/nvidia.json``, so the credential ``mvgeos export`` actually
+    ``~/.agents/auth/nvidia.json``, so the credential ``mvge export`` actually
     writes -- ``openrouter.json`` -- did nothing, and the Summoner was told to
     set a variable that Realm never reads.
 

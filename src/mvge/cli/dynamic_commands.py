@@ -25,7 +25,7 @@ from mvge.runes.types import RuneManifest
 #: discovery. Resolves last, like every other "extra directory" in the
 #: engine: it is the caller's most specific declaration, so it is the last
 #: resort rather than a layer that outranks the stack.
-EXTENSION_DIR_ENV = "MVGEOS_EXTENSION_DIR"
+EXTENSION_DIR_ENV = "MVGE_EXTENSION_DIR"
 
 
 def get_extension_dirs(
@@ -47,7 +47,7 @@ def get_extension_dirs(
         agent_name: Names the agent layer.
         project_dir: Anchors the project layer. ``None`` omits it entirely.
         global_dir: Overrides the global layer for this call.
-        extension_dir: An extra directory, or ``$MVGEOS_EXTENSION_DIR`` when
+        extension_dir: An extra directory, or ``$MVGE_EXTENSION_DIR`` when
             not given.
         extras: Further caller-declared layers -- configured ``rune_paths``
             arrives this way, so a directory named in config is discovered
@@ -182,7 +182,7 @@ def load_rune_cli_command(
     cli_py = rune_dir / "cli.py"
     if cli_py.is_file():
         spec = importlib.util.spec_from_file_location(
-            f"mvgeos_rune_cli_{manifest.name}", cli_py
+            f"mvge_rune_cli_{manifest.name}", cli_py
         )
         if spec and spec.loader:
             mod = importlib.util.module_from_spec(spec)
@@ -225,7 +225,7 @@ def load_rune_cli_command(
     rune_py = rune_dir / (manifest.entry_point or "rune.py")
     if rune_py.is_file():
         spec = importlib.util.spec_from_file_location(
-            f"mvgeos_rune_{manifest.name}", rune_py
+            f"mvge_rune_{manifest.name}", rune_py
         )
         if spec and spec.loader:
             mod = importlib.util.module_from_spec(spec)

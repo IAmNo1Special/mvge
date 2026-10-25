@@ -114,7 +114,7 @@ REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
 #:
 #: A copy is only safe while a test holds it to the shipped catalog -- see
 #: ``test_default_realm_agrees_with_the_shipped_catalog`` in
-#: ``mvgeos-provider/tests/unit/realms.py``. That test is the point: changing
+#: ``tests/unit/provider/realms.py``. That test is the point: changing
 #: ``DEFAULT_MODEL`` without this is the drift it exists to catch.
 DEFAULT_REALM: Final[str] = "openrouter"
 
@@ -122,7 +122,7 @@ DEFAULT_REALM: Final[str] = "openrouter"
 def realm_for_model_id(model_id: str) -> str:
     """The Realm prefix of a model slug, or the whole id when it has no prefix.
 
-    MvgeOS names a model ``<realm>/<model-id>``. Everything downstream -- which
+    Mvge names a model ``<realm>/<model-id>``. Everything downstream -- which
     key to read, which Rune to offer, which base URL to call -- keys off this
     prefix, so it is derived once here rather than by each caller re-splitting
     the string and getting the no-slash case subtly different.

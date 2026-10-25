@@ -39,7 +39,7 @@ printed on every run.
 
 Usage::
 
-    uv run python mvgeos-core/scripts/check_adr_contract.py [repo_root]
+    uv run python scripts/check_adr_contract.py [repo_root]
 """
 
 from __future__ import annotations

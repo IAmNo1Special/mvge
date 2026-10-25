@@ -1,7 +1,7 @@
 """Tests for the install-verification harness.
 
 `scripts/verify_install.py` exists to answer one question for a release: would a
-stranger who has never seen this repository get a working `mvgeos`? The
+stranger who has never seen this repository get a working `mvge`? The
 expensive half of that -- installing from PyPI, calling a model -- is mocked out
 by never being run here. What is under test is every judgement the harness makes
 about what it saw, because each of those can be wrong while still printing a
@@ -43,7 +43,7 @@ def test_clean_env_cannot_see_the_host(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The harness must not inherit state from the machine running it."""
-    monkeypatch.setenv("MVGEOS_SESSION", "leaked")
+    monkeypatch.setenv("MVGE_SESSION", "leaked")
     monkeypatch.setenv("HOME", "/home/somebody-else")
 
     env = verify_install.clean_env(
@@ -52,7 +52,7 @@ def test_clean_env_cannot_see_the_host(
 
     assert env["HOME"] == str(tmp_path / "home")
     assert env["OPENROUTER_API_KEY"] == "sk-or-v"
-    assert "MVGEOS_SESSION" not in env
+    assert "MVGE_SESSION" not in env
     # Rich reflows to the console width; the harness needs it pinned so a
     # multi-line preamble stays recognisable as one message.
     assert env["COLUMNS"] == "400"
@@ -426,8 +426,8 @@ def test_a_coherent_tree_is_accepted() -> None:
 def test_the_half_landed_release_is_detected() -> None:
     """The 2026-10-09 tree: six at 0.6.17, root at 0.6.16, gui never attempted.
 
-    Every constraint `mvgeos 0.6.16` declared was satisfied by this tree --
-    `mvgeos-cli>=0.6.16` against a 0.6.17 cli -- and `uvx mvgeos --help` exited
+    Every constraint `mvge 0.6.16` declared was satisfied by this tree --
+    `mvge-cli>=0.6.16` against a 0.6.17 cli -- and `uvx mvge --help` exited
     zero on it. It is the shape the assertion exists to refuse.
     """
     resolved = _coherent("0.6.17")
@@ -444,7 +444,6 @@ def test_the_gui_is_not_required_in_the_runtime_tree() -> None:
     closure.
     """
     assert "mvge-desktop" not in verify_install.RUNTIME_CLOSURE
-    assert "mvgeos-gui" not in verify_install.RUNTIME_CLOSURE
 
     resolved = dict(_coherent("0.6.17"), **{"mvge-desktop": "0.6.17"})
 

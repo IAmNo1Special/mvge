@@ -37,7 +37,7 @@ A wrong cwd here loads the wrong *code*, which is why this differs from
 content resolution: a wrong cwd in a persona chain costs a missing
 paragraph, and nothing else.
 
-Every global-layer path honours ``$MVGEOS_GLOBAL_DIR`` (``GLOBAL_DIR_ENV``),
+Every global-layer path honours ``$MVGE_GLOBAL_DIR`` (``GLOBAL_DIR_ENV``),
 and it is read on every call rather than frozen at import. That is what
 relocates the whole layer stack -- global runes, Tomes, auth, approval
 state, model cache, audit log -- into one sandbox, and it is what makes an
@@ -121,7 +121,7 @@ class ResolvedLayer:
 
 
 def global_agents_dir() -> Path:
-    """The global ``.agents`` directory: ``$MVGEOS_GLOBAL_DIR`` or ``~/.agents``.
+    """The global ``.agents`` directory: ``$MVGE_GLOBAL_DIR`` or ``~/.agents``.
 
     The single resolver for the global layer. Every global-layer path is
     derived here rather than spelled out, because the install path and the
@@ -195,7 +195,7 @@ def project_skills_dir(project_dir: str | Path) -> Path:
     -- the same failure a wrong cwd causes when it loads the wrong Rune.
 
     This exists because the engine spelled the path out in two places and the
-    Rune spelled a third form of it out: ``mvgeos-gui`` joined
+    Rune spelled a third form of it out: ``mvge-desktop`` joined
     ``project_path / ".agents" / "skills"`` and the ``seeker`` Rune joined
     ``Path(".agents") / "skills"`` with no project at all, which bound it to
     the working directory at the moment of the call. See ADR 0017.
@@ -268,7 +268,7 @@ def resolve_rune_layers(
         project_dir: Anchors the project layer. ``None`` omits that layer
             entirely -- it is never defaulted to the working directory.
         global_dir: Overrides the global layer. ``None`` reads
-            ``$MVGEOS_GLOBAL_DIR``, else ``~/.agents``.
+            ``$MVGE_GLOBAL_DIR``, else ``~/.agents``.
         extras: Caller-declared layers. Each states its own scope; an extra
             that already appears in the stack is dropped, because one
             directory is one layer scanned once. Placement is decided by rank,
@@ -324,7 +324,7 @@ def default_rune_paths(
     """The user and agent rune layers, in precedence order.
 
     ``global_dir`` overrides the global layer when given, else
-    ``$MVGEOS_GLOBAL_DIR``, else ``~/.agents``. The project layer is absent
+    ``$MVGE_GLOBAL_DIR``, else ``~/.agents``. The project layer is absent
     by construction: there is nothing to anchor it to.
     """
     return [

@@ -20,13 +20,13 @@ def test_get_extension_dirs_covers_every_layer_and_puts_the_env_var_last(
 ) -> None:
     """The precedence order, asserted as an order.
 
-    ``MVGEOS_EXTENSION_DIR`` moved from first to last: it is an extra, and
+    ``MVGE_EXTENSION_DIR`` moved from first to last: it is an extra, and
     every extra in the engine resolves after the stack. It used to outrank
     everything, which is the opposite of ``--extension-dir``.
     """
     custom_ext = tmp_path / "custom_ext"
     custom_ext.mkdir()
-    monkeypatch.setenv("MVGEOS_EXTENSION_DIR", str(custom_ext))
+    monkeypatch.setenv("MVGE_EXTENSION_DIR", str(custom_ext))
 
     proj_dir = tmp_path / "project"
     dot_agents_ext = proj_dir / ".agents" / "extensions"
@@ -46,7 +46,7 @@ def test_get_extension_dirs_covers_every_layer_and_puts_the_env_var_last(
 def test_get_extension_dirs_nonexistent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_EXTENSION_DIR", str(tmp_path / "nonexistent"))
+    monkeypatch.setenv("MVGE_EXTENSION_DIR", str(tmp_path / "nonexistent"))
     dirs = get_extension_dirs(
         "coder", project_dir=tmp_path / "empty", global_dir=tmp_path / "empty_global"
     )
@@ -62,7 +62,7 @@ def test_get_extension_dirs_drops_layers_that_are_not_there(
     filtering lives in the discovery helper rather than in resolution.
     Stated here so the two do not quietly merge again.
     """
-    monkeypatch.delenv("MVGEOS_EXTENSION_DIR", raising=False)
+    monkeypatch.delenv("MVGE_EXTENSION_DIR", raising=False)
     global_dir = tmp_path / "global"
 
     assert get_extension_dirs("coder", global_dir=global_dir) == []

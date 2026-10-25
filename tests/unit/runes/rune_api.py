@@ -99,7 +99,7 @@ def test_audit_propagates_audit_error_loudly(tmp_path: Path) -> None:
 def test_audit_default_log_lands_in_user_scope_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     api = RuneAPI(RuneRunner(), "some-rune")
 
     api.audit("teach", outcome="failed", code="snapshot_failed", message="m")

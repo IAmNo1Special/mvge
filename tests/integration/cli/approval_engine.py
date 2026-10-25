@@ -1,6 +1,6 @@
 """End-to-end proof: the engine's RuneRunner drives the CLI presenter.
 
-Uses the real ``RuneRunner`` from ``mvgeos-runes`` and the real
+Uses the real ``RuneRunner`` from ``mvge.runes`` and the real
 ``CliApprovalPresenter`` through the host binding adapter -- no slot
 doubles. Proves the canonical contract holds: the engine invokes the
 presenter as ``await presenter(request)``, honors the decision's digest

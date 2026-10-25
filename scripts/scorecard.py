@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Re-measure the published MvgeOS scorecard so a sceptic can falsify it.
+"""Re-measure the published Mvge scorecard so a sceptic can falsify it.
 
 Scorecard v1 was measured by hand. This script is the measurement code. Every
 number it prints is produced by one of the seven measures below, and every measure
@@ -12,7 +12,7 @@ Run it with no arguments::
 
 That measures every project and prints a table, exiting non-zero if a gate
 regresses. Each project is a shallow clone (`--depth 1`, default branch)
-cached under a temporary directory, with one exception: MvgeOS's own row is
+cached under a temporary directory, with one exception: Mvge's own row is
 measured from the checkout this script is run in, because a scorecard's own
 row has to describe the code the reader is standing in. Pass `--clone-self` to
 measure our published clone instead. Point any row at a local checkout with
@@ -37,7 +37,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
    deepseek-harness row is its 478,874 TypeScript lines and ignores its 8,244
    lines of Python. Counting all languages therefore moves hermes-agent's ratio
    from 1.43 to 1.07, and with hermes-agent below us rather than above us,
-   MvgeOS moves from fourth to third of seven on test density. Exactly three
+   Mvge moves from fourth to third of seven on test density. Exactly three
    ratios are above ours either way: adk-python 1.71 and openclaw 1.51, plus
    hermes-agent at 1.43 under v1's rule and not at all under this one. An
    earlier draft of this comment said fifth to third, which was wrong; the
@@ -60,7 +60,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
    A reader who thinks the mixed ratio is the wrong measure should still have
    the information to disagree: the per-language breakdown of both totals is in
    the baseline snapshot, and a project that is not single-language has its
-   split printed under the table. MvgeOS's own row is single-language, so this
+   split printed under the table. Mvge's own row is single-language, so this
    decision does not move our own ratio in either direction -- it moves our
    RANK, by pushing hermes-agent below us.
 
@@ -69,7 +69,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
    `target`, `__pycache__`, `.git`, `.venv`, `venv`, `.tox`, `.eggs` or
    `site-packages`. The last five are not in v1's list and have to be: the
    documented command creates `.venv/` in this repository before the script
-   runs, and counting it reports MvgeOS as a million-line project.
+   runs, and counting it reports Mvge as a million-line project.
 
    A counted file is TEST code when any directory component is one of `test`,
    `tests`, `__tests__`, `spec`, or the file name matches one of
@@ -78,7 +78,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
 
    `scripts/` is counted as SOURCE and is deliberately NOT in
    `EXCLUDED_DIRS`. It was a candidate: `scripts/pypi_new_project_window.py`
-   landed in v0.6.8 with 181 source lines and no tests, which put MvgeOS's
+   landed in v0.6.8 with 181 source lines and no tests, which put Mvge's
    `test_ratio` below its baseline and turned the gate red, and adding
    `scripts` to the list below would have turned it green at once.
 
@@ -98,7 +98,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
 
    Lines are `len(text.splitlines())` over the whole file: blank lines and
    comment lines included. This is the definition v1 used and it is what makes
-   the mvgeos row reproduce exactly (38,971 / 57,545). A "physical lines"
+   the mvge row reproduce exactly (38,971 / 57,545). A "physical lines"
    figure is not a statement about how much code exists; it is a reproducible
    one, which is the only thing a benchmark needs.
 
@@ -146,7 +146,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
    contribute zero imports and look like a clean boundary.
 
    THE GATE: for a gated project, any cross-extension runtime import or any
-   parse failure exits non-zero. Only mvgeos is gated. hermes-agent has a
+   parse failure exits non-zero. Only mvge is gated. hermes-agent has a
    cross-plugin import today and that is a measurement, not our regression; a
    peer's code cannot fail our build.
 
@@ -171,7 +171,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
        no annotations at all, or the file defines no functions.
 
    A file that defines no functions scores 0, which is the only non-absurd
-   choice: scoring it 1 would report mvgeos at 100%, and excluding it from the
+   choice: scoring it 1 would report mvge at 100%, and excluding it from the
    denominator would do the same. This is a count of annotations present in
    source text. It is NOT a type-checker result and it is not a substitute for
    one. mypy strict passing is a different and stronger claim, reported
@@ -251,7 +251,7 @@ COUNTED_SUFFIXES: tuple[str, ...] = tuple(
 #: The virtual-environment and egg entries are not in scorecard v1's list and
 #: they have to be: `uv run python scripts/scorecard.py` -- the documented
 #: command -- creates `.venv/` in this repository before the script runs, and
-#: without these entries MvgeOS's own row measures 1,014,561 source lines
+#: without these entries Mvge's own row measures 1,014,561 source lines
 #: instead of 40,545, because it is counting every installed dependency.
 EXCLUDED_DIRS = frozenset(
     {
@@ -295,7 +295,7 @@ WORKFLOW_SUFFIXES = (".yml", ".yaml")
 PYPI_URL = "https://pypi.org/pypi/{name}/json"
 NPM_URL = "https://registry.npmjs.org/{name}"
 
-#: The repository this script lives in. MvgeOS's own row is measured from here
+#: The repository this script lives in. Mvge's own row is measured from here
 #: rather than from a fresh clone of the published repository, because the
 #: scorecard's own row has to describe the code the reader is standing in.
 #: Cloning ourselves would mean the number we are judged on changes the moment
@@ -303,7 +303,7 @@ NPM_URL = "https://registry.npmjs.org/{name}"
 #: to every regression until it landed.
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-DEFAULT_CACHE_DIRNAME = "mvgeos-scorecard-clones"
+DEFAULT_CACHE_DIRNAME = "mvge-scorecard-clones"
 DEFAULT_BASELINE = Path("docs/scorecard-baseline.json")
 BASELINE_SCHEMA = 1
 
@@ -322,7 +322,7 @@ MEASURES_HEADING = "THE SEVEN MEASURES"
 class Extension:
     """Where a project's independently installable extensions live.
 
-    ``slug`` is a separate repository because for MvgeOS the Runes are not in
+    ``slug`` is a separate repository because for Mvge the Runes are not in
     this repository at all. ``package_prefix`` names the importable package
     family a Rune owns; ``""`` means an extension owns only its directory
     name, which is the case for hermes-agent's plugins.
@@ -409,7 +409,7 @@ PROJECTS: tuple[Project, ...] = (
 PROJECTS_BY_KEY = {project.key: project for project in PROJECTS}
 
 #: The project whose row defaults to the checkout this script is run in.
-SELF_PROJECT_KEY = "mvgeos"
+SELF_PROJECT_KEY = "mvge"
 
 
 # --------------------------------------------------------------------------
@@ -943,7 +943,7 @@ def _names_extension(module: str, owned: str, root_name: str) -> bool:
     Two layouts occur in this peer set and both have to work:
 
     * an extension installed as its own distribution, imported as
-      `mvge.runes_x` (MvgeOS Runes);
+      `mvge.runes_x` (Mvge Runes);
     * an extension living inside the extension root package, imported as
       `plugins.web` (hermes-agent plugins).
 
@@ -1013,7 +1013,7 @@ def probe_package(index: str, name: str, timeout: float) -> str:
     template = PYPI_URL if index == "pypi" else NPM_URL
     request = urllib.request.Request(
         template.format(name=name),
-        headers={"User-Agent": "mvgeos-scorecard/1.0"},
+        headers={"User-Agent": "mvge-scorecard/1.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -1595,7 +1595,7 @@ def render_table(results: list[Result], online: bool) -> str:
 def render_markdown(results: list[Result], online: bool) -> str:
     """GitHub-flavoured markdown, for a CI job summary."""
     lines = [
-        "## MvgeOS scorecard",
+        "## Mvge scorecard",
         "",
         "Reproduce locally: `uv run python scripts/scorecard.py`",
         "",
@@ -1710,7 +1710,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="scorecard.py",
         description=(
-            "Re-measure the published MvgeOS scorecard. With no arguments this "
+            "Re-measure the published Mvge scorecard. With no arguments this "
             "shallow-clones each project, measures it, prints a table, and "
             "exits non-zero if a gate regresses."
         ),
@@ -1734,7 +1734,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="KEY=SOURCE",
         help=(
             "override the checkout holding a project's extensions, for the "
-            "projects that have one (mvgeos, hermes-agent). A path or slug."
+            "projects that have one (mvge, hermes-agent). A path or slug."
         ),
     )
     parser.add_argument(
@@ -1754,7 +1754,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--clone-self",
         action="store_true",
         help=(
-            "measure MvgeOS's own row from a shallow clone of the published "
+            "measure Mvge's own row from a shallow clone of the published "
             "repository instead of from the checkout this script is run in"
         ),
     )

@@ -1,4 +1,4 @@
-"""MvgeOS host sandbox executor for process isolation and AST safety.
+"""Mvge host sandbox executor for process isolation and AST safety.
 
 Trust model (read this before relying on it):
 
@@ -192,7 +192,7 @@ def _sandbox_process_target(
 
 
 class MvgeSandbox:
-    """MvgeOS host sandbox executor with AST validation and hard timeout termination.
+    """Mvge host sandbox executor with AST validation and hard timeout termination.
 
     Best-effort containment, not a security boundary: pass an explicit
     ``allowed_modules`` allowlist to ``execute_code`` for anything

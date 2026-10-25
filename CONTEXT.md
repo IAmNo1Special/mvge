@@ -1,6 +1,6 @@
-# MvgeOS
+# Mvge
 
-MvgeOS is an operating system for AI agents: a Mvge casts Spells against models served by Realms, conversations persist as Tomes, and capabilities extend through Runes.
+Mvge is an operating system for AI agents: a Mvge casts Spells against models served by Realms, conversations persist as Tomes, and capabilities extend through Runes.
 
 ## Language
 
@@ -173,11 +173,11 @@ _Avoid_: Code Sandbox, AST guard
 ### Desktop & Interaction Surface
 
 **Canvas**:
-A docked or slide-over interactive workspace surface in the MvgeOS GUI positioned alongside the Tome transcript, used for reading, editing, and previewing Artifacts, unified diffs, and live documents without modal interruption.
+A docked or slide-over interactive workspace surface in the Mvge desktop GUI positioned alongside the Tome transcript, used for reading, editing, and previewing Artifacts, unified diffs, and live documents without modal interruption.
 _Avoid_: Popup, modal dialog, preview window
 
 **Steering Control**:
-An in-flight Composer interaction in the MvgeOS GUI that dispatches guidance directly to an actively Channeling Mvge at the next turn boundary without aborting the run.
+An in-flight Composer interaction in the Mvge desktop GUI that dispatches guidance directly to an actively Channeling Mvge at the next turn boundary without aborting the run.
 _Avoid_: Interruption button, cancel-and-replace
 
 **Summoning Card**:

@@ -1,24 +1,24 @@
 name: Bug Report
-description: File a reproducible bug report or regression in MvgeOS
+description: File a reproducible bug report or regression in Mvge
 title: "fix: "
 labels: ["needs-triage", "bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for reporting an issue with MvgeOS. Please provide clear details and reproduction steps.
+        Thank you for reporting an issue with Mvge. Please provide clear details and reproduction steps.
   - type: dropdown
     id: component
     attributes:
       label: Affected Component / Package
-      description: Select the primary MvgeOS package affected by this issue.
+      description: Select the primary Mvge component affected by this issue.
       options:
-        - mvgeos-agent (Core loop, session lifecycle, harness)
-        - mvgeos-provider (Realm protocol, OpenRouter streaming)
-        - mvgeos-tome (JSONL persistence, file locking, branching)
-        - mvgeos-runes (Extensions, sigil hooks, sandboxing)
-        - mvgeos-cli (Terminal interface, REPL, CLI commands)
-        - mvgeos-gui (Desktop NiceGUI interface)
+        - mvge.agent (Core loop, session lifecycle, harness)
+        - mvge.provider (Realm protocol, OpenRouter streaming)
+        - mvge.tome (JSONL persistence, file locking, branching)
+        - mvge.runes (Extensions, sigil hooks, sandboxing)
+        - mvge.cli (Terminal interface, REPL, CLI commands)
+        - mvge-desktop (Desktop NiceGUI interface)
         - coding-mvge (Default coding agent package)
         - documentation / build / ci
     validations:
@@ -37,7 +37,7 @@ body:
       label: Steps to Reproduce
       description: Minimal steps, command, or script to reproduce the behavior.
       placeholder: |
-        1. Run 'mvgeos ...'
+        1. Run 'mvge ...'
         2. Execute ...
         3. Observe error ...
     validations:

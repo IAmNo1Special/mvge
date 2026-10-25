@@ -1,8 +1,8 @@
-"""Architecture guard: mvgeos-core has zero first-party dependencies.
+"""Architecture guard: mvge.core has zero first-party dependencies.
 
 Core owns the canonical loop vocabulary. Any import of ``mvge.agent``,
 ``mvge.provider``, ``mvge.tome``, ``mvge.runes``, ``mvge.cli``,
-``mvgeos_gui``, or ``coding_mvge`` from core source recreates the coupling
+``mvge_desktop``, or ``coding_mvge`` from core source recreates the coupling
 the core package exists to eliminate. Leaf packages depend on core, never
 the reverse.
 """

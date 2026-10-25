@@ -106,7 +106,7 @@ def _render_tome_list(metas: list[TomeMetadata], ascii_only: bool = False) -> st
     out = StringIO()
     box_style = box.ASCII if ascii_only else box.HEAVY_HEAD
     render_console = Console(file=out, width=150, record=True, force_terminal=False)
-    table = Table(title="MvgeOS Tomes", box=box_style)
+    table = Table(title="Mvge Tomes", box=box_style)
     table.add_column("ID", style="cyan", width=10)
     table.add_column("Created", style="green", width=21)
     table.add_column("CWD", style="yellow", width=CWD_MAX_WIDTH)

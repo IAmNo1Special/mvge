@@ -195,9 +195,9 @@ async def test_omitted_approval_mode_prints_no_notice() -> None:
 @patch.dict(
     os.environ,
     {
-        "MVGEOS_APPROVAL_MODE": "allow-all",
+        "MVGE_APPROVAL_MODE": "allow-all",
         "APPROVAL_MODE": "allow-all",
-        "MVGEOS_APPROVAL": "allow-all",
+        "MVGE_APPROVAL": "allow-all",
     },
 )
 async def test_environment_variables_never_grant_approval() -> None:

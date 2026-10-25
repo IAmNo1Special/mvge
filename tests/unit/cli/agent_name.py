@@ -41,7 +41,7 @@ def test_group_flag_reaches_subcommand() -> None:
 
 
 def test_group_flag_reaches_nested_subcommand() -> None:
-    """Nested groups (``mvgeos --agent-name X config show``) walk the chain."""
+    """Nested groups (``mvge --agent-name X config show``) walk the chain."""
     ctx = _ctx(
         {"agent_name": "group-agent"},
         {"agent_name": None},  # config_app callback has no agent_name
@@ -64,7 +64,7 @@ def test_default_when_nothing_names_an_agent() -> None:
 
 
 def test_group_flag_reaches_real_subcommand() -> None:
-    """End to end: ``mvgeos --agent-name X config show`` resolves X."""
+    """End to end: ``mvge --agent-name X config show`` resolves X."""
     from mvge.cli.main import app
 
     runner = CliRunner()

@@ -2,7 +2,7 @@
 
 A codec owns everything about one session file format: detecting its files,
 parsing headers and entries, serialising entries back to file lines, and
-tracking the active branch tip (leaf). MvgeOS core stays format-agnostic;
+tracking the active branch tip (leaf). Mvge core stays format-agnostic;
 Tome v1 is simply the built-in codec. Runes can register additional codecs
 (e.g. Pi sessions) through ``session_codecs`` in their manifest.
 """
@@ -203,7 +203,7 @@ def _parse_tome_entry(raw: dict[str, Any]) -> TomeEntry:
 
 
 class TomeV1Codec(SessionCodec):
-    """The built-in MvgeOS session format."""
+    """The built-in Mvge session format."""
 
     name = "tome-v1"
 

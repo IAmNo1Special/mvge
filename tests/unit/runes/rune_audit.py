@@ -115,14 +115,14 @@ def test_utcnow_format() -> None:
 def test_default_dir_prefers_global_dir_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     assert default_rune_ops_dir() == tmp_path / "global" / "extensions"
 
 
 def test_default_dir_falls_back_to_user_agents(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.delenv("MVGEOS_GLOBAL_DIR", raising=False)
+    monkeypatch.delenv("MVGE_GLOBAL_DIR", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     # Windows' ntpath.expanduser ignores HOME and reads USERPROFILE.
     monkeypatch.setenv("USERPROFILE", str(tmp_path))

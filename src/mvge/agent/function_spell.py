@@ -179,7 +179,7 @@ class PEP723ScriptSpell(MvgeSpell):
         args_payload = json.dumps(validated)
 
         env = os.environ.copy()
-        env["MVGEOS_PARAMS"] = args_payload
+        env["MVGE_PARAMS"] = args_payload
         env["PYTHONUNBUFFERED"] = "1"
 
         cmd = ["uv", "run", "--script", str(self.script_path)]
@@ -442,7 +442,7 @@ def discover_spells_from_dir(
     if init_file.is_file():
         try:
             spec = importlib.util.spec_from_file_location(
-                f"mvgeos_spells_{spells_dir.name}", init_file
+                f"mvge_spells_{spells_dir.name}", init_file
             )
             if spec and spec.loader:
                 module = importlib.util.module_from_spec(spec)
@@ -497,7 +497,7 @@ def _discover_spells_from_file(py_file: Path, spells_dir: Path) -> list[MvgeSpel
     if pep_meta is not None:
         return [PEP723ScriptSpell(py_file, metadata=pep_meta)]
 
-    module_name = f"mvgeos_spells_{spells_dir.name}_{py_file.stem}"
+    module_name = f"mvge_spells_{spells_dir.name}_{py_file.stem}"
     spec = importlib.util.spec_from_file_location(module_name, py_file)
     if not spec or not spec.loader:
         return []

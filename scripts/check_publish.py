@@ -47,8 +47,8 @@ def _requirement_name(requirement: str) -> str:
 def _has_version_specifier(requirement: str) -> bool:
     """True when the requirement pins a range, not just a bare name.
 
-    ``mvgeos-core`` and ``mvgeos-core ; python_version < '3.13'`` both fail.
-    ``mvgeos-core>=0.6.5`` and ``mvgeos-core==0.6.5`` both pass.
+    ``mvge`` and ``mvge ; python_version < '3.13'`` both fail.
+    ``mvge>=0.1.2`` and ``mvge==0.1.2`` both pass.
     """
     body = requirement
     for separator in (";", "["):

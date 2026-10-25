@@ -27,7 +27,7 @@ from mvge.core.invocations import MvgeInvocation
 from mvge.core.spells import MvgeSpell, SpellResultMessage
 
 #: Spell-cast argument names the engine reads as filesystem targets. ``path`` is
-#: the MvgeOS convention; the rest are spellings seen in the wild. Anything else
+#: the Mvge convention; the rest are spellings seen in the wild. Anything else
 #: -- a ``command`` string, say -- is left alone: the engine cannot say which
 #: file a shell command touched, so it does not claim one.
 _PATH_ARGUMENTS = frozenset({"path", "file_path", "filepath", "filename"})

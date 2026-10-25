@@ -43,9 +43,9 @@ def _request() -> ApprovalRequest:
             "runner_origin": "false",
             "read_only": "false",
         },
-        arguments={"path": "/workspace/mvgeos/notes.txt"},
+        arguments={"path": "/workspace/mvge/notes.txt"},
         argument_digest="sha256:deadbeef",
-        project_root="/workspace/mvgeos",
+        project_root="/workspace/mvge",
         tome_id="7f24c1",
         agent_name="coding_mvge",
     )

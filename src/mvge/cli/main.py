@@ -459,7 +459,7 @@ async def _run_agent(
             await agent.close()
 
 
-class MvgeosGroup(TyperGroup):
+class MvgeGroup(TyperGroup):
     """Rune-provided CLI commands, resolved the same way Rune loading does.
 
     Discovery goes through the one layer-stack resolver, so a command that
@@ -536,11 +536,11 @@ class MvgeosGroup(TyperGroup):
 app = typer.Typer(
     name="mvge",
     help="mvge - a Python-based AI coding agent",
-    cls=MvgeosGroup,
+    cls=MvgeGroup,
 )
 
 
-@app.callback(invoke_without_command=True, cls=MvgeosGroup)
+@app.callback(invoke_without_command=True, cls=MvgeGroup)
 def _repl_callback(
     ctx: typer.Context,
     incantation: str | None = typer.Option(
@@ -621,7 +621,7 @@ def _repl_callback(
         help="Bootstrap the default 'coding' profile when no agents are installed",
     ),
 ) -> None:
-    """Launch the MvgeOS interactive REPL, or run a single prompt."""
+    """Launch the Mvge interactive REPL, or run a single prompt."""
     if ctx.invoked_subcommand is not None:
         return
 
@@ -640,7 +640,7 @@ def _repl_callback(
     # The Realm that serves the model, not the slug's prefix. Those differ for a
     # routed slug: `nvidia/nemotron-3-ultra-550b-a55b:free` is served by
     # openrouter, so reading the prefix asked for NVIDIA_API_KEY and for
-    # ~/.agents/auth/nvidia.json while the credential `mvgeos export` writes sits
+    # ~/.agents/auth/nvidia.json while the credential `mvge export` writes sits
     # in openrouter.json doing nothing.
     key_realm = serving_realm_for_model(model or DEFAULT_MODEL)
     key_model = model or DEFAULT_MODEL

@@ -18,8 +18,8 @@
 | 0014 | [One Resolved Layer Stack for the `.agents` Protocol](0014-one-resolved-layer-stack.md) | Accepted (amended 2026-10-10: decision 4, see ADR 0017) | 2026-10-04 |
 | 0013 | [Cache-Free, Format-Agnostic Tome Persistence](0013-cache-free-format-agnostic-tome-persistence.md) | Accepted | 2026-10-04 |
 | 0012 | [Deepened Mvge Turn-Driving Module](0012-deepened-mvge-turn-driving-module.md) | Accepted — migration incomplete, see note | 2026-09-12 |
-| 0011 | [skill_evolution — MvgeOS Architecture for Autonomous Skill Evolution](0011-skill-evolution-rune-architecture.md) | Accepted (supersedes ADR 0010) | 2026-09-08 |
-| 0010 | [knowledge_skill — MvgeOS Implementation of WikiSkill with Persistent Knowledge](0010-knowledge-skill-persistent-knowledge-architecture.md) | Superseded by ADR 0011 | 2026-09-06 |
+| 0011 | [skill_evolution — Mvge Architecture for Autonomous Skill Evolution](0011-skill-evolution-rune-architecture.md) | Accepted (supersedes ADR 0010) | 2026-09-08 |
+| 0010 | [knowledge_skill — Mvge Implementation of WikiSkill with Persistent Knowledge](0010-knowledge-skill-persistent-knowledge-architecture.md) | Superseded by ADR 0011 | 2026-09-06 |
 | 0009 | [Two-Layer Invariant Scaffolding & Colocated Zero-Config Agent Architecture](0009-two-layer-invariant-scaffolding-and-colocated-agent-architecture.md) | Accepted (amended 2026-10-04) | 2026-09-02 |
 | 0008 | [NiceGUI Desktop Application Architecture (1:1 Antigravity UI)](0008-nicegui-desktop-application.md) | Accepted (amended 2026-08: component inventory descoped to the shipped pipeline) | 2026-08-22 |
 | 0007 | [Unified Tome Session System on Pi-Compatible JSONL Format](0007-unified-tome-session-system.md) | Accepted — mechanism superseded by ADR 0013 | 2026-08-03 |
@@ -44,7 +44,7 @@ records: the status line points forward, the body keeps the *why*.
 
 ## Keeping this index honest
 
-`mvgeos-core/scripts/check_adr_contract.py` asserts that every symbol an ADR
+`mvge-core/scripts/check_adr_contract.py` asserts that every symbol an ADR
 commits to still exists in first-party source, and that every ADR declares a
 status. It runs in CI alongside the marketplace contract check.
 

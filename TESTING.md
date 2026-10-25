@@ -1,12 +1,11 @@
-# MvgeOS Testing Standards Charter
+# Mvge Testing Standards Charter
 
-This document is the single authority for how MvgeOS is tested. It states
+This document is the single authority for how Mvge is tested. It states
 requirements, not conventions of convenience. Where any other document,
 comment, or tooling configuration conflicts with this charter, this charter
 wins; the conflicting artifact is a bug to fix, not license to deviate.
 
-Applies to every package in the uv workspace (`mvgeos-core`, `mvgeos-agent`,
-`mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes`, `mvgeos-cli`, `mvgeos-gui`).
+Applies to the `mvge` codebase (`tests/unit`, `tests/integration`).
 
 ## 1. Tier model
 
@@ -21,11 +20,9 @@ The suite has exactly two tiers: **unit** and **integration**.
 
 Requirements:
 
-- Tests live at `<package>/tests/unit/<module>.py` and
-  `<package>/tests/integration/<module>.py`, mirroring source structure
-  (e.g., `mvgeos-agent/tests/unit/types.py` tests the module importable as
-  `mvgeos_agent.types`, which lives at `mvgeos-agent/src/mvgeos_agent/types.py`
-  under each package's src layout).
+- Tests live at `tests/unit/<submodule>/<module>.py` and
+  `tests/integration/<submodule>/<module>.py`, mirroring source structure
+  (e.g., `tests/unit/agent/mvge.py` tests `src/mvge/agent/mvge.py`).
 - File names are flat `*.py` without a `test_` prefix (`python_files = "*.py"`
   in the root pyproject).
 - Test directories must never contain an `__init__.py`: with
@@ -109,15 +106,12 @@ exists to prevent. (Ruff is exempt: subpackages inherit via
 # Full suite with the coverage floor (bare run)
 uv run python -m pytest --cov
 
-# One package, both tiers
-uv run python -m pytest mvgeos-agent/tests
-
-# One tier, one package
-uv run python -m pytest mvgeos-agent/tests/unit
-uv run python -m pytest mvgeos-agent/tests/integration
+# One tier
+uv run python -m pytest tests/unit
+uv run python -m pytest tests/integration
 
 # One file
-uv run python -m pytest mvgeos-agent/tests/unit/types.py
+uv run python -m pytest tests/unit/agent/mvge.py
 ```
 
 Run the full output — no tail truncation. Chain commands in PowerShell with

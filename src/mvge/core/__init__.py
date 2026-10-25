@@ -1,4 +1,4 @@
-"""Canonical loop vocabulary for MvgeOS.
+"""Canonical loop vocabulary for Mvge.
 
 Zero first-party dependencies. Leaf packages (provider, runes, tome) and the
 agent depend on core, never the reverse.

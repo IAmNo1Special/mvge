@@ -46,11 +46,11 @@ Three engine facts made adopting it more than a constant change:
 ## Decision
 
 `DEFAULT_MODEL` becomes `opencode/space-bunny-free`. The opencode Realm ships as
-the `opencode-realm` Rune in `mvgeos-marketplace` (PR #17), and the CLI offers to
+the `opencode-realm` Rune in `mvge-marketplace` (PR #17), and the CLI offers to
 install it when resolution fails — the same bargain the previous default made
 with `openrouter-realm`.
 
-Facts about Realms move to `mvgeos-provider/realms.py`, and three consumers read
+Facts about Realms move to `mvge-provider/realms.py`, and three consumers read
 them from there instead of carrying their own:
 
 - `NoRealmRegisteredError` carries `realm` and `rune_name`, and the CLI prompt and
@@ -62,7 +62,7 @@ them from there instead of carrying their own:
 - The baseline catalog carries a per-entry Realm, so an entry can name a base URL
   other than OpenRouter's.
 
-The alternative considered was putting the Realm in `mvgeos-provider` rather than
+The alternative considered was putting the Realm in `mvge-provider` rather than
 in a Rune, so the default resolves with zero installs. Rejected: it keeps the
 charter line that concrete Realms ship as Runes, and the install prompt already
 handles the first run. See the decision document on SOM-58 for that trade in
@@ -162,7 +162,7 @@ any of them, and on a clean machine the Realm being exempted is not installed ye
   decision introduced were added, but three older Realm-blind lookups survived
   beside them and overrode the new ones on the ordinary path:
 
-  - `mvgeos_agent.mvge._resolve_api_key` read `OPENROUTER_API_KEY` first,
+  - `mvge_agent.mvge._resolve_api_key` read `OPENROUTER_API_KEY` first,
     unconditionally, so it resolved before any Realm was known.
   - The CLI read `OPENROUTER_API_KEY` as a fallback for every Realm.
   - The GUI's settings dialog keeps one credential in one keyring slot named
@@ -190,7 +190,7 @@ any of them, and on a clean machine the Realm being exempted is not installed ye
   Every credential gate consults the second. Before that, `realm_for_model_id`
   answered both, and for a routed slug it named a Realm that does not exist: the
   CLI looked for `NVIDIA_API_KEY` and `~/.agents/auth/nvidia.json` for a model
-  openrouter serves, so the credential `mvgeos export` actually writes did nothing
+  openrouter serves, so the credential `mvge export` actually writes did nothing
   and an exported `OPENROUTER_API_KEY` was the only thing keeping it working.
 - `Model.free` now reads a `-free` suffix, scoped to the Realms that use it.
   Scoping is the point: reading it globally would let a model id call a paid model

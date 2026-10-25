@@ -14,7 +14,7 @@ The desktop GUI (`mvge-desktop`) ships independently from its own standalone com
 
 | # | Distribution | Description |
 | --- | --- | --- |
-| 1 | `mvge` | Single unified distribution owning both `mvge` and `mvgeos` console scripts |
+| 1 | `mvge` | Single unified distribution owning the `mvge` console script |
 
 The distribution list is validated by:
 
@@ -69,8 +69,8 @@ restored. Prefer not to.
 **This was tried and rolled back on 2026-10-09.** Trusted publishing was enabled
 for six of the eight names and the other two were never registered, because the
 registration needs a pypi.org browser session. The `v0.6.17` run therefore
-uploaded `mvgeos-core`, `mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes`,
-`mvgeos-agent` and `mvgeos-cli`, and was refused on the seventh, `mvgeos`, with
+uploaded `mvge-core`, `mvge-provider`, `mvge-tome`, `mvge-runes`,
+`mvge-agent` and `mvge-cli`, and was refused on the seventh, `mvge`, with
 `403 Invalid API Token`. Two facts made that failure expensive to diagnose and
 are worth knowing before trying again. PyPI answers a *missing* registration
 with the same "Invalid API Token" wording it uses for a bad credential. And
@@ -84,16 +84,16 @@ registration either. The only thing that detects it is an upload.
 
 **The token was needed a second time, on 2026-10-10, for the same reason.** The
 two names from the rollback above were still unregistered, so tags v0.6.20
-through v0.6.23 each half-landed — refused at `mvgeos`, and the loop aborted
-before it reached `mvgeos-gui` — and the v0.6.24 tag run was refused at `mvgeos`
+through v0.6.23 each half-landed — refused at `mvge`, and the loop aborted
+before it reached `mvge-desktop` — and the v0.6.24 tag run was refused at `mvge`
 again. A temporary `token-bridge.yml` (commit `b33a6d9`) uploaded exactly those
 two distributions for 0.6.24 with `PYPI_API_TOKEN` at 14:42:52-55Z, and commit
 `806d4fb` removed the workflow again. `PYPI_API_TOKEN` is no longer a secret on
 the repo.
 
 **The bridge is also how a missing publisher stays invisible.** Once
-`mvgeos` 0.6.24 and `mvgeos-gui` 0.6.24 were on the index, the release looked
-whole and the unregistered `mvgeos` publisher was undetectable — every later
+`mvge` 0.6.24 and `mvge-desktop` 0.6.24 were on the index, the release looked
+whole and the unregistered `mvge` publisher was undetectable — every later
 `publish.yml` run was refused at exactly that name while the six registered ones
 skipped on re-dispatch, which reads as "one broken package" rather than "two
 names were never registered". That is what happened to 0.6.26.
@@ -103,7 +103,7 @@ API): publish a package that *is* correctly registered **first**. An identical
 OIDC token is minted once for the job and offered to all eight uploads, so a
 success there proves the token, repository, workflow filename and environment
 are all right, and isolates the refusal to one project's publisher. Running
-`mvgeos-gui` before `mvgeos` is what identified the fault — which turned out to
+`mvge-desktop` before `mvge` is what identified the fault — which turned out to
 be a typo in that one project's **workflow filename** field. It was refused for
 the same reason across four runs while the field held a wrong value, and
 succeeded on the run after the correction. With it corrected, 0.6.26 and 0.6.27
@@ -126,7 +126,7 @@ So read the scope of the failure as the diagnosis:
 
 The run stops at the first refusal, so a failure at position seven tells you
 nothing about position eight. That is exactly what happened on 2026-10-09:
-`mvgeos` was refused at position seven and `mvgeos-gui` was never attempted.
+`mvge` was refused at position seven and `mvge-desktop` was never attempted.
 Check every project page, not just the one named in the error.
 
 ### Where the registration goes depends on whether the project exists
@@ -140,7 +140,7 @@ takes an ordinary trusted publisher, added on its own page at
 All eight names already exist — the first release created them with a stored
 token — so all eight belong on their project pages. A pending publisher had
 been registered on the account page for all eight names, and six of them
-worked; the two that 403d, `mvgeos` and `mvgeos-gui`, were the two that needed
+worked; the two that 403d, `mvge` and `mvge-desktop`, were the two that needed
 the project page instead. **Do not assume one registration covers the set.**
 Check each of the eight individually, and treat a name that answers
 `403 Invalid API Token: OIDC scoped token is not valid for project 'X'` as
@@ -198,7 +198,7 @@ Generator: uv 0.12.24
 in its `WHEEL` metadata, that line is hashed into `RECORD`, and so the file's
 sha256 changes when uv does. Three builders, one commit, one package:
 
-| Built by | `mvgeos_core-0.6.17-py3-none-any.whl` |
+| Built by | `mvge_core-0.6.17-py3-none-any.whl` |
 | --- | --- |
 | uv 0.12.10 | `8b1999f4…` |
 | uv 0.12.24 | `9c156697…` |
@@ -210,7 +210,7 @@ installed it, rebuilt the same commit, and could not skip anything:
 
 ```
 error: Local file and index file do not match for
-`mvgeos_core-0.6.17-py3-none-any.whl`. Local: sha256=39207b40…, Remote: sha256=9c156697…
+`mvge_core-0.6.17-py3-none-any.whl`. Local: sha256=39207b40…, Remote: sha256=9c156697…
 ```
 
 Each of those three hashes was reproduced from a clean worktree at the release
@@ -286,16 +286,16 @@ run's `verify-install` job started at 00:03:14Z, and its first command failed
 with
 
 ```
-[1/5] uvx mvgeos --help -> exit 1 in 0.14s
+[1/5] uvx mvge --help -> exit 1 in 0.14s
 error: No solution found when resolving tool dependencies
-  cause: Because there is no version of mvgeos==0.6.19 and you require
-         mvgeos==0.6.19, we can conclude that your requirements are unsatisfiable.
+  cause: Because there is no version of mvge==0.6.19 and you require
+         mvge==0.6.19, we can conclude that your requirements are unsatisfiable.
 ```
 
 The release had landed. Nothing had propagated it yet.
 
 `uvx` resolves against the *simple index*, `https://pypi.org/simple/<name>/`,
-and PyPI serves that from cache -- measured on `https://pypi.org/simple/mvgeos/`
+and PyPI serves that from cache -- measured on `https://pypi.org/simple/mvge/`
 as `cache-control: max-age=600, public`. Warehouse caches it under the
 surrogate key `project/<name>` and purges that key when a file is uploaded
 (`warehouse/api/simple.py`, `warehouse/cache/origin/__init__.py`), so the purge
@@ -315,7 +315,7 @@ answer and it is wrong in both directions, both measured:
   key and the upload's purge cannot invalidate it. `published_files.py` asks
   that exact URL seconds before the upload in the publish job, seeding the cache
   with a 404 that outlives the release. Measured on
-  `https://pypi.org/pypi/mvgeos/0.6.99.json`: 404 from the Fastly cache,
+  `https://pypi.org/pypi/mvge/0.6.99.json`: 404 from the Fastly cache,
   `x-cache: MISS, HIT`, on every request across a six-minute window, with no
   `cache-control` on the response to bound it.
 
@@ -326,7 +326,7 @@ freshness. `verify` asks it for all eight names, so a half-landed release is
 named after one bounded wait rather than after eight.
 
 `verify-install` goes further and waits for the command a stranger types,
-`uvx --from mvgeos==<version> mvgeos --help`, until it exits zero. That
+`uvx --from mvge==<version> mvge --help`, until it exits zero. That
 resolves the whole runtime closure, and it is the only claim that settles the
 question: a URL can be right about a release that is not yet installable, and
 `uvx` cannot be wrong about it.
@@ -335,7 +335,7 @@ The wait is 120 seconds, polling every 5. A name still absent when it expires
 is a release that did not land, not a slow index, and the run says which one it
 saw.
 
-**`verify`** checks out nothing at all and runs `uvx mvgeos --help`. Because
+**`verify`** checks out nothing at all and runs `uvx mvge --help`. Because
 there is no clone and no `uv sync`, uvx resolves the command from PyPI exactly
 as a stranger's machine would. That job is the acceptance test; `pip download`
 is not.
@@ -346,7 +346,7 @@ job output, which is also why `preflight` is in this job's `needs`: a job that
 does not need another job reads its outputs as the empty string, and the empty
 version turns the check into `/pypi/<name>//json`, which is 200 for every
 package that has ever existed. That is exactly what ran on the `v0.6.25` tag --
-eight lines of `mvgeos-core : HTTP 200` with the version blank, over a run
+eight lines of `mvge-core : HTTP 200` with the version blank, over a run
 whose publish had been refused.
 
 **`verify-install`** runs `scripts/verify_install.py`, which is the half
@@ -361,35 +361,35 @@ lands under `.agents/sessions/`. It reports cold-to-first-token on the way.
 It waits first, and it waits last in the job on purpose: the bubblewrap install
 above it is fifteen seconds of propagation the run gets for free, so the wait
 usually starts after the release is already installable. That is a saving, not
-the gate. The gate is `--resolve`, which polls `uvx --from mvgeos==<version>
-mvgeos --help` until it exits zero, because that command resolves the whole
+the gate. The gate is `--resolve`, which polls `uvx --from mvge==<version>
+mvge --help` until it exits zero, because that command resolves the whole
 runtime closure and is the only thing that proves the release is installable
 rather than merely published.
 
 It also asserts the resolved tree is one coherent release: every first-party
 distribution present is at the released version, and none of the seven that
-make up the runtime closure is missing. Seven, not eight — `mvgeos-gui` is
+make up the runtime closure is missing. Seven, not eight — `mvge-desktop` is
 published in lockstep and installed by nothing, so requiring it would fail on
-every correct release. That `mvgeos-gui` exists on the index at the same
+every correct release. That `mvge-desktop` exists on the index at the same
 version is the publish workflow's job, which asks PyPI for all eight by HTTP.
 
 The check exists because of a measured failure — on 2026-10-09 a release
 uploaded six of eight and was refused on the seventh, and because
-`mvgeos 0.6.16` declares `mvgeos-cli>=0.6.16`, the mixed tree that resulted
-satisfied every constraint it was given. `uvx mvgeos --help` exited zero on it
+`mvge 0.6.16` declares `mvge-cli>=0.6.16`, the mixed tree that resulted
+satisfied every constraint it was given. `uvx mvge --help` exited zero on it
 and a real task completed. Run against that tree the gate now says:
 
 ```
-[1/5] uvx mvgeos --help -> exit 0 in 5.43s
-[2/5] resolved tree -> mvgeos 0.6.16, mvgeos-agent 0.6.17, mvgeos-cli 0.6.17, mvgeos-core 0.6.17, mvgeos-provider 0.6.17, mvgeos-runes 0.6.17, mvgeos-tome 0.6.17
-verify_install failed: not installed by this release: mvgeos-gui
-verify_install failed: a mixed-version tree resolved at released 0.6.16: mvgeos-agent 0.6.17, mvgeos-cli 0.6.17, mvgeos-core 0.6.17, mvgeos-provider 0.6.17, mvgeos-runes 0.6.17, mvgeos-tome 0.6.17
+[1/5] uvx mvge --help -> exit 0 in 5.43s
+[2/5] resolved tree -> mvge 0.6.16, mvge-agent 0.6.17, mvge-cli 0.6.17, mvge-core 0.6.17, mvge-provider 0.6.17, mvge-runes 0.6.17, mvge-tome 0.6.17
+verify_install failed: not installed by this release: mvge-desktop
+verify_install failed: a mixed-version tree resolved at released 0.6.16: mvge-agent 0.6.17, mvge-cli 0.6.17, mvge-core 0.6.17, mvge-provider 0.6.17, mvge-runes 0.6.17, mvge-tome 0.6.17
 ```
 
 Step 1 passing on the line above is the point: it is what the gate did before.
 
 Unlike `verify`, this job checks the repository out — only to get the script.
-Every mvgeos the run touches still comes from PyPI through uvx, so the thing
+Every mvge the run touches still comes from PyPI through uvx, so the thing
 under test is the published distribution and never the workspace.
 
 The script is stdlib-only so that the thing standing between a release and this
@@ -412,7 +412,7 @@ have it — the script re-runs itself inside a sandbox and says so on its first
 line. That is a real narrowing of what the run can see: a mount, process, and
 UTS namespace in which the checkout and the operator's own `HOME` do not exist,
 which is the difference between "a stranger's HOME" and "a stranger's machine".
-The network namespace is deliberately *not* unshared, because resolving mvgeos
+The network namespace is deliberately *not* unshared, because resolving mvge
 from PyPI and reaching a Realm are the two things under test. The script checks
 the isolation from the inside and fails if a host path is still reachable, so a
 sandbox that leaks is a red gate rather than a quiet one. Pass `--no-sandbox`
@@ -462,7 +462,7 @@ pin existed:
 ```
 gh workflow run publish.yml --ref v0.6.17 -f tag=v0.6.17 -f dry_run=false
    -> the pin was absent, so uv 0.13.0 was installed, and the run rebuilt
-      mvgeos-core at 39207b40... and failed against PyPI's 9c156697...
+      mvge-core at 39207b40... and failed against PyPI's 9c156697...
 
 gh workflow run publish.yml -f tag=v0.6.17 -f dry_run=false
    -> runs from main, pin applies, uv 0.12.24, and every package is
@@ -503,8 +503,8 @@ path builds the tag correctly too, but it is not needed and it skips the gates
 
 ## After a release
 
-The `mvgeos-gui` upload is last because it is the largest and the least likely
-to be the reason someone ran `uvx mvgeos`. If one upload in the middle fails,
+The `mvge-desktop` upload is last because it is the largest and the least likely
+to be the reason someone ran `uvx mvge`. If one upload in the middle fails,
 the run stops there. Re-run the same tag: `--check-url` skips the packages
 that already landed and continues with the rest.
 

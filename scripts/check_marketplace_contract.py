@@ -30,7 +30,7 @@ Four kinds of problem are reported, and each fails the check:
 
 Usage::
 
-    uv run python mvgeos-core/scripts/check_marketplace_contract.py <path>
+    uv run python scripts/check_marketplace_contract.py <path>
 """
 
 from __future__ import annotations

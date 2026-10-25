@@ -8,7 +8,7 @@ from.
 ``GLOBAL_DIR_ENV``, ``PROJECT_RUNE_PATH`` and ``PROJECT_SKILL_PATH`` are the
 protocol-facing names and must not be renamed; ``Scope`` lives with the ranking
 rule it feeds, in ``layers``. A feature-scoped environment variable -- the CLI's
-``MVGEOS_EXTENSION_DIR``, say -- belongs to the feature that reads it, not
+``MVGE_EXTENSION_DIR``, say -- belongs to the feature that reads it, not
 here: this module is the layer scheme, not every literal in the engine.
 
 The same rule keeps the Realm tables out. Which Rune provides a Realm, where
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 DEFAULT_AGENT_NAME = "default-mvge"
 
-#: The model every MvgeOS package falls back to.
+#: The model every Mvge package falls back to.
 #:
 #: Resolving this needs two things that are not in the engine: a Rune that
 #: registers the ``opencode`` Realm, and an ``OPENCODE_API_KEY``. On a clean
@@ -55,7 +55,7 @@ DEFAULT_MODEL = "openrouter/free"
 #: default is ``~/.agents``; setting this moves every global-layer read and
 #: write, which is what makes an isolated run possible. Honoured by every
 #: resolver in :mod:`mvge.core.layers`, on every call.
-GLOBAL_DIR_ENV = "MVGEOS_GLOBAL_DIR"
+GLOBAL_DIR_ENV = "MVGE_GLOBAL_DIR"
 
 #: Project-layer rune directory, relative to an anchored project directory.
 #: Always the standard protocol name -- never a proprietary subdirectory.

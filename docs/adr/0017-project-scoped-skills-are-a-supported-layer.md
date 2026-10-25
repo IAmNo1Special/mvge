@@ -19,14 +19,14 @@ project layer: *anchored, never ambient*. That rule was written about Runes.
 Skills were left out of it, and the gap between what the two halves of the
 product believed turned out to be three different spellings of one path.
 
-`mvgeos_core.constants` named the project rune directory, `PROJECT_RUNE_PATH =
+`mvge_core.constants` named the project rune directory, `PROJECT_RUNE_PATH =
 ".agents/extensions"`. It named no skills counterpart, so the project skills
 directory had no engine-side derivation to agree with, and three sites spelled
 it out:
 
 | Site | Spelling | Anchor |
 | --- | --- | --- |
-| `mvgeos-gui/src/mvgeos_gui/state.py` | `project_path / ".agents" / "skills"` | the named project — correct |
+| `mvge-gui/src/mvge_gui/state.py` | `project_path / ".agents" / "skills"` | the named project — correct |
 | `seeker/paths.py` (marketplace) | `Path(".agents") / "skills"` | **nothing** |
 | `seeker` docs and tests | `.agents/skills` | — |
 
@@ -65,8 +65,8 @@ on a guess, in a Rune that had no standing to guess about the layer stack.
 
 2. **The engine derives it, like every other project layer.**
    `PROJECT_SKILL_PATH = ".agents/skills"` joins `PROJECT_RUNE_PATH` in
-   `mvgeos_core.constants`, and `project_skills_dir(project_dir)` joins the
-   resolvers in `mvgeos_core.layers`.
+   `mvge_core.constants`, and `project_skills_dir(project_dir)` joins the
+   resolvers in `mvge_core.layers`.
 
 3. **Anchored, never ambient — identically to Runes.** `project_dir` is a
    required argument. It is anchored by the same `_anchor_project_dir` that
@@ -74,7 +74,7 @@ on a guess, in a Rune that had no standing to guess about the layer stack.
    There is no default-to-cwd path, and none may be added.
 
 4. **`~/.claude/skills` is not a layer and does not move.** It is a third-party
-   convention. Relocating `$MVGEOS_GLOBAL_DIR` does not relocate someone else's
+   convention. Relocating `$MVGE_GLOBAL_DIR` does not relocate someone else's
    directory, and it is not ours to derive.
 
 5. **A Rune that reaches for it names a project.** `seeker` takes an explicit

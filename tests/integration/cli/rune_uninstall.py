@@ -1,4 +1,4 @@
-"""Integration tests for the ``mvgeos rune uninstall`` command.
+"""Integration tests for the ``mvge rune uninstall`` command.
 
 Uninstall removes a directory tree, so the cases that matter are that it
 targets the same layer the installer wrote to, that it refuses to walk
@@ -48,7 +48,7 @@ def _isolate_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     global_dir = tmp_path / "global_agents"
     global_dir.mkdir()
     monkeypatch.setenv("HOME", str(fake_home))
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
     return global_dir
 
 

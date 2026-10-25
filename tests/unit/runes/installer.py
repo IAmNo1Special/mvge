@@ -194,7 +194,7 @@ def test_install_rune_declares_python_deps_in_the_extensions_project(
     )
 
     global_dir = tmp_path / "global_agents"
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
 
     target_dir = tmp_path / "extensions"
     with patch("subprocess.run") as mock_subproc:

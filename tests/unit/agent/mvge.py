@@ -674,7 +674,7 @@ def test_api_key_resolution_never_crosses_realms(
     """
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-secret")
     monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
-    monkeypatch.delenv("MVGEOS_API_KEY", raising=False)
+    monkeypatch.delenv("MVGE_API_KEY", raising=False)
 
     assert _resolve_api_key(realm="opencode") == ""
     assert _resolve_api_key(realm="openrouter") == "sk-or-secret"

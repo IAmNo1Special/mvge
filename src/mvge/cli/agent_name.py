@@ -2,7 +2,7 @@
 
 ``--agent-name`` may be given before the subcommand (parsed by the group
 callback) or on the subcommand itself. The group's value used to be parsed
-and then discarded, so ``mvgeos --agent-name X info`` silently ran the
+and then discarded, so ``mvge --agent-name X info`` silently ran the
 default agent. Every subcommand that accepts ``--agent-name`` resolves
 through :func:`resolve_agent_name`, which walks up the Click context chain.
 """

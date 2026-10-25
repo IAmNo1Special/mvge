@@ -54,7 +54,7 @@ jobs:
       - name: Measure the scorecard
         id: measure
         # --online enables measure 5, one HTTP GET per package name. It is the
-        # axis MvgeOS currently loses outright, so it is the one most worth
+        # axis Mvge currently loses outright, so it is the one most worth
         # watching, and it is why this job needs network at all.
         #
         # --json writes the full result document alongside the table so a later

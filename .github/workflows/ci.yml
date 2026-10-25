@@ -89,8 +89,8 @@ jobs:
 
       - run: uv sync
 
-      # No coverage gate: `[tool.coverage.run] source` lists the eight
-      # `mvgeos_*` distributions, and these scripts ship in no wheel.
+      # No coverage gate: `[tool.coverage.run] source` lists the
+      # `mvge` package, and these scripts ship in no wheel.
       - run: uv run python -m pytest scripts/tests
 
   # Verifies every engine import in a marketplace checkout resolves and is

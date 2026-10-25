@@ -62,7 +62,7 @@ class TestRuneLayers:
     Regression: scope used to be inferred by substring-matching each path, so
     a bespoke directory whose name happened to contain a standard layer's
     shape was reported as the agent or user layer, and the retired
-    ``.mvgeos/{agent}/runes`` form was still recognised. Scope now comes from
+    ``.legacy/{agent}/runes`` form was still recognised. Scope now comes from
     the layer the resolver placed the directory in.
     """
 
@@ -112,16 +112,16 @@ class TestRuneLayers:
         mock_load.assert_called_once_with([(decoy, Scope.PROJECT)], "coder")
 
     @pytest.mark.asyncio
-    async def test_retired_mvgeos_layout_is_not_upgraded_to_the_agent_layer(
+    async def test_retired_legacy_layout_is_not_upgraded_to_the_agent_layer(
         self, tmp_path: Path
     ) -> None:
-        """``.mvgeos`` was a proprietary scheme ADR-0014 retired.
+        """``.legacy`` was a proprietary scheme retired.
 
         It used to be substring-matched into the agent and user scopes. No
         legacy upgrade is left, so a directory under it is whatever the
         caller declared -- here, project-scoped -- with nothing added.
         """
-        retired = tmp_path / ".mvgeos" / "coder" / "runes"
+        retired = tmp_path / ".legacy" / "coder" / "runes"
         lifecycle = RuneLifecycle(
             agent_name="coder",
             rune_layers=[ResolvedLayer(Scope.PROJECT, retired)],

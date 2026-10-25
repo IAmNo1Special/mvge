@@ -214,7 +214,7 @@ def test_the_local_probe_finds_a_checkout_under_the_environment_variable(
     checkout = tmp_path / "marketplace"
     artifact = checkout / "mvges" / "coding_mvge"
     artifact.mkdir(parents=True)
-    monkeypatch.setenv("MVGEOS_MARKETPLACE_DIR", str(checkout))
+    monkeypatch.setenv("MVGE_MARKETPLACE_DIR", str(checkout))
 
     assert local_catalog_candidate("mvges/coding_mvge") == artifact
 
@@ -222,7 +222,7 @@ def test_the_local_probe_finds_a_checkout_under_the_environment_variable(
 def test_the_local_probe_returns_none_when_there_is_no_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MVGEOS_MARKETPLACE_DIR", str(tmp_path / "absent"))
+    monkeypatch.setenv("MVGE_MARKETPLACE_DIR", str(tmp_path / "absent"))
 
     assert local_catalog_candidate("mvges/coding_mvge") is None
 
@@ -232,7 +232,7 @@ def test_the_local_probe_stays_inside_the_checkout_for_a_traversal_subpath(
 ) -> None:
     checkout = tmp_path / "marketplace"
     checkout.mkdir()
-    monkeypatch.setenv("MVGEOS_MARKETPLACE_DIR", str(checkout))
+    monkeypatch.setenv("MVGE_MARKETPLACE_DIR", str(checkout))
 
     # Neither of these resolves to a directory, so both are a miss -- the
     # probe is a last resort for a developer, not an install path.

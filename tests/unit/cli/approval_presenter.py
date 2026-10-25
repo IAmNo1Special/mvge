@@ -48,9 +48,9 @@ def _request(**overrides: object) -> ApprovalRequest:
             "runner_origin": "false",
             "read_only": "false",
         },
-        "arguments": {"path": "/workspace/mvgeos/notes.txt"},
+        "arguments": {"path": "/workspace/mvge/notes.txt"},
         "argument_digest": "sha256:deadbeef",
-        "project_root": "/workspace/mvgeos",
+        "project_root": "/workspace/mvge",
         "tome_id": "7f24c1",
         "agent_name": "coding_mvge",
     }
@@ -211,7 +211,7 @@ def test_confirmation_states_scope_and_current_cast() -> None:
     _decide(presenter, _request())
     output = stdout.getvalue()
     assert "global (all projects)" in output
-    assert "path: /workspace/mvgeos/notes.txt" in output
+    assert "path: /workspace/mvge/notes.txt" in output
 
 
 def test_confirmation_warns_on_unconstrained_mutating_spell() -> None:

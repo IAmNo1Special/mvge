@@ -17,14 +17,14 @@ Fixes #(issue)
 
 ## Packages Affected
 
-- [ ] `mvgeos-core`
-- [ ] `mvgeos-agent`
-- [ ] `mvgeos-provider`
-- [ ] `mvgeos-tome`
-- [ ] `mvgeos-runes`
-- [ ] `mvgeos-cli`
-- [ ] `mvgeos-gui`
-- [ ] `mvgeos` (root distribution)
+- [ ] `mvge.core`
+- [ ] `mvge.agent`
+- [ ] `mvge.provider`
+- [ ] `mvge.tome`
+- [ ] `mvge.runes`
+- [ ] `mvge.cli`
+- [ ] `mvge-desktop`
+- [ ] `mvge` (root distribution)
 
 ## Quality Gates Checklist
 

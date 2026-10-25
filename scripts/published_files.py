@@ -29,7 +29,7 @@ that died between two files -- so the check is per file rather than per version,
 and a version that is wholly absent reports every file as missing.
 
 Usage:
-    python scripts/published_files.py --package mvgeos --version 0.6.17 \\
+    python scripts/published_files.py --package mvge --version 0.1.2 \\
         --dist-dir dist
 
 Prints one filename per line for each file not yet on PyPI. Prints nothing and

@@ -17,7 +17,7 @@ def test_uninstalled_skill_command_not_in_help(
     """When skills-bridge rune is not installed, 'skill' is not in CLI help."""
     empty_global = tmp_path / "global_empty"
     empty_global.mkdir()
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(empty_global))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(empty_global))
 
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -54,7 +54,7 @@ def test_installed_skills_bridge_dynamic_dispatch(
         encoding="utf-8",
     )
 
-    monkeypatch.setenv("MVGEOS_GLOBAL_DIR", str(global_dir))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
 
     # 1. Command appears in --help
     result = runner.invoke(app, ["--help"])

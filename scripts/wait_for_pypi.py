@@ -7,10 +7,10 @@ questions were being asked too early. On v0.6.19 the upload returned at
 00:03:12Z and `verify-install`'s first command failed at 00:03:26Z:
 
 ```
-[1/5] uvx mvgeos --help -> exit 1 in 0.14s
+[1/5] uvx mvge --help -> exit 1 in 0.14s
 error: No solution found when resolving tool dependencies
-  cause: Because there is no version of mvgeos==0.6.19 and you require
-         mvgeos==0.6.19, we can conclude that your requirements are unsatisfiable.
+  cause: Because there is no version of mvge==0.6.19 and you require
+         mvge==0.6.19, we can conclude that your requirements are unsatisfiable.
 ```
 
 The release had landed. The index had not caught up. Waiting is the whole of the
@@ -22,7 +22,7 @@ version-specific URL that has never been requested is not cached, so it is
 served from origin: 200 the moment the release commits, while the cache purge
 the upload triggers for the index ``uvx`` actually resolves against has not
 propagated yet. ``uvx`` reads the simple index, and PyPI serves that from cache
--- measured on ``https://pypi.org/simple/mvgeos/`` as
+-- measured on ``https://pypi.org/simple/mvge/`` as
 ``cache-control: max-age=600, public`` -- under a key warehouse purges on
 upload (``warehouse/api/simple.py``, ``warehouse/cache/origin/__init__.py``). So
 a 200 on the version URL does not mean the release is installable, and waiting
@@ -33,7 +33,7 @@ not exist yet is produced before the view runs, so it carries no cache key and
 the upload's purge cannot invalidate it. ``published_files.py`` asks that exact
 URL seconds *before* the upload in the publish job, which seeds the cache with a
 404 that outlives the release it is about to become. Measured on
-``https://pypi.org/pypi/mvgeos/0.6.99.json``: 404 from the Fastly cache on every
+``https://pypi.org/pypi/mvge/0.6.99.json``: 404 from the Fastly cache on every
 request for the whole of a six-minute observation window, ``x-cache: MISS,
 HIT``, with no ``cache-control`` on the response to bound it.
 
@@ -50,15 +50,15 @@ rather than for any URL.
 Usage:
     python scripts/wait_for_pypi.py --version 0.6.25
     python scripts/wait_for_pypi.py --version 0.6.25 --resolve
-    python scripts/wait_for_pypi.py --version 0.6.25 \\
-        --package mvgeos --package mvgeos-gui --timeout 300
+    python scripts/wait_for_pypi.py --version 0.6.25 \
+        --package mvge --timeout 300
 
 Prints one line per distribution and exits 0 when everything asked for has
 arrived. Exits 1 when the timeout expires with something still absent, which is
 the half-landed release the `verify` job exists to name. Exits 2 when the
 version cannot be named, because a version that resolves to nothing turns every
 question below into the vacuous one this script exists to stop: the URL
-``/pypi/mvgeos//json`` is 200 for every package that has ever existed.
+``/pypi/mvge//json`` is 200 for every package that has ever existed.
 
 Stdlib only, for the same reason as the other release scripts: it stands
 between a release and the index on a runner, under a bare ``python3``.
@@ -175,7 +175,7 @@ def resolves(version: str) -> bool:
     """Whether ``uvx`` can install the released distribution.
 
     The command is the one that failed on v0.6.19, run verbatim: the same
-    ``uvx --from mvgeos==<version> mvgeos --help`` the harness runs first. Exit
+    ``uvx --from mvge==<version> mvge --help`` the harness runs first. Exit
     zero means a stranger's machine can install this release, which is the only
     claim the job makes.
     """

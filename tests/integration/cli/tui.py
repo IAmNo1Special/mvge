@@ -645,7 +645,7 @@ class TestTuiApp:
         from mvge.cli.formatting import fit_footer
 
         items = [
-            ("bold", " ~/mvgeos (main)"),
+            ("bold", " ~/mvge (main)"),
             ("dim", "  session 12345678"),
             ("", "  mana 0"),
             ("", "  nvidia/nemotron-3-ultra-550b-a55b:free • medium"),

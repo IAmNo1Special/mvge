@@ -1,4 +1,4 @@
-"""Standalone rune lifecycle for MvgeOS agents.
+"""Standalone rune lifecycle for Mvge agents.
 
 Single owner of the rune side of agent startup: resolves scoped discovery
 paths, loads runes and skills into a RuneRunner, registers rune-provided

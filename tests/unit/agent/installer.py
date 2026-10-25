@@ -504,7 +504,7 @@ def test_install_mvge_git_failure_fallback_to_local_dir(
     local_mvge = local_marketplace / "mvges" / "coding_mvge"
     _create_mock_mvge_dir(local_mvge, "coding_mvge")
 
-    monkeypatch.setenv("MVGEOS_MARKETPLACE_DIR", str(local_marketplace))
+    monkeypatch.setenv("MVGE_MARKETPLACE_DIR", str(local_marketplace))
 
     marketplace_payload = {
         "mvges": {
@@ -538,7 +538,7 @@ def test_install_mvge_git_failure_no_local_dir_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target_dir = tmp_path / "agents"
-    monkeypatch.delenv("MVGEOS_MARKETPLACE_DIR", raising=False)
+    monkeypatch.delenv("MVGE_MARKETPLACE_DIR", raising=False)
 
     marketplace_payload = {
         "mvges": {

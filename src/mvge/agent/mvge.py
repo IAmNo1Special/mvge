@@ -107,7 +107,7 @@ def _resolve_api_key(explicit_key: str | None = None, realm: str = "") -> str:
     """Read the credential for ``realm``, never for a different one.
 
     The lookup order is explicit argument, the Realm's own environment
-    variable, then ``MVGEOS_API_KEY`` -- which is Realm-agnostic by name and so
+    variable, then ``MVGE_API_KEY`` -- which is Realm-agnostic by name and so
     stays a valid fallback for whichever Realm is being served.
 
     There is deliberately no cross-Realm fallback. An earlier version read
@@ -124,7 +124,7 @@ def _resolve_api_key(explicit_key: str | None = None, realm: str = "") -> str:
     if explicit_key:
         return explicit_key
     env_key = os.environ.get(api_key_env_for_realm(realm)) if realm else None
-    return env_key or os.environ.get("MVGEOS_API_KEY") or ""
+    return env_key or os.environ.get("MVGE_API_KEY") or ""
 
 
 def _validate_spell_name(name: Any) -> bool:
@@ -267,7 +267,7 @@ def discover_agent_rune_extras(
 
 
 class Mvge:
-    """Core concrete agent implementation in MvgeOS.
+    """Core concrete agent implementation in Mvge.
 
     Configured with tools (spells), prompt, model, environment, and persistence.
     """

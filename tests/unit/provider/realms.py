@@ -68,7 +68,7 @@ def test_a_routed_slug_resolves_to_the_realm_that_serves_it() -> None:
     A routed slug's prefix is the *provider*, not the Realm. Reading the key
     off it looks for ``NVIDIA_API_KEY`` and ``~/.agents/auth/nvidia.json`` for a
     model the shipped catalog serves as ``openrouter``, so the documented
-    credential silently does nothing: ``mvgeos export`` writes
+    credential silently does nothing: ``mvge export`` writes
     ``openrouter.json`` and the next run asks for a variable that Realm never
     reads. Only an exported ``OPENROUTER_API_KEY`` kept it working, which is the
     one path the credential file exists to avoid needing.

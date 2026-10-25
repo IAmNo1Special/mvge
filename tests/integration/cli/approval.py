@@ -77,7 +77,7 @@ _REQUEST_SETUP = textwrap.dedent(
         },
         arguments={"path": "/tmp/x.txt"},
         argument_digest="sha256:deadbeef",
-        project_root="/workspace/mvgeos",
+        project_root="/workspace/mvge",
         tome_id="7f24c1",
         agent_name="coding_mvge",
     )

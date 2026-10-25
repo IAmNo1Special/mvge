@@ -1,6 +1,6 @@
 """Architecture guard: the provider layer must not depend on the agent layer.
 
-mvgeos-provider sits above mvgeos-core and below mvgeos-agent in the
+mvge.provider sits above mvge.core and below mvge.agent in the
 workspace dependency graph (provider declares core as a runtime dependency;
 agent declares provider). Any import of ``mvge.agent`` from provider
 source recreates a circular dependency that only resolves because the

@@ -1,4 +1,4 @@
-"""Headless bidirectional stdio JSONL RPC server for MvgeOS.
+"""Headless bidirectional stdio JSONL RPC server for Mvge.
 
 Compatible with earendil-works/pi --mode rpc.
 Provides strict newline-delimited JSON messaging over stdio, supporting
