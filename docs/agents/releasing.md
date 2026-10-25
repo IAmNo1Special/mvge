@@ -30,13 +30,12 @@ things must exist before an upload, and only a person can do them.
 
 1. Create or log into the PyPI account that will own the releases, and enable
    two-factor authentication on it.
-2. Register a GitHub Actions trusted publisher on **each of the eight project
-   names**, with exactly these values:
+2. Register a GitHub Actions trusted publisher on the project name `mvge`, with exactly these values:
 
    | Field | Value |
    | --- | --- |
    | Owner | `IAmNo1Special` |
-   | Repository | `mvgeos` |
+   | Repository | `mvge` |
    | Workflow filename | `publish.yml` |
    | Environment | `pypi` |
 
@@ -61,7 +60,7 @@ rotating it.
 If it is ever needed again, it is one step:
 
 ```
-gh secret set PYPI_API_TOKEN --repo IAmNo1Special/mvgeos --env pypi
+gh secret set PYPI_API_TOKEN --repo IAmNo1Special/mvge --env pypi
 ```
 
 and the job must declare `environment: pypi` with the two `UV_PUBLISH_*` lines

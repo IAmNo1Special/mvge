@@ -32,7 +32,6 @@ Or run it without installing anything:
 uvx mvge --help
 ```
 
-> The legacy `mvgeos` command is preserved as an alias (`uvx mvgeos --help`).
 > Working from source instead? `uv sync` in a clone, then `uv run mvge --help`.
 > The published distribution is the one the commands above install; nothing here needs a clone.
 
@@ -45,14 +44,14 @@ on disk:
 # 0. the key — the default free tier needs one since ADR-0020
 export OPENROUTER_API_KEY="sk-or-..."
 
-# 1. the Realm — how MvgeOS reaches a model
-uvx mvgeos rune install openrouter-realm --confirm-python-deps
+# 1. the Realm — how Mvge reaches a model
+uvx mvge rune install openrouter-realm --confirm-python-deps
 
 # 2. the Mvge — carries the Spells
-uvx mvgeos mvge install coding_mvge
+uvx mvge mvge install coding_mvge
 
 # 3. run a task
-uvx mvgeos --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvgeos"
+uvx mvge --agent-name coding_mvge "Create a file named hello.txt containing exactly the text: hello from mvge"
 ```
 
 **Why Step 0 is required ([ADR-0020](docs/adr/0020-no-free-tier-answers-a-stranger.md)):**
@@ -250,13 +249,13 @@ Mvge is organized as a unified, clean Python package (`src/mvge/` layout matchin
 
 | Package / Module | Purpose |
 | --- | --- |
-| [`mvge`](pyproject.toml) | Root distribution package; publishes both `mvge` and `mvgeos` console scripts |
+| [`mvge`](pyproject.toml) | Root distribution package; publishes the `mvge` console script |
 | [`mvge.core`](src/mvge/core/) | Canonical loop vocabulary: abort primitives, invocations, `MvgeSpell`, `SpellContext`, `SpellDispatcher`, events, `ApprovalGate`, `MvgeSandbox`, `.agents` layer resolution, pure turn loop (zero dependencies) |
 | [`mvge.agent`](src/mvge/agent/) | `Mvge`, `MvgeHarness`, `MvgeEnvironment`, `SubMvgeManager`, compaction, marketplace installer, and session lifecycle |
 | [`mvge.provider`](src/mvge/provider/) | `Realm` protocol, `RealmRegistry`, model registry, and retry policies (concrete Realms ship as marketplace Runes) |
 | [`mvge.tome`](src/mvge/tome/) | Cache-free, format-agnostic JSONL session persistence (`TomeHandle`, `TomeCodec`) with cross-process file locking |
 | [`mvge.runes`](src/mvge/runes/) | Extension system: manifest parser, loader, disposable `RuneAPI` scopes, `RuneRunner`, `SkillCatalog`, watcher, and `SigilHook` |
-| [`mvge.cli`](src/mvge/cli/) | CLI commands (`mvge`, `mvgeos`), interactive REPL, TUI, and stdio JSONL RPC mode |
+| [`mvge.cli`](src/mvge/cli/) | CLI commands (`mvge`), interactive REPL, TUI, and stdio JSONL RPC mode |
 | [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) | Standalone companion desktop application powered by NiceGUI with 1:1 Antigravity UI |
 | [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace) | Flagship capability distribution: `coding_mvge`, Realms (`openrouter-realm`, `opencode-realm`), `pi-codec`, `approval-rune`, `seeker`, and Capability Bridges |
 
@@ -423,13 +422,13 @@ credited here by name and by the work they landed.
 
 | Contributor | Landed |
 | --- | --- |
-| [@MalcomThigpen](https://github.com/MalcomThigpen) | GUI skills management and Rune settings panels, replacing the placeholder panels — [`c9290e5e`](https://github.com/IAmNo1Special/mvgeos/commit/c9290e5e), 29 files, +792/−380. Centred the send/stop control and aligned the attach control with the model picker — [`1335caaa`](https://github.com/IAmNo1Special/mvgeos/commit/1335caaa). Made the Windows test suite green — [`46bfe9d7`](https://github.com/IAmNo1Special/mvgeos/commit/46bfe9d7). |
+| [@MalcomThigpen](https://github.com/MalcomThigpen) | GUI skills management and Rune settings panels, replacing the placeholder panels — [`c9290e5e`](https://github.com/IAmNo1Special/mvge/commit/c9290e5e), 29 files, +792/−380. Centred the send/stop control and aligned the attach control with the model picker — [`1335caaa`](https://github.com/IAmNo1Special/mvge/commit/1335caaa). Made the Windows test suite green — [`46bfe9d7`](https://github.com/IAmNo1Special/mvge/commit/46bfe9d7). |
 
 Longer accounts of what landed, and why, are in
-[Contributors discussion #191](https://github.com/IAmNo1Special/mvgeos/discussions/191).
+[Contributors discussion #191](https://github.com/IAmNo1Special/mvge/discussions/191).
 
 New here? Scoped, unassigned work is labelled `help wanted`:
-<https://github.com/IAmNo1Special/mvgeos/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>.
+<https://github.com/IAmNo1Special/mvge/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>.
 A clone is all you need — see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 </details>

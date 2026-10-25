@@ -350,19 +350,10 @@ class Project:
 
 PROJECTS: tuple[Project, ...] = (
     Project(
-        key="mvgeos",
-        slug="IAmNo1Special/mvgeos",
+        key="mvge",
+        slug="IAmNo1Special/mvge",
         language="Python",
-        packages=(
-            ("pypi", "mvgeos"),
-            ("pypi", "mvgeos-core"),
-            ("pypi", "mvgeos-agent"),
-            ("pypi", "mvgeos-provider"),
-            ("pypi", "mvgeos-tome"),
-            ("pypi", "mvgeos-runes"),
-            ("pypi", "mvgeos-cli"),
-            ("pypi", "mvgeos-gui"),
-        ),
+        packages=(("pypi", "mvge"),),
         # The Runes ship in the marketplace repository, not here. AGENTS.md is
         # explicit that Rune capabilities live in mvgeos-marketplace.
         extension=Extension(
