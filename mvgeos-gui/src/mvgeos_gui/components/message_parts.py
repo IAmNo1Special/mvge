@@ -192,13 +192,10 @@ def render_assistant_message(
 ) -> ui.column:
     """Compose all parts into a complete assistant message bubble."""
     with (
-        ui.column().classes(
-            "w-full max-w-3xl mx-auto px-6 py-3 items-start"
-        ) as container,
+        ui.column().classes("w-full px-2 py-2 items-start") as container,
         ui.card().classes(
-            "w-full bg-[var(--bg-canvas)] border border-[var(--border-subtle)] "
-            "rounded-2xl "
-            "p-4 gap-3 shadow-lg"
+            "w-full bg-[#10141d]/90 backdrop-blur border border-gray-800/80 "
+            "rounded-2xl p-4 gap-3 shadow-lg"
         ),
     ):
         render_message_header(msg)

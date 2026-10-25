@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from nicegui import ui
+from nicegui_ai import LucideIcon
 
 from mvgeos_gui.components.approval_dialog import render_approval_badge
 from mvgeos_gui.components.composer import (
@@ -33,30 +34,29 @@ def render_chat_panel(state: AppState) -> ui.column:
     # firing against deleted elements on every state notification.
     state.clear_all_view_listeners()
     container = ui.column().classes(
-        "flex-1 w-full h-full flex flex-col overflow-hidden"
+        "flex-1 w-full h-full flex flex-col items-center justify-between "
+        "p-3 overflow-hidden bg-[#0d1017]"
     )
 
     with container:
-        # Toolbar
+        # Floating Header Dock
         @ui.refreshable
         def toolbar_view() -> None:
             with (
                 ui.row().classes(
-                    "w-full h-11 items-center justify-between px-3 "
-                    "border-b border-[var(--border-subtle)] shrink-0"
+                    "w-full max-w-3xl h-11 items-center justify-between px-4 my-1.5 "
+                    "rounded-full bg-[#11151f]/80 backdrop-blur "
+                    "border border-gray-800/80 shadow-lg shrink-0"
                 ),
                 ui.row().classes("items-center gap-2"),
             ):
-                ui.icon("chat_bubble_outline", size="14px").classes(
-                    "text-[var(--accent-primary)]"
-                )
+                ui.icon("chat_bubble_outline", size="14px").classes("text-purple-400")
                 ui.label(state.tome_title).classes(
-                    "text-xs font-medium text-[var(--text-primary)] "
-                    "max-w-[320px] truncate"
+                    "text-xs font-medium text-gray-200 max-w-[320px] truncate"
                 )
 
                 # Right toolbar actions
-                with ui.row().classes("items-center gap-1 ml-auto"):
+                with ui.row().classes("items-center gap-1.5 ml-auto"):
 
                     def _on_plan_mode_click() -> None:
                         active_spells = state.toggle_plan_mode()
@@ -133,16 +133,20 @@ def render_chat_panel(state: AppState) -> ui.column:
         # Persistent session approve-all indicator (Approval Rune).
         render_approval_badge(state)
 
-        # Body: messages + side panel
-        with ui.row().classes("flex-1 w-full overflow-hidden"):
-            # Main chat column
-            with ui.column().classes(
-                "flex-1 h-full flex flex-col overflow-hidden relative"
+        # Body: Studio Canvas Card + side panel
+        with ui.row().classes(
+            "flex-1 w-full max-w-3xl overflow-hidden justify-center my-1"
+        ):
+            # Main Studio Canvas Card (Exact Variant B layout)
+            with ui.element("div").classes(
+                "flex-1 h-full flex flex-col bg-[#11151f]/60 backdrop-blur "
+                "border border-gray-800/60 rounded-2xl shadow-2xl "
+                "overflow-hidden relative min-h-0"
             ):
                 # Scrollable messages area
                 with (
                     ui.column()
-                    .classes("flex-1 w-full overflow-y-auto")
+                    .classes("flex-1 w-full overflow-y-auto px-4 py-3")
                     .props('id="chat-messages-area"')
                 ) as messages_area:
 
@@ -185,7 +189,7 @@ def render_chat_panel(state: AppState) -> ui.column:
                             .mark("empty-state")
                         ):
                             _render_empty_hero(state)
-                            with ui.column().classes("w-full max-w-3xl mt-2"):
+                            with ui.column().classes("w-full max-w-xl mt-2"):
                                 render_composer(state)
 
                     static_messages_view()
@@ -202,10 +206,10 @@ def render_chat_panel(state: AppState) -> ui.column:
                     )
                     .props('round unelevated size=sm id="chat-scroll-bottom-btn"')
                     .classes(
-                        "absolute right-4 bottom-4 z-30 bg-[var(--bg-card)] "
-                        "hover:bg-[var(--border-subtle)] text-[var(--text-primary)] "
-                        "border border-[var(--border-subtle)] "
-                        "hover:border-[var(--accent-primary)] shadow-xl transition-all "
+                        "absolute right-4 bottom-4 z-30 bg-[#161a26] "
+                        "hover:bg-[#202738] text-gray-200 "
+                        "border border-gray-700/80 "
+                        "hover:border-purple-500 shadow-xl transition-all "
                         "duration-200 opacity-0 pointer-events-none"
                     )
                     .mark("chat-scroll-bottom-btn")
@@ -228,7 +232,11 @@ def render_chat_panel(state: AppState) -> ui.column:
                 @ui.refreshable
                 def bottom_composer_view() -> None:
                     if state.messages:
-                        render_composer(state)
+                        with ui.column().classes(
+                            "w-full border-t border-gray-800/80 "
+                            "bg-[#0e121a]/95 shrink-0"
+                        ):
+                            render_composer(state)
 
                 bottom_composer_view()
 
@@ -262,19 +270,17 @@ def render_chat_panel(state: AppState) -> ui.column:
             def side_panel_view() -> None:
                 if state.chat_side_panel in ("files", "diff"):
                     with ui.column().classes(
-                        "w-80 border-l border-[var(--border-subtle)] "
-                        "bg-[var(--bg-surface)] "
-                        "shrink-0 overflow-hidden"
+                        "w-80 ml-3 h-full rounded-2xl border border-gray-800/80 "
+                        "bg-[#11151f]/80 backdrop-blur "
+                        "shrink-0 overflow-hidden shadow-2xl"
                     ):
                         with ui.row().classes(
                             "w-full h-11 items-center justify-between px-3 "
-                            "border-b border-[var(--border-subtle)]"
+                            "border-b border-gray-800"
                         ):
                             ui.label(
                                 "Files" if state.chat_side_panel == "files" else "Diff"
-                            ).classes(
-                                "text-xs font-semibold text-[var(--text-primary)]"
-                            )
+                            ).classes("text-xs font-semibold text-gray-200")
                             ui.button(
                                 icon="close",
                                 on_click=lambda: state.set_chat_side_panel(None),
@@ -305,14 +311,14 @@ def _render_empty_hero(state: AppState) -> None:
     with the composer); this renders the hero content only.
     """
     with ui.row().classes(
-        "w-14 h-14 rounded-2xl bg-[var(--bg-card)] border "
-        "border-[var(--border-subtle)] "
-        "items-center justify-center shadow-lg mb-6"
+        "w-14 h-14 rounded-2xl bg-[#11151f]/80 backdrop-blur border "
+        "border-gray-800 shadow-xl "
+        "items-center justify-center mb-6"
     ):
-        ui.icon("auto_awesome", size="28px").classes("text-[var(--accent-primary)]")
+        ui.icon("auto_awesome", size="28px").classes("text-purple-400")
 
     ui.label("What should Mvge work on?").classes(
-        "text-2xl font-semibold text-[var(--text-primary)] tracking-tight"
+        "text-2xl font-semibold text-white tracking-tight"
     )
 
     @ui.refreshable
@@ -322,7 +328,7 @@ def _render_empty_hero(state: AppState) -> None:
             "working": "Mvge is working…",
             "idle": "Choose a project — Mvge starts when you send.",
         }.get(state.mvge_status, "Choose a project — Mvge starts when you send.")
-        ui.label(status_text).classes("text-sm text-[var(--text-secondary)] mt-1 mb-8")
+        ui.label(status_text).classes("text-sm text-gray-400 mt-1 mb-8")
 
     empty_status_view()
 
@@ -335,17 +341,30 @@ def _render_empty_hero(state: AppState) -> None:
 
     state.subscribe_view("empty_state_status", _on_empty_status_check)
 
-    with ui.row().classes("gap-2 flex-wrap justify-center mb-6"):
+    with ui.element("div").classes(
+        "grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-xl mb-6"
+    ):
         for prompt in EXAMPLE_PROMPTS:
-            ui.button(
-                prompt,
-                on_click=lambda p=prompt: fill_composer(state, p),
-            ).props("unelevated dense no-caps").classes(
-                "rounded-lg border border-[var(--border-subtle)] px-3 py-1.5 text-xs "
-                "text-[var(--text-secondary)] hover:border-[var(--accent-primary)] "
-                "hover:text-[var(--text-primary)] "
-                "transition-colors"
-            )
+            with (
+                ui.element("button")
+                .classes(
+                    "p-3 rounded-xl border border-gray-800 bg-[#131722] "
+                    "hover:bg-[#191f2e] text-left text-xs text-gray-300 "
+                    "hover:text-white transition-all cursor-pointer "
+                    "flex items-center justify-between group outline-none"
+                )
+                .props("type=button")
+                .on("click", lambda _, p=prompt: fill_composer(state, p))
+            ):
+                ui.label(prompt).classes("font-sans leading-snug")
+                LucideIcon(
+                    "sparkles",
+                    size=13,
+                    classes=(
+                        "text-gray-500 group-hover:text-purple-400 "
+                        "transition-colors shrink-0 ml-2"
+                    ),
+                )
 
 
 def _render_messages(state: AppState) -> None:
@@ -363,11 +382,11 @@ def _render_user_message(msg: object) -> None:
     timestamp = getattr(msg, "timestamp", "")
     attachments = getattr(msg, "attachments", None) or []
     with (
-        ui.column().classes("w-full max-w-3xl mx-auto px-6 py-3 items-end"),
+        ui.column().classes("w-full px-2 py-2 items-end"),
         ui.card().classes(
-            "w-auto max-w-[85%] bg-[var(--bg-card)] border "
-            "border-[var(--border-subtle)] "
-            "rounded-2xl p-4 shadow-md"
+            "w-auto max-w-[85%] bg-purple-950/20 text-purple-100 border "
+            "border-purple-500/30 "
+            "rounded-2xl rounded-tr-sm p-4 shadow-md"
         ),
     ):
         with ui.row().classes(
