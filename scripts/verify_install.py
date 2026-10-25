@@ -138,14 +138,14 @@ REALMS_REQUIRING_CREDENTIAL = frozenset({"opencode", "openrouter"})
 
 # The environment variable each Realm reads its key from.
 #
-# A copy of ``mvgeos_provider.realms.REALM_API_KEY_ENV``, which is the authority.
+# A copy of ``mvge.provider.realms.REALM_API_KEY_ENV``, which is the authority.
 # The duplication is forced: this harness runs under a bare ``python3`` before
 # any sync, so it cannot import the workspace it ships beside. ``
 # test_api_key_env_matches_the_engine`` holds the two together, so the copy
 # cannot drift without a red build.
 #
 # It matters because the CLI falls back to ``OPENROUTER_API_KEY`` for *every*
-# Realm (``mvgeos-cli/src/mvgeos_cli/main.py``). Exporting an OpenRouter key
+# Realm (``mvgeos-cli/src/mvge.cli/main.py``). Exporting an OpenRouter key
 # while testing ``--provider opencode`` therefore hands it to Zen, and the run
 # fails at the host that received it rather than at the packaging under test.
 API_KEY_ENV_BY_REALM = {
@@ -793,7 +793,7 @@ def main() -> int:
     # free tier keyless, and a gate that silently supplied a key would stop
     # testing the thing a stranger actually has: no key. When there is a key it
     # is written the way a Summoner types it, under the Realm's own name
-    # (`~/.agents/auth/<realm>.json`, per `mvgeos_agent.auth`), so the real
+    # (`~/.agents/auth/<realm>.json`, per `mvge.agent.auth`), so the real
     # key-resolution path is exercised rather than bypassed with --api-key. The
     # Rune and the Mvge are installed by the run below either way.
     if api_key:

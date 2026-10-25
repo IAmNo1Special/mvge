@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-10-25: AppState GUI methods moved to mvge-desktop companion repository)
 
 ## Date
 
@@ -44,15 +44,15 @@ However, the desktop interface (`mvgeos-gui`) had accrued several architectural 
 
 ## Contract
 
-The key types and methods governing the Rune UI contribution protocol:
+The key types governing the Rune UI contribution protocol in the engine:
 
-- `RuneUIView` in `mvgeos_runes.types` models a navigation item.
-- `RuneUICanvasTab` in `mvgeos_runes.types` models an Adaptive Canvas tab.
-- `RuneUIContributions` in `mvgeos_runes.types` anchors the manifest UI payload.
-- `AppState.get_contributed_views` in `mvgeos_gui.state` retrieves active navigation views.
-- `AppState.get_contributed_canvas_tabs` in `mvgeos_gui.state` retrieves active canvas surfaces.
+- `RuneUIView` in `mvge.runes.types` models a navigation item.
+- `RuneUICanvasTab` in `mvge.runes.types` models an Adaptive Canvas tab.
+- `RuneUIContributions` in `mvge.runes.types` anchors the manifest UI payload.
 
-<!-- adr-contract: RuneUIView, RuneUICanvasTab, RuneUIContributions, get_contributed_views, get_contributed_canvas_tabs -->
+(GUI methods `AppState.get_contributed_views` and `AppState.get_contributed_canvas_tabs` reside in the `mvge-desktop` companion repository).
+
+<!-- adr-contract: RuneUIView, RuneUICanvasTab, RuneUIContributions -->
 
 ## Consequences
 

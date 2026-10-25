@@ -2,8 +2,8 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
-| 0027 | [Rune UI Contribution Protocol and Dynamic Presentation Extensibility](0027-rune-ui-contribution-protocol.md) | Accepted | 2026-10-23 |
-| 0026 | [Adaptive Dual-Purpose Canvas, In-Flight Steering Controls, and Sub-Mvge Summoning Surfaces](0026-adaptive-canvas-mid-flight-steering-and-summoning-surfaces.md) | Accepted | 2026-10-22 |
+| 0027 | [Rune UI Contribution Protocol and Dynamic Presentation Extensibility](0027-rune-ui-contribution-protocol.md) | Accepted (amended 2026-10-25: AppState GUI methods moved to mvge-desktop companion repository) | 2026-10-23 |
+| 0026 | [Adaptive Dual-Purpose Canvas, In-Flight Steering Controls, and Sub-Mvge Summoning Surfaces](0026-adaptive-canvas-mid-flight-steering-and-summoning-surfaces.md) | Accepted (amended 2026-10-25: GUI extracted to companion repository mvge-desktop) | 2026-10-22 |
 | 0025 | [First-Run Marketplace Profiles and Stdio JSONL RPC Mode](0025-first-run-marketplace-profiles-and-stdio-rpc-mode.md) | Accepted | 2026-10-19 |
 | 0024 | [SpellContext, Unified Sync/Async Execution, Mandatory Casting Rationale, and Substrate Seams](0024-spell-context-sync-async-execution-and-substrate-seams.md) | Accepted | 2026-10-19 |
 | 0023 | [Workspace Trust, Disposable Rune Scopes, and Universal Spell Gateway Last-Loading](0023-workspace-trust-disposable-rune-scopes-and-gateway-last-loading.md) | Accepted | 2026-10-19 |

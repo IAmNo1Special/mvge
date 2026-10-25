@@ -30,8 +30,9 @@ import sys
 
 import pytest
 import verify_install
-from mvgeos_core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
-from mvgeos_provider.realms import (
+
+from mvge.core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
+from mvge.provider.realms import (
     DEFAULT_REALM,
     REALM_API_KEY_ENV,
     rune_for_realm,
@@ -178,9 +179,9 @@ def test_the_default_gate_requires_a_credential_and_says_so() -> None:
         for entry in json.loads(
             (
                 pathlib.Path(verify_install.__file__).resolve().parent.parent
-                / "mvgeos-provider"
                 / "src"
-                / "mvgeos_provider"
+                / "mvge"
+                / "provider"
                 / "models.json"
             ).read_text()
         )[bucket]

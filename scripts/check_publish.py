@@ -57,22 +57,22 @@ def _has_version_specifier(requirement: str) -> bool:
 
 
 def workspace_packages() -> dict[str, pathlib.Path]:
-    """Map every publishable distribution name to its pyproject.toml path.
-
-    The root project is included alongside the workspace members: it owns the
-    published ``mvgeos`` name, so it is a distribution that ships.
-    """
+    """Map every publishable distribution name to its pyproject.toml path."""
     root = tomllib.loads((ROOT / "pyproject.toml").read_text())
     packages = {root["project"]["name"]: ROOT / "pyproject.toml"}
-    for member in root["tool"]["uv"]["workspace"]["members"]:
+    workspace = root.get("tool", {}).get("uv", {}).get("workspace", {})
+    for member in workspace.get("members", []):
         member_path = ROOT / member / "pyproject.toml"
-        declared = tomllib.loads(member_path.read_text())["project"]["name"]
-        packages[declared] = member_path
+        if member_path.exists():
+            declared = tomllib.loads(member_path.read_text())["project"]["name"]
+            packages[declared] = member_path
     return packages
 
 
 def internal_dependencies(packages: dict[str, pathlib.Path]) -> dict[str, list[str]]:
     """Map each package to the internal requirements it declares."""
+    if len(packages) == 1:
+        return {next(iter(packages)): []}
     graph = {}
     for name, path in packages.items():
         declared = tomllib.loads(path.read_text())["project"]["dependencies"]
@@ -82,9 +82,6 @@ def internal_dependencies(packages: dict[str, pathlib.Path]) -> dict[str, list[s
             if _requirement_name(requirement) in packages
         ]
     if not any(graph.values()):
-        # The whole point of this script is checking the edges between
-        # packages. Zero edges means the requirement parser broke, which
-        # would turn every check below into a silent no-op.
         raise SystemExit(
             "no internal dependency edges found; refusing to pass a release "
             "gate that is checking nothing"
@@ -139,7 +136,9 @@ def check_wheels(
         package_dir = dist_dir / name
         wheels = sorted(package_dir.glob("*.whl"))
         if not wheels:
-            problems.append(f"{name}: no wheel in {package_dir}")
+            wheels = sorted(dist_dir.glob(f"{name.replace('-', '_')}*.whl"))
+        if not wheels:
+            problems.append(f"{name}: no wheel in {package_dir} or {dist_dir}")
             continue
         wheel = wheels[-1]
         with zipfile.ZipFile(wheel) as archive:

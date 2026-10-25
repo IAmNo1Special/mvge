@@ -1,15 +1,26 @@
 [project]
-name = "mvgeos"
-version = "0.7.8"
-description = "MvgeOS — a Python-based AI coding agent"
+name = "mvge"
+version = "0.8.0"
+description = "mvge — a Python-based AI coding agent"
 requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
-    "mvgeos-cli==0.7.8",
+    "click>=8.0",
+    "httpx>=0.28.1",
+    "packaging>=24.0",
+    "portalocker>=3.0.0",
+    "prompt-toolkit>=3.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "typer>=0.27.1",
+    "watchdog>=6.0.0",
 ]
 
 [project.scripts]
-mvgeos = "mvgeos:main"
+mvge = "mvge.cli.main:main"
+mvgeos = "mvge.cli.main:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.14"]
@@ -18,13 +29,6 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "git-cliff>=2.13.1",
-    "mvgeos-agent",
-    "mvgeos-cli",
-    "mvgeos-core",
-    "mvgeos-gui",
-    "mvgeos-provider",
-    "mvgeos-runes",
-    "mvgeos-tome",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
@@ -35,32 +39,12 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/IAmNo1Special/mvgeos"
-
-[tool.uv.workspace]
-members = [
-    "mvgeos-agent",
-    "mvgeos-provider",
-    "mvgeos-tome",
-    "mvgeos-runes",
-    "mvgeos-cli",
-    "mvgeos-gui",
-    "mvgeos-core",
-]
-
-[tool.uv.sources]
-mvgeos-agent = { workspace = true, editable = true }
-mvgeos-provider = { workspace = true, editable = true }
-mvgeos-tome = { workspace = true, editable = true }
-mvgeos-runes = { workspace = true, editable = true }
-mvgeos-cli = { workspace = true, editable = true }
-mvgeos-core = { workspace = true, editable = true }
-mvgeos-gui = { workspace = true, editable = true }
-nicegui-ai = { path = "../nicegui-ai", editable = true }
+Repository = "https://github.com/IAmNo1Special/mvge"
 
 [tool.ruff]
 line-length = 88
 target-version = "py313"
+exclude = ["prototypes"]
 
 [tool.ruff.lint]
 select = [
@@ -89,51 +73,29 @@ select = [
 [tool.mypy]
 python_version = "3.13"
 strict = true
-# warn_unreachable is the one strict-mode gap worth closing explicitly;
-# every other previously listed flag is implied by strict or default-on.
 warn_unreachable = true
 exclude = ["/tests/", "/scripts/", "test_keys.py", "benchmarks"]
 
 [tool.pytest.ini_options]
 testpaths = [
-    "mvgeos-agent/tests",
-    "mvgeos-provider/tests",
-    "mvgeos-runes/tests",
-    "mvgeos-tome/tests",
-    "mvgeos-cli/tests",
-    "mvgeos-core/tests",
-    "mvgeos-gui/tests",
+    "tests",
     "scripts/tests",
 ]
-# `scripts` is on the path so a test can import the module it exercises.
-# These are flat scripts, not a package: `check_publish` is imported by name
-# from `pypi_new_project_window`, which is how both are run from the command
-# line, and a test that had to install a package to reach them would be
-# testing an import arrangement nobody uses in production.
-pythonpath = [".", "scripts"]
+pythonpath = [".", "src", "scripts", "tests/unit/provider"]
 python_files = "*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-# Test dirs must NOT contain __init__.py. With importlib mode, packaged test
-# dirs collapse to the same dotted path (tests.unit.types) across packages and
-# silently shadow each other. Rootdir-relative naming keeps them distinct.
 consider_namespace_packages = false
 addopts = "--import-mode=importlib -W ignore::RuntimeWarning"
 
 [tool.coverage.run]
 branch = true
-# Measure first-party source only. Test files are verification artifacts,
-# not shipped code; counting their near-100% lines inflated the denominator
-# and hid gaps in src/. Out-of-tree code (user runes, tmp_path artifacts)
-# is excluded by construction because it lives outside these packages.
 source = [
-    "mvgeos_agent",
-    "mvgeos_provider",
-    "mvgeos_tome",
-    "mvgeos_runes",
-    "mvgeos_cli",
-    "mvgeos_core",
-    "mvgeos_gui",
+    "mvge",
+]
+omit = [
+    "src/mvge/__main__.py",
+    "src/mvge/cli/__main__.py",
 ]
 
 [tool.coverage.report]

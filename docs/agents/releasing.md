@@ -1,45 +1,27 @@
 # Releasing to PyPI
 
-How a `v*` tag becomes an installable `uvx mvgeos`. Uploads authenticate with
+How a `v*` tag becomes an installable `uvx mvge`. Uploads authenticate with
 **OIDC trusted publishing**: GitHub mints a short-lived token from
 `id-token: write`, PyPI exchanges it for a 15-minute upload credential, and
 nothing long-lived is stored in this repository. It needs a one-time browser
-step per project name, which is the whole of the human prerequisite — see
-"PyPI setup" below.
+step for the project name `mvge` — see "PyPI setup" below.
 
-## The eight distributions, not seven
+## Single unified distribution
 
-The workspace has seven members plus the root distribution. All eight ship to
-PyPI, because the root one is the package that owns the `mvgeos` name:
+The repository is structured as a single unified package `mvge` (with submodules
+`mvge.core`, `mvge.agent`, `mvge.provider`, `mvge.tome`, `mvge.runes`, and `mvge.cli`).
+The desktop GUI (`mvge-desktop`) ships independently from its own standalone companion repository.
 
-| # | Distribution | Depends on first-party |
+| # | Distribution | Description |
 | --- | --- | --- |
-| 1 | `mvgeos-core` | — |
-| 2 | `mvgeos-provider` | `mvgeos-core` |
-| 3 | `mvgeos-tome` | — |
-| 4 | `mvgeos-runes` | `mvgeos-core` |
-| 5 | `mvgeos-agent` | `mvgeos-core`, `mvgeos-provider`, `mvgeos-tome`, `mvgeos-runes` |
-| 6 | `mvgeos-cli` | `mvgeos-agent` and the above |
-| 7 | `mvgeos` | `mvgeos-cli` — owns the `mvgeos` console script |
-| 8 | `mvgeos-gui` | `mvgeos-agent` and the above |
+| 1 | `mvge` | Single unified distribution owning both `mvge` and `mvgeos` console scripts |
 
-The order is not written down anywhere; it is derived from the dependency
-graph at release time:
+The distribution list is validated by:
 
 ```
 python scripts/check_publish.py --list
 ```
 
-That way a newly added package cannot be published out of sequence by
-forgetting to edit a list.
-
-Any order that puts a dependency before its dependents is valid, and this is
-not the only one that has been proposed for the first release. This one puts
-`mvgeos` seventh rather than last, because it depends only on `mvgeos-cli` and
-`mvgeos-gui` is unrelated to it. PyPI does not check dependencies at upload
-time, so ordering is purely about risk: landing the package that owns the
-`mvgeos` name early means the headline command starts working before the
-largest upload is attempted, rather than after.
 
 ## PyPI setup
 

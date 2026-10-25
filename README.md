@@ -1,19 +1,19 @@
-# 🧙‍♂️ MvgeOS
+# 🧙‍♂️ Mvge
 
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Type Checking: mypy](https://img.shields.io/badge/type%20checking-mypy%20strict-blue.svg)](https://mypy-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://img.shields.io/badge/tests-3700%2B%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-2800%2B%20passed-brightgreen.svg)]()
 
 > **An open coding-agent microkernel and runtime. Read it, fork it, self-host it, and run it on a model you already pay for.**
 
-MvgeOS is an operating system for AI agents, written in Python. A **Mvge** — the
+Mvge (historically MvgeOS) is an operating system and runtime for AI agents, written in Python. A **Mvge** — the
 agent — casts **Spells** (tools) against models served by **Realms** (providers).
 Conversations persist as **Tomes**. Capabilities extend through **Runes**.
 
-No account to create with MvgeOS. No telemetry in the engine. The default model
+No account to create with Mvge. No telemetry in the engine. The default model
 (`openrouter/free`) is free of per-token charges, and requires an
 `OPENROUTER_API_KEY` because as of 2026-10-11 no free tier anywhere answers an
 unauthenticated request ([ADR-0020](docs/adr/0020-no-free-tier-answers-a-stranger.md)).
@@ -22,19 +22,19 @@ To use another provider, bring the key for the Realm you want.
 ## Install
 
 ```bash
-uv tool install mvgeos
-mvgeos --help
+uv tool install mvge
+mvge --help
 ```
 
 Or run it without installing anything:
 
 ```bash
-uvx mvgeos --help
+uvx mvge --help
 ```
 
-> Working from source instead? `uv sync --all-packages` in a clone, then
-> `uv run mvgeos --help`. The published distribution is the one the commands
-> above install; nothing here needs a clone.
+> The legacy `mvgeos` command is preserved as an alias (`uvx mvgeos --help`).
+> Working from source instead? `uv sync` in a clone, then `uv run mvge --help`.
+> The published distribution is the one the commands above install; nothing here needs a clone.
 
 ## Run one task
 
@@ -233,51 +233,51 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 <details>
 <summary><b>✨ Features</b></summary>
 
-- ⚡ **Event-Driven Agent Loop (<code>mvgeos-core</code> &amp; <code>mvgeos-agent</code>)**: Pure turn-driving state machine with parallel and sequential Spell dispatching, unified sync/async `SpellContext` injection, cooperative `AbortSignal` propagation, Sub-Mvge summoning (`SubMvgeManager`), and turn-aligned context compaction.
-- 🌐 **Multi-Model Provider Abstraction (<code>mvgeos-provider</code>)**: `Realm` protocol, model registry, and retry policies. Concrete Realms ship as Runes in `mvgeos-marketplace` (`openrouter-realm`, `opencode-realm`).
-- 📜 **Cache-Free, Codec-Agnostic Session Persistence (<code>mvgeos-tome</code>)**: Append-only JSONL session storage (`TomeHandle`, `TomeCodec`) with cross-process file locking, `Leaf` navigation (`/undo`, `/checkout`), `Fork` creation, and native Pi v3/v4 session compatibility via `pi-codec`.
-- 🔮 **Rune Extension Ecosystem (<code>mvgeos-runes</code>)**: Hot-reloadable extensions with 24+ lifecycle `SigilHook` points, per-Rune disposable registration scopes, Workspace Trust gating for project-scoped extensions, and deterministic gateway-last loading for `SpellGateway` Runes (`seeker`).
-- 🖥️ **Desktop GUI (<code>mvgeos-gui</code>)**: Native desktop interface powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
-- ⌨️ **Rich CLI, TUI &amp; Stdio RPC (<code>mvgeos-cli</code>)**: Interactive REPL with `prompt-toolkit`, terminal dashboard, marketplace installer (`mvgeos mvge`, `mvgeos rune`, `mvgeos setup`), and headless JSONL stdio RPC server.
+- ⚡ **Event-Driven Agent Loop (<code>mvge.core</code> &amp; <code>mvge.agent</code>)**: Pure turn-driving state machine with parallel and sequential Spell dispatching, unified sync/async `SpellContext` injection, cooperative `AbortSignal` propagation, Sub-Mvge summoning (`SubMvgeManager`), and turn-aligned context compaction.
+- 🌐 **Multi-Model Provider Abstraction (<code>mvge.provider</code>)**: `Realm` protocol, model registry, and retry policies. Concrete Realms ship as Runes in `mvgeos-marketplace` (`openrouter-realm`, `opencode-realm`).
+- 📜 **Cache-Free, Codec-Agnostic Session Persistence (<code>mvge.tome</code>)**: Append-only JSONL session storage (`TomeHandle`, `TomeCodec`) with cross-process file locking, `Leaf` navigation (`/undo`, `/checkout`), `Fork` creation, and native Pi v3/v4 session compatibility via `pi-codec`.
+- 🔮 **Rune Extension Ecosystem (<code>mvge.runes</code>)**: Hot-reloadable extensions with 24+ lifecycle `SigilHook` points, per-Rune disposable registration scopes, Workspace Trust gating for project-scoped extensions, and deterministic gateway-last loading for `SpellGateway` Runes (`seeker`).
+- 🖥️ **Desktop GUI (<code>mvge-desktop</code>)**: Standalone companion desktop application powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
+- ⌨️ **Rich CLI, TUI &amp; Stdio RPC (<code>mvge.cli</code>)**: Interactive REPL with `prompt-toolkit`, terminal dashboard, marketplace installer (`mvge mvge`, `mvge rune`, `mvge setup`), and headless JSONL stdio RPC server.
 - 🛠️ **Full-Featured Coding Agent (<code>coding_mvge</code>)**: Flagship agent package distributed via <code>mvgeos-marketplace</code> with built-in spells for bash execution, file reading, editing, creation, grep searching, directory listing, URL fetching, and web searching.
 
 </details>
 
 <details>
-<summary><b>🏛️ Monorepo Architecture</b></summary>
+<summary><b>🏛️ Architecture</b></summary>
 
-MvgeOS is organized as a monorepo powered by `uv` workspaces, separated by a strict microkernel seam from [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace):
+Mvge is organized as a unified, clean Python package (`src/mvge/` layout matching `google/adk-python`), separated by a strict microkernel seam from [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace) and the [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) companion application:
 
-| Package | Purpose |
+| Package / Module | Purpose |
 | --- | --- |
-| [`mvgeos`](pyproject.toml) | Root distribution; owns the published `mvgeos` console script so `uvx mvgeos` resolves directly |
-| [`mvgeos-core`](mvgeos-core/AGENTS.md) | Canonical loop vocabulary: abort primitives, invocations, `MvgeSpell`, `SpellContext`, `SpellDispatcher`, events, `ApprovalGate`, `MvgeSandbox`, `.agents` layer resolution, pure turn loop (zero first-party deps) |
-| [`mvgeos-agent`](mvgeos-agent/AGENTS.md) | `Mvge`, `MvgeHarness`, `MvgeEnvironment`, `SubMvgeManager`, compaction, marketplace installer, and session lifecycle |
-| [`mvgeos-provider`](mvgeos-provider/AGENTS.md) | `Realm` protocol, `RealmRegistry`, model registry, and retry policies (concrete Realms ship as marketplace Runes) |
-| [`mvgeos-tome`](mvgeos-tome/AGENTS.md) | Cache-free, format-agnostic JSONL session persistence (`TomeHandle`, `TomeCodec`) with cross-process file locking |
-| [`mvgeos-runes`](mvgeos-runes/AGENTS.md) | Extension system: manifest parser, loader, disposable `RuneAPI` scopes, `RuneRunner`, `SkillCatalog`, watcher, and `SigilHook` |
-| [`mvgeos-cli`](mvgeos-cli/AGENTS.md) | CLI commands (`mvgeos`), interactive REPL, TUI, and stdio JSONL RPC mode |
-| [`mvgeos-gui`](mvgeos-gui/AGENTS.md) | Native desktop application powered by NiceGUI with 1:1 Antigravity UI |
+| [`mvge`](pyproject.toml) | Root distribution package; publishes both `mvge` and `mvgeos` console scripts |
+| [`mvge.core`](src/mvge/core/) | Canonical loop vocabulary: abort primitives, invocations, `MvgeSpell`, `SpellContext`, `SpellDispatcher`, events, `ApprovalGate`, `MvgeSandbox`, `.agents` layer resolution, pure turn loop (zero dependencies) |
+| [`mvge.agent`](src/mvge/agent/) | `Mvge`, `MvgeHarness`, `MvgeEnvironment`, `SubMvgeManager`, compaction, marketplace installer, and session lifecycle |
+| [`mvge.provider`](src/mvge/provider/) | `Realm` protocol, `RealmRegistry`, model registry, and retry policies (concrete Realms ship as marketplace Runes) |
+| [`mvge.tome`](src/mvge/tome/) | Cache-free, format-agnostic JSONL session persistence (`TomeHandle`, `TomeCodec`) with cross-process file locking |
+| [`mvge.runes`](src/mvge/runes/) | Extension system: manifest parser, loader, disposable `RuneAPI` scopes, `RuneRunner`, `SkillCatalog`, watcher, and `SigilHook` |
+| [`mvge.cli`](src/mvge/cli/) | CLI commands (`mvge`, `mvgeos`), interactive REPL, TUI, and stdio JSONL RPC mode |
+| [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) | Standalone companion desktop application powered by NiceGUI with 1:1 Antigravity UI |
 | [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace) | Flagship capability distribution: `coding_mvge`, Realms (`openrouter-realm`, `opencode-realm`), `pi-codec`, `approval-rune`, `seeker`, and Capability Bridges |
 
 ```mermaid
 flowchart TD
     subgraph UI["Summoner Interfaces"]
-        CLI["mvgeos-cli (REPL / TUI / --mode rpc)"]
-        GUI["mvgeos-gui (Desktop NiceGUI + PyWebView)"]
+        CLI["mvge CLI (REPL / TUI / --mode rpc)"]
+        GUI["mvge-desktop (Standalone NiceGUI + PyWebView companion repo)"]
     end
 
     subgraph CoreEngine["Agent & Execution Microkernel"]
         Mvge["Active Mvge (e.g. coding_mvge)"]
-        Harness["mvgeos-agent (MvgeHarness, SubMvgeManager, MvgeEnvironment)"]
-        Loop["mvgeos-core (run_loop, SpellDispatcher, SpellContext, Events)"]
+        Harness["mvge.agent (MvgeHarness, SubMvgeManager, MvgeEnvironment)"]
+        Loop["mvge.core (run_loop, SpellDispatcher, SpellContext, Events)"]
     end
 
     subgraph StorageEcosystem["Runes, Realms & Storage"]
-        Runes["mvgeos-runes (RuneRunner, SigilHook, SkillCatalog, ApprovalGate)"]
-        Provider["mvgeos-provider (Realm Protocol & Model Registry)"]
+        Runes["mvge.runes (RuneRunner, SigilHook, SkillCatalog, ApprovalGate)"]
+        Provider["mvge.provider (Realm Protocol & Model Registry)"]
         Realms["Marketplace Realms: openrouter-realm, opencode-realm"]
-        Tome["mvgeos-tome (TomeHandle, TomeCodec & FileLock)"]
+        Tome["mvge.tome (TomeHandle, TomeCodec & FileLock)"]
     end
 
     CLI --> Harness
@@ -392,23 +392,23 @@ All code in MvgeOS is developed using strict TDD and adheres to rigorous quality
 gates:
 
 ```bash
-uv sync                                                    # workspace dependencies
+uv sync                                                    # dependencies
 uv run python -m pytest --cov                              # full suite with coverage
-uv run mypy .                                              # type checker, strict mode
+uv run mypy src                                            # type checker, strict mode
 uv run ruff check                                          # linter
 uv run ruff format --check                                 # formatting
-uv run python mvgeos-core/scripts/check_adr_contract.py    # ADR contract verification
+uv run python scripts/check_adr_contract.py                # ADR contract verification
 ```
 
 ### Interfaces
 
 ```bash
-uv run mvgeos                       # streaming REPL
-uv run mvgeos --tui                 # full-screen TUI
-uv run mvgeos --mode rpc            # headless JSONL stdio RPC server
-uv run mvgeos-gui                   # native desktop app (NiceGUI + PyWebView)
-uv run mvgeos-gui --web --port 8000 # serve the GUI to your browser
+uv run mvge                         # streaming REPL
+uv run mvge --tui                   # full-screen TUI
+uv run mvge --mode rpc              # headless JSONL stdio RPC server
 ```
+
+For the native desktop app, see the [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) repository.
 
 See [`TESTING.md`](TESTING.md) for the testing standards charter and
 [`CONTRIBUTING.md`](CONTRIBUTING.md) to get set up.

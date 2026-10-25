@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended 2026-10-25: GUI extracted to companion repository mvge-desktop)
 
 ## Date
 
@@ -42,15 +42,12 @@ MvgeOS GUI (`mvgeos-gui`) provides a native desktop interface modeled on Google 
    - Standardize all user-facing strings, badges, tooltips, and empty states: *Summoner* (never user), *Mvge* (never agent), *Contemplation* (never thought), *Tome* (never session), *Channeling* (never streaming), and *Spells* (never tools).
 
 ## Contract
+The key GUI abstractions that anchor the Canvas, Composer, and Step Card interfaces were extracted to the `mvge-desktop` companion repository:
 
-The key GUI abstractions that anchor the Canvas, Composer, and Step Card interfaces:
-
-- `AppState` in `mvgeos_gui.state` manages client UI state, channeling flags, and active drawer/canvas selections.
-- `render_composer` in `mvgeos_gui.components.composer` owns prompt input, in-flight action controls, and autocomplete.
-- `render_review_rail` in `mvgeos_gui.components.review_rail` and `render_artifact_drawer` in `mvgeos_gui.components.artifact_drawer` anchor the right-hand inspection and Canvas surfaces.
-- `render_contemplation_card` in `mvgeos_gui.components.step_cards` anchors reasoning and step card projection.
-
-<!-- adr-contract: AppState, render_composer, render_review_rail, render_artifact_drawer, render_contemplation_card -->
+- `AppState` in `mvge_desktop.state` manages client UI state, channeling flags, and active drawer/canvas selections.
+- `render_composer` in `mvge_desktop.components.composer` owns prompt input, in-flight action controls, and autocomplete.
+- `render_review_rail` in `mvge_desktop.components.review_rail` and `render_artifact_drawer` in `mvge_desktop.components.artifact_drawer` anchor the right-hand inspection and Canvas surfaces.
+- `render_contemplation_card` in `mvge_desktop.components.step_cards` anchors reasoning and step card projection.
 
 ## Consequences
 

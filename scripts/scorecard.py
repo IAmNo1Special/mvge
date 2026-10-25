@@ -130,7 +130,7 @@ THE SEVEN MEASURES AND THEIR EXACT DEFINITIONS
 4. Cross-extension runtime imports  (the gate)
    Only for projects that declare an extension root. Each direct subdirectory of
    that root is one extension. An extension owns the importable name of any
-   `mvgeos_runes_*` directory it contains, or else its own directory name.
+   `mvge.runes_*` directory it contains, or else its own directory name.
 
    Every runtime source file under the extension root is parsed with `ast`
    -- never with grep, because grep cannot tell an import from a string that
@@ -368,7 +368,7 @@ PROJECTS: tuple[Project, ...] = (
         extension=Extension(
             slug="IAmNo1Special/mvgeos-marketplace",
             root="runes",
-            package_prefix="mvgeos_runes_",
+            package_prefix="mvge.runes_",
         ),
         gated=True,
     ),
@@ -952,7 +952,7 @@ def _names_extension(module: str, owned: str, root_name: str) -> bool:
     Two layouts occur in this peer set and both have to work:
 
     * an extension installed as its own distribution, imported as
-      `mvgeos_runes_x` (MvgeOS Runes);
+      `mvge.runes_x` (MvgeOS Runes);
     * an extension living inside the extension root package, imported as
       `plugins.web` (hermes-agent plugins).
 

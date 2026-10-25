@@ -99,18 +99,18 @@ Testing standards are defined in the [Testing Standards Charter](TESTING.md) —
 
 ## Architecture
 
-MvgeOS is a monorepo with uv workspaces:
+Mvge is a single unified Python package under `src/mvge/` (following the `google/adk-python` architectural style):
 
-| Package | Purpose |
+| Submodule | Purpose |
 | --- | --- |
-| mvgeos | Root distribution; owns the published name and its `mvgeos` console script so `uvx mvgeos` resolves directly |
-| mvgeos-core | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps) |
-| mvgeos-agent | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
-| mvgeos-provider | Realm protocol + model registry (depends on core); concrete Realms ship as marketplace runes, including the default `opencode` one |
-| mvgeos-tome | JSONL session persistence with file locking |
-| mvgeos-runes | Rune/Extension manifest, loader, sigil hooks (depends on core) |
-| mvgeos-cli | CLI entry point (`mvgeos` command) |
-| mvgeos-gui | Desktop GUI application powered by NiceGUI with 1:1 Antigravity UI |
+| `mvge.core` | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero dependencies) |
+| `mvge.agent` | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
+| `mvge.provider` | Realm protocol + model registry; concrete Realms ship as marketplace runes, including the default `opencode` one |
+| `mvge.tome` | JSONL session persistence with file locking |
+| `mvge.runes` | Rune/Extension manifest, loader, sigil hooks |
+| `mvge.cli` | CLI entry point (`mvge` command; `mvgeos` alias preserved) |
+
+The desktop GUI application (`mvgeos-gui`) has been extracted to its own standalone companion repository at `/mnt/storage/projects/mvge-desktop`.
 
 Config follows dotagents protocol at `~/.agents/`.
 Mvges (agents) are installable via marketplace (`mvgeos mvge install <name>`) at `~/.agents/agents/`.
