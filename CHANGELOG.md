@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-10-25
+
+
+### Bug Fixes
+
+- **ci:** copy uv and uvx into sandbox bin so verify_install finds uvx in runner (5d72411)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (75da476)
+
+- **release:** v0.1.2 (83f340c)
+
+
 ## [0.1.1] - 2026-10-25
 
 
