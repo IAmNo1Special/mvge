@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-10-25
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (1eea37f)
+
+- **release:** v0.1.3 (3f6218c)
+
+
+### Documentation
+
+- **marketplace:** update marketplace references to mvge-marketplace (5bac9dc)
+
+
+### Refactoring
+
+- **engine:** purge all remaining mvgeos references (c0b922c)
+
+
 ## [0.1.2] - 2026-10-25
 
 
@@ -48,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **gui:** adopt Variant B Ambient Glass Studio layout in chat panel (1223f52)
 
-- **gui:** extract mvge-gui to standalone mvge-desktop repository (bec59dd)
+- **gui:** extract mvgeos-gui to standalone mvge-desktop repository (bec59dd)
 
 
 ### Refactoring
@@ -220,7 +240,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **runes:** correct the contract module's own account of mvge_provider.sse (3f2b2a8)
+- **runes:** correct the contract module's own account of mvgeos_provider.sse (3f2b2a8)
 
 
 ## [0.7.0] - 2026-10-12
@@ -418,7 +438,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
-- **cli:** `mvge config refresh-models` so a clean machine can escape the stale catalog (#173) (e8de2da)
+- **cli:** `mvgeos config refresh-models` so a clean machine can escape the stale catalog (#173) (e8de2da)
 
 
 ## [0.6.22] - 2026-10-10
@@ -530,7 +550,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Continuous Integration
 
-- **release:** prove the published mvge completes a real task (3fbed01)
+- **release:** prove the published mvgeos completes a real task (3fbed01)
 
 - **release:** sandbox the install gate so it cannot see this machine (c802e1e)
 
@@ -1824,14 +1844,14 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Documentation
 
-- **coding-mvge:** update spell template import to mvge_core (30fd012)
+- **coding-mvge:** update spell template import to mvgeos_core (30fd012)
 
 
 ### Features
 
-- **core:** scaffold mvge-core workspace package (5f81c61)
+- **core:** scaffold mvgeos-core workspace package (5f81c61)
 
-- **core:** extract mvge-core canonical loop package **BREAKING CHANGE** (8e4baa9)
+- **core:** extract mvgeos-core canonical loop package **BREAKING CHANGE** (8e4baa9)
 
 
 ## [2.2.0] - 2026-09-11
@@ -1990,7 +2010,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Refactoring
 
-- **commands:** decouple command execution from cli formatting into mvge-agent (dbf3443)
+- **commands:** decouple command execution from cli formatting into mvgeos-agent (dbf3443)
 
 - **coding-mvge:** rename knowledge_skill to skill_evolution and deepen engine seams (5cf1cbf)
 
@@ -2116,7 +2136,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **agent:** implement Two-Layer Invariant Scaffolding and modular coding agent (685f807)
 
-- **mvge-agent:** validate rune spell schema and signature on assembly (#126) (432b45e)
+- **mvgeos-agent:** validate rune spell schema and signature on assembly (#126) (432b45e)
 
 
 ### Refactoring
@@ -2429,9 +2449,9 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **test:** update default name assertion to default-mvge (18d7588)
 
-- **cli:** wire mvge info command into the CLI app (0b77674)
+- **cli:** wire mvgeos info command into the CLI app (0b77674)
 
-- **cli:** unify tome dir to ~/.agents/.mvge/tomes and drop dead mvge_config (6bb98c3)
+- **cli:** unify tome dir to ~/.agents/.mvgeos/tomes and drop dead mvge_config (6bb98c3)
 
 - **provider:** pass absolute request URLs and authorization headers (3ffc4ff)
 
@@ -2463,7 +2483,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **tome:** record parent_id on tome entries to restore conversation tree branching (closes #47) (24b15c3)
 
-- **gui:** update branding to Mvge, apply Windows dark titlebar, and fix bottom layout padding (0f9fc3e)
+- **gui:** update branding to MvgeOS, apply Windows dark titlebar, and fix bottom layout padding (0f9fc3e)
 
 - **gui:** enforce symmetrical horizontal padding on center viewport and dock (1b37e55)
 
@@ -2625,17 +2645,17 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - commit changes (8755e88)
 
-- **root:** update ADRs for new Mvge architecture (a824c74)
+- **root:** update ADRs for new MvgeOS architecture (a824c74)
 
 - **root:** add architecture, planning, and tech-debt documentation (f7157df)
 
-- **root:** remove mvge-spells from package table (ac80d25)
+- **root:** remove mvgeos-spells from package table (ac80d25)
 
-- align terminology with Mvge and add agent docs (6fd9d35)
+- align terminology with MvgeOS and add agent docs (6fd9d35)
 
 - **root:** document loop architecture, retry, compaction, and known gaps (66c3ac8)
 
-- **root:** add mvge-harness to root documentation (f183a41)
+- **root:** add mvgeos-harness to root documentation (f183a41)
 
 - **agent:** update architecture with harness lifecycle (116805f)
 
@@ -2651,7 +2671,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **cli:** document non-interactive setup install (ac6d681)
 
-- **architecture:** update terminology and supersede deprecated mvge-spells references (ea69a68)
+- **architecture:** update terminology and supersede deprecated mvgeos-spells references (ea69a68)
 
 - **root:** synchronize markdown documentation across monorepo (4a210bd)
 
@@ -2702,9 +2722,9 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **agent:** runtime snapshot seam for resolved-state bundle (a1d9517)
 
-- **cli:** add mvge build command for runtime manifest serialisation (8d2b027)
+- **cli:** add mvgeos build command for runtime manifest serialisation (8d2b027)
 
-- **cli:** mvge info command renders runtime snapshot as rich tables (8e90506)
+- **cli:** mvgeos info command renders runtime snapshot as rich tables (8e90506)
 
 - **runes:** add extension error isolation, history capping, connection pooling, and loader validation (bf789ea)
 
@@ -2736,7 +2756,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **seeker:** widen active spell set on tool search discovery (#41) (075a2a0)
 
-- **gui:** scaffold mvge-gui workspace package, desktop runtime, and 3-column obsidian shell (eb4c4dd)
+- **gui:** scaffold mvgeos-gui workspace package, desktop runtime, and 3-column obsidian shell (eb4c4dd)
 
 - **gui:** integrate TomeLedger session browser, git branch tags, and top navigation header (08291d6)
 
@@ -2806,7 +2826,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **tome:** restructure to flat layout (6a95f5e)
 
-- **agent:** restructure agent package with new Mvge architecture (2541658)
+- **agent:** restructure agent package with new MvgeOS architecture (2541658)
 
 - **cli:** restructure CLI package with new command structure (05a2ff4)
 
@@ -2816,9 +2836,9 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **tome:** update ledger for unified session system (bf7b052)
 
-- **spells:** remove deprecated mvge-spells package (057373a)
+- **spells:** remove deprecated mvgeos-spells package (057373a)
 
-- **agent,cli:** load global runes by default and use ~/.agents/.mvge/tomes (d3de0d7)
+- **agent,cli:** load global runes by default and use ~/.agents/.mvgeos/tomes (d3de0d7)
 
 - **provider:** rename ProviderRegistry to RealmRegistry, derive provider from model id (897615f)
 
@@ -2832,7 +2852,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 - **harness:** Fix circular import and LSP issues (7374e88)
 
-- **agent:** consolidate session lifecycle harness into mvge_agent.harness (ee63a08)
+- **agent:** consolidate session lifecycle harness into mvgeos_agent.harness (ee63a08)
 
 - **agent:** consolidate session lifecycle into MvgeHarness (2bfeae7)
 
@@ -2953,7 +2973,7 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Features
 
-- initial mvge monorepo setup (3a9e5a1)
+- initial mvgeos monorepo setup (3a9e5a1)
 
 - **agent:** add Mvge core loop with event bus (6417554)
 
