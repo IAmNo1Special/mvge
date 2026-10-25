@@ -364,10 +364,12 @@ def sandbox_command(scratch: pathlib.Path, argv: list[str]) -> list[str] | None:
     # the task writes its artifact to, and the harness's own copy. It is the
     # only writable host path the sandbox has.
     command += ["--bind", str(scratch), str(scratch)]
+    bin_dir = scratch / "bin"
+    sandbox_path = f"{bin_dir}:{SANDBOX_PATH}" if bin_dir.is_dir() else SANDBOX_PATH
     command += [
         "--setenv",
         "PATH",
-        SANDBOX_PATH,
+        sandbox_path,
         "--setenv",
         SANDBOX_MARKER,
         "1",
@@ -659,10 +661,16 @@ def run_sandboxed(arguments: argparse.Namespace) -> int:
     """
     outer = pathlib.Path(tempfile.mkdtemp(prefix="mvgeos-verify-sandbox-"))
     scratch = outer / "scratch"
-    for name in ("home", "cache", "work", "harness"):
+    for name in ("home", "cache", "work", "harness", "bin"):
         (scratch / name).mkdir(parents=True)
     harness = scratch / "harness" / pathlib.Path(__file__).name
     shutil.copyfile(pathlib.Path(__file__).resolve(), harness)
+    for tool in ("uv", "uvx"):
+        tool_path = shutil.which(tool)
+        if tool_path:
+            dest_tool = scratch / "bin" / tool
+            shutil.copy2(tool_path, dest_tool)
+            dest_tool.chmod(0o755)
     command = sandbox_command(
         scratch,
         [
