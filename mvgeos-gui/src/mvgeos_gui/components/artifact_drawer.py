@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from nicegui import ui
+from nicegui_ai import AiMarkdown
 
 from mvgeos_gui.models import Artifact, ArtifactType
 from mvgeos_gui.state import AppState
@@ -35,7 +36,7 @@ def _render_markdown_with_mermaid(content: str) -> None:
     for i, part in enumerate(parts):
         if i % 2 == 0:
             if part.strip():
-                ui.markdown(part).classes("markdown-content max-w-none w-full")
+                AiMarkdown(part).classes("markdown-content max-w-none w-full")
         else:
             with ui.column().classes(
                 "w-full my-3 p-3 rounded-lg bg-[var(--bg-well-deep)] border "

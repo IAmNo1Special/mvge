@@ -56,6 +56,7 @@ mvgeos-runes = { workspace = true, editable = true }
 mvgeos-cli = { workspace = true, editable = true }
 mvgeos-core = { workspace = true, editable = true }
 mvgeos-gui = { workspace = true, editable = true }
+nicegui-ai = { path = "../nicegui-ai", editable = true }
 
 [tool.ruff]
 line-length = 88

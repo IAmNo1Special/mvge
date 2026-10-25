@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from nicegui import ui
+from nicegui_ai import AiMarkdown
 
 from mvgeos_gui.models import ExecutionStep, StepType
 
@@ -67,7 +68,7 @@ def render_contemplation_card(
             "border-[var(--bg-tint)]"
         ),
     ):
-        ui.markdown(contemplation).classes(
+        AiMarkdown(contemplation).classes(
             "markdown-content markdown-contemplation italic max-w-none w-full"
         )
     _bind_expansion(expansion, card_id, state)

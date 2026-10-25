@@ -14,6 +14,7 @@ dependencies = [
     "mvgeos-runes==0.7.8",
     "mvgeos-tome==0.7.8",
     "nicegui>=2.10.0",
+    "nicegui-ai>=0.2.0",
     "pathspec>=0.12.0",
     "pywebview>=6.2.1",
 ]
@@ -27,6 +28,7 @@ mvgeos-core = { workspace = true }
 mvgeos-provider = { workspace = true }
 mvgeos-runes = { workspace = true }
 mvgeos-tome = { workspace = true }
+nicegui-ai = { path = "../../nicegui-ai", editable = true }
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.14"]

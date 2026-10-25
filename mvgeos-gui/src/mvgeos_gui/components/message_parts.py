@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from nicegui import ui
+from nicegui_ai import AiMarkdown
 
 from mvgeos_gui.components.artifact_drawer import render_artifact_card
 from mvgeos_gui.components.step_cards import (
@@ -75,7 +76,7 @@ def render_message_parts(msg: ChatMessage, state: AppState, msg_idx: int = 0) ->
                 )
         elif part.part_type == MessagePartType.TEXT:
             if part.text:
-                ui.markdown(part.text).classes("markdown-content max-w-none w-full")
+                AiMarkdown(part.text).classes("markdown-content max-w-none w-full")
         elif part.part_type == MessagePartType.ARTIFACT and part.artifact:
             render_artifact_card(part.artifact, state)
 
