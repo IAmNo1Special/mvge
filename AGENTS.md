@@ -108,12 +108,12 @@ Mvge is a single unified Python package under `src/mvge/` (following the `google
 | `mvge.provider` | Realm protocol + model registry; concrete Realms ship as marketplace runes, including the default `opencode` one |
 | `mvge.tome` | JSONL session persistence with file locking |
 | `mvge.runes` | Rune/Extension manifest, loader, sigil hooks |
-| `mvge.cli` | CLI entry point (`mvge` command; `mvgeos` alias preserved) |
+| `mvge.cli` | CLI entry point (`mvge` command) |
 
 The desktop GUI application (`mvgeos-gui`) has been extracted to its own standalone companion repository at `/mnt/storage/projects/mvge-desktop`.
 
 Config follows dotagents protocol at `~/.agents/`.
-Mvges (agents) are installable via marketplace (`mvgeos mvge install <name>`) at `~/.agents/agents/`.
+Mvges (agents) are installable via marketplace (`mvge mvge install <name>`) at `~/.agents/agents/`.
 Rune/Extension manifests at `~/.agents/extensions/`.
 
 **Prompt & Agent Architecture**:
@@ -144,9 +144,9 @@ Agents use zero-config auto-discovery: an Mvge named for its own directory auto-
 ## Changelog & Releases
 
 - **git-cliff** configured at `cliff.toml` — generates CHANGELOG.md from conventional commits
-- **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps all workspace packages in lockstep via `uv version --bump --package` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag, then dispatches `release.yml` and `publish.yml` itself (the tag push uses `GITHUB_TOKEN`, so GitHub's loop guard stops it triggering either workflow on its own)
+- **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps package version via `uv version --bump` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag, then dispatches `release.yml` and `publish.yml` itself (the tag push uses `GITHUB_TOKEN`, so GitHub's loop guard stops it triggering either workflow on its own)
 - **Release workflow**: `.github/workflows/release.yml` — triggers on `v*` tags or manual dispatch
-- **Publish workflow**: `.github/workflows/publish.yml` — triggers on `v*` tags or manual dispatch, and the `bump` job in `ci.yml` also dispatches it explicitly against the tag on every version bump, because a `GITHUB_TOKEN` tag push does not fire workflows; uploads all eight distributions to PyPI in dependency order using the `PYPI_API_TOKEN` secret on the `pypi` environment, then proves `uvx mvgeos --help` from a checkout-free runner and runs one real task through `scripts/verify_install.py`. Uploads authenticate with a stored token again as of SOM-95: OIDC trusted publishing was reverted on 2026-10-09 because PyPI has no trusted publisher registered for the `mvgeos` and `mvgeos-gui` names, and registering one is a pypi.org web action no agent can perform. Migrating all eight names to OIDC and deleting the token is the end state, not the current one. `scripts/check_publish.py` is the gate: it derives the publish order from the dependency graph and fails the release if any first-party `Requires-Dist` lacks a version constraint. Full procedure, secret setup, and the migration path: `docs/agents/releasing.md`
+- **Publish workflow**: `.github/workflows/publish.yml` — triggers on `v*` tags or manual dispatch, and the `bump` job in `ci.yml` also dispatches it explicitly against the tag on every version bump, because a `GITHUB_TOKEN` tag push does not fire workflows; uploads `mvge` to PyPI using trusted publishing (OIDC), then proves `uvx mvge --help` from a checkout-free runner and runs one real task through `scripts/verify_install.py`. `scripts/check_publish.py` is the preflight gate: it verifies metadata and package readiness. Full procedure, secret setup, and the migration path: `docs/agents/releasing.md`
 - **Conventional commits required**: `feat(scope):`, `fix(scope):`, `perf(scope):`, `refactor(scope):`, `docs(scope):`, `test(scope):`, `build(scope):`, `ci(scope):`, `chore(scope):`, `revert(scope):`
 - **Breaking changes**: include `BREAKING CHANGE:` in commit body
 - **Commands**:

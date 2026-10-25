@@ -21,6 +21,7 @@ jobs:
       run-lint: false
       test-commands: "uv run python -m pytest --cov --cov-report=term-missing"
       coverage-artifact-name: "coverage-data"
+      coverage-artifact-path: ".coverage"
       timeout-minutes: 20
 
   coverage:

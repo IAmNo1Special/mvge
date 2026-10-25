@@ -73,7 +73,7 @@ select = [
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-exclude = ["/tests/", "/scripts/", "test_keys.py", "benchmarks"]
+exclude = ["(^|/)(tests|scripts|prototypes)/", "test_keys\\.py", "benchmarks"]
 
 [tool.pytest.ini_options]
 testpaths = [
