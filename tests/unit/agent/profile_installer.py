@@ -83,6 +83,10 @@ def test_install_profile_success(tmp_path: Path) -> None:
     extensions_dir.mkdir(parents=True)
 
     with (
+        patch(
+            "mvge.agent.installer.fetch_marketplace_profiles",
+            return_value=DEFAULT_PROFILES,
+        ),
         patch("mvge.agent.installer.install_mvge") as mock_install_mvge,
         patch("mvge.agent.installer.install_rune") as mock_install_rune,
     ):
@@ -95,7 +99,7 @@ def test_install_profile_success(tmp_path: Path) -> None:
 
         assert result.profile == "minimal"
         assert result.installed_mvges == ["coding_mvge"]
-        assert len(result.installed_runes) == 3
+        assert len(result.installed_runes) == 4
         assert result.skipped_mvges == []
         assert result.skipped_runes == []
 
@@ -105,7 +109,7 @@ def test_install_profile_success(tmp_path: Path) -> None:
             marketplace_url="https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json",
             confirm_python_deps=False,
         )
-        assert mock_install_rune.call_count == 3
+        assert mock_install_rune.call_count == 4
 
 
 def test_install_profile_skip_already_installed(tmp_path: Path) -> None:
@@ -116,6 +120,10 @@ def test_install_profile_skip_already_installed(tmp_path: Path) -> None:
     (extensions_dir / "approval-rune").mkdir(parents=True)
 
     with (
+        patch(
+            "mvge.agent.installer.fetch_marketplace_profiles",
+            return_value=DEFAULT_PROFILES,
+        ),
         patch("mvge.agent.installer.install_mvge") as mock_install_mvge,
         patch("mvge.agent.installer.install_rune") as mock_install_rune,
     ):
@@ -129,11 +137,12 @@ def test_install_profile_skip_already_installed(tmp_path: Path) -> None:
         assert result.skipped_mvges == ["coding_mvge"]
         assert result.installed_mvges == []
         assert "approval-rune" in result.skipped_runes
+        assert "openrouter-realm" in result.installed_runes
         assert "opencode-realm" in result.installed_runes
         assert "steering-bridge" in result.installed_runes
 
         mock_install_mvge.assert_not_called()
-        assert mock_install_rune.call_count == 2
+        assert mock_install_rune.call_count == 3
 
 
 def test_install_profile_force_reinstalls(tmp_path: Path) -> None:
@@ -143,6 +152,10 @@ def test_install_profile_force_reinstalls(tmp_path: Path) -> None:
     (extensions_dir / "approval-rune").mkdir(parents=True)
 
     with (
+        patch(
+            "mvge.agent.installer.fetch_marketplace_profiles",
+            return_value=DEFAULT_PROFILES,
+        ),
         patch("mvge.agent.installer.install_mvge") as mock_install_mvge,
         patch("mvge.agent.installer.install_rune") as mock_install_rune,
     ):
@@ -156,7 +169,7 @@ def test_install_profile_force_reinstalls(tmp_path: Path) -> None:
         assert result.skipped_mvges == []
         assert result.skipped_runes == []
         assert result.installed_mvges == ["coding_mvge"]
-        assert len(result.installed_runes) == 3
+        assert len(result.installed_runes) == 4
 
         mock_install_mvge.assert_called_once()
-        assert mock_install_rune.call_count == 3
+        assert mock_install_rune.call_count == 4
