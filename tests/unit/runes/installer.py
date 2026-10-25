@@ -112,7 +112,7 @@ def test_install_rune_marketplace_with_subpath_success(tmp_path: Path) -> None:
         "runes": {
             "openrouter-realm": {
                 "name": "openrouter-realm",
-                "git": "https://github.com/IAmNo1Special/mvgeos-marketplace.git",
+                "git": "https://github.com/IAmNo1Special/mvge-marketplace.git",
                 "path": "runes/openrouter-realm",
                 "description": "OpenRouter provider realm",
             }

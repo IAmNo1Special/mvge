@@ -355,9 +355,9 @@ PROJECTS: tuple[Project, ...] = (
         language="Python",
         packages=(("pypi", "mvge"),),
         # The Runes ship in the marketplace repository, not here. AGENTS.md is
-        # explicit that Rune capabilities live in mvgeos-marketplace.
+        # explicit that Rune capabilities live in mvge-marketplace.
         extension=Extension(
-            slug="IAmNo1Special/mvgeos-marketplace",
+            slug="IAmNo1Special/mvge-marketplace",
             root="runes",
             package_prefix="mvge.runes_",
         ),

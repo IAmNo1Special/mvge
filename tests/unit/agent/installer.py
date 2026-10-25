@@ -109,7 +109,7 @@ def test_install_mvge_marketplace_with_subpath_success(tmp_path: Path) -> None:
         "mvges": {
             "coding_mvge": {
                 "name": "coding_mvge",
-                "git": "https://github.com/IAmNo1Special/mvgeos-marketplace.git",
+                "git": "https://github.com/IAmNo1Special/mvge-marketplace.git",
                 "path": "mvges/coding_mvge",
             }
         }

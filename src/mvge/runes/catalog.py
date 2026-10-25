@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 #: The published catalog. A copy of this lives nowhere: it was previously
 #: identical in two installers, and identically wrong when it changed.
 DEFAULT_MARKETPLACE_URL = (
-    "https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json"
+    "https://raw.githubusercontent.com/IAmNo1Special/mvge-marketplace/main/index.json"
 )
 
 #: The catalog's top-level sections. ``agents`` is accepted as a deprecated
@@ -50,7 +50,7 @@ def local_catalog_candidate(subpath: str) -> Path | None:
     """
     for base in (
         os.environ.get("MVGEOS_MARKETPLACE_DIR"),
-        str(Path.home() / "Desktop" / "mvgeos-marketplace"),
+        str(Path.home() / "Desktop" / "mvge-marketplace"),
     ):
         if not base:
             continue
@@ -185,11 +185,11 @@ def _catalog_urls(marketplace_url: str) -> list[tuple[str, bool]]:
 
     if (
         "githubusercontent.com" in marketplace_url
-        and "mvgeos-marketplace" in marketplace_url
+        and "mvge-marketplace" in marketplace_url
     ):
         urls.append(
             (
-                "https://api.github.com/repos/IAmNo1Special/mvgeos-marketplace"
+                "https://api.github.com/repos/IAmNo1Special/mvge-marketplace"
                 "/contents/index.json",
                 True,
             )

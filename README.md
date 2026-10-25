@@ -170,7 +170,7 @@ parameter schemas. When the single installed Mvge is `coding_mvge`, omitting
 ## Bring your own key
 
 Any Realm in the
-[marketplace catalog](https://iamno1special.github.io/mvgeos-marketplace/#rune-catalog)
+[marketplace catalog](https://iamno1special.github.io/mvge-marketplace/#rune-catalog)
 works, and each reads its own credential variable:
 
 ```bash
@@ -191,7 +191,7 @@ $ uvx mvgeos info --agent-name coding_mvge
 A key goes to the Realm you named and to nothing else — MvgeOS never proxies one
 Realm's credential to another host.
 
-**[Full documentation →](https://iamno1special.github.io/mvgeos-marketplace/)** —
+**[Full documentation →](https://iamno1special.github.io/mvge-marketplace/)** —
 quickstart, concepts, troubleshooting with real errors, and FAQ.
 
 ## What you get
@@ -222,7 +222,7 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
   `ruff`, ADR contract verification, and a hermetic unit + integration suite.
 - **Free-tier rate limits.** Upstream `:free` endpoints can return temporary
   rate-limit delays when at capacity; see the
-  [troubleshooting guide](https://iamno1special.github.io/mvgeos-marketplace/troubleshooting/).
+  [troubleshooting guide](https://iamno1special.github.io/mvge-marketplace/troubleshooting/).
 - **Runes run in-process** via `importlib` when trusted. Read manifests before
   installing third-party extensions, and install `approval-rune` for fail-closed
   policy enforcement on mutating Spell casts.
@@ -233,19 +233,19 @@ quickstart, concepts, troubleshooting with real errors, and FAQ.
 <summary><b>✨ Features</b></summary>
 
 - ⚡ **Event-Driven Agent Loop (<code>mvge.core</code> &amp; <code>mvge.agent</code>)**: Pure turn-driving state machine with parallel and sequential Spell dispatching, unified sync/async `SpellContext` injection, cooperative `AbortSignal` propagation, Sub-Mvge summoning (`SubMvgeManager`), and turn-aligned context compaction.
-- 🌐 **Multi-Model Provider Abstraction (<code>mvge.provider</code>)**: `Realm` protocol, model registry, and retry policies. Concrete Realms ship as Runes in `mvgeos-marketplace` (`openrouter-realm`, `opencode-realm`).
+- 🌐 **Multi-Model Provider Abstraction (<code>mvge.provider</code>)**: `Realm` protocol, model registry, and retry policies. Concrete Realms ship as Runes in `mvge-marketplace` (`openrouter-realm`, `opencode-realm`).
 - 📜 **Cache-Free, Codec-Agnostic Session Persistence (<code>mvge.tome</code>)**: Append-only JSONL session storage (`TomeHandle`, `TomeCodec`) with cross-process file locking, `Leaf` navigation (`/undo`, `/checkout`), `Fork` creation, and native Pi v3/v4 session compatibility via `pi-codec`.
 - 🔮 **Rune Extension Ecosystem (<code>mvge.runes</code>)**: Hot-reloadable extensions with 24+ lifecycle `SigilHook` points, per-Rune disposable registration scopes, Workspace Trust gating for project-scoped extensions, and deterministic gateway-last loading for `SpellGateway` Runes (`seeker`).
 - 🖥️ **Desktop GUI (<code>mvge-desktop</code>)**: Standalone companion desktop application powered by NiceGUI and PyWebView offering a 1:1 Antigravity layout with interactive chat, step cards, floating dock, file tree, diff review, and artifact inspector.
 - ⌨️ **Rich CLI, TUI &amp; Stdio RPC (<code>mvge.cli</code>)**: Interactive REPL with `prompt-toolkit`, terminal dashboard, marketplace installer (`mvge mvge`, `mvge rune`, `mvge setup`), and headless JSONL stdio RPC server.
-- 🛠️ **Full-Featured Coding Agent (<code>coding_mvge</code>)**: Flagship agent package distributed via <code>mvgeos-marketplace</code> with built-in spells for bash execution, file reading, editing, creation, grep searching, directory listing, URL fetching, and web searching.
+- 🛠️ **Full-Featured Coding Agent (<code>coding_mvge</code>)**: Flagship agent package distributed via <code>mvge-marketplace</code> with built-in spells for bash execution, file reading, editing, creation, grep searching, directory listing, URL fetching, and web searching.
 
 </details>
 
 <details>
 <summary><b>🏛️ Architecture</b></summary>
 
-Mvge is organized as a unified, clean Python package (`src/mvge/` layout matching `google/adk-python`), separated by a strict microkernel seam from [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace) and the [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) companion application:
+Mvge is organized as a unified, clean Python package (`src/mvge/` layout matching `google/adk-python`), separated by a strict microkernel seam from [`mvge-marketplace`](https://github.com/IAmNo1Special/mvge-marketplace) and the [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) companion application:
 
 | Package / Module | Purpose |
 | --- | --- |
@@ -257,7 +257,7 @@ Mvge is organized as a unified, clean Python package (`src/mvge/` layout matchin
 | [`mvge.runes`](src/mvge/runes/) | Extension system: manifest parser, loader, disposable `RuneAPI` scopes, `RuneRunner`, `SkillCatalog`, watcher, and `SigilHook` |
 | [`mvge.cli`](src/mvge/cli/) | CLI commands (`mvge`), interactive REPL, TUI, and stdio JSONL RPC mode |
 | [`mvge-desktop`](https://github.com/IAmNo1Special/mvge-desktop) | Standalone companion desktop application powered by NiceGUI with 1:1 Antigravity UI |
-| [`mvgeos-marketplace`](https://github.com/IAmNo1Special/mvgeos-marketplace) | Flagship capability distribution: `coding_mvge`, Realms (`openrouter-realm`, `opencode-realm`), `pi-codec`, `approval-rune`, `seeker`, and Capability Bridges |
+| [`mvge-marketplace`](https://github.com/IAmNo1Special/mvge-marketplace) | Flagship capability distribution: `coding_mvge`, Realms (`openrouter-realm`, `opencode-realm`), `pi-codec`, `approval-rune`, `seeker`, and Capability Bridges |
 
 ```mermaid
 flowchart TD

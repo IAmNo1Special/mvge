@@ -106,7 +106,7 @@ def test_install_profile_success(tmp_path: Path) -> None:
         mock_install_mvge.assert_called_once_with(
             "coding_mvge",
             target_dir=agents_dir,
-            marketplace_url="https://raw.githubusercontent.com/IAmNo1Special/mvgeos-marketplace/main/index.json",
+            marketplace_url="https://raw.githubusercontent.com/IAmNo1Special/mvge-marketplace/main/index.json",
             confirm_python_deps=False,
         )
         assert mock_install_rune.call_count == 4
