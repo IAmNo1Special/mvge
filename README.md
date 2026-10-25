@@ -1,5 +1,7 @@
 # 🧙‍♂️ Mvge
 
+[![PyPI](https://img.shields.io/pypi/v/mvge.svg)](https://pypi.org/project/mvge/)
+[![CI](https://github.com/IAmNo1Special/mvge/actions/workflows/ci.yml/badge.svg)](https://github.com/IAmNo1Special/mvge/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![uv](https://img.shields.io/badge/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
