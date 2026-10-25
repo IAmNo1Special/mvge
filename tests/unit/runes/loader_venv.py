@@ -115,7 +115,7 @@ def test_diagnostic_message_includes_declared_python_deps() -> None:
         missing = [d for d in diagnostics if d.kind == DiagnosticKind.MISSING_DEP]
         assert len(missing) == 2
         assert missing[0].rune_name == "test_rune_failing"
-        assert "mvgeos setup install" in missing[0].message
+        assert "mvge setup install" in missing[0].message
 
 
 def test_auto_discover_parent_venv_site_packages() -> None:

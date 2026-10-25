@@ -431,35 +431,29 @@ def test_the_half_landed_release_is_detected() -> None:
     zero on it. It is the shape the assertion exists to refuse.
     """
     resolved = _coherent("0.6.17")
-    resolved["mvgeos"] = "0.6.16"
-    del resolved["mvgeos-tome"]
+    resolved["mvge"] = "0.6.16"
 
     failures = verify_install.lockstep_failures(resolved, "0.6.17")
 
-    assert len(failures) == 2
-    assert any("mvgeos-tome" in failure for failure in failures)
-    assert any("mvgeos 0.6.16" in failure for failure in failures)
+    assert len(failures) == 1
+    assert any("mvge 0.6.16" in failure for failure in failures)
 
 
 def test_the_gui_is_not_required_in_the_runtime_tree() -> None:
-    """`mvgeos-gui` is published in lockstep and installed by nothing.
-
-    Reading it off the published 0.6.17 metadata: `mvgeos` requires
-    `mvgeos-cli`, which requires agent, core, provider, tome and runes. Nothing
-    requires the GUI. Asserting all eight are present would fail on every
-    correct release, for a reason that has nothing to do with the packaging --
-    which is worse than no gate, because it teaches everyone to ignore it.
+    """The companion desktop package is published separately and not in runtime
+    closure.
     """
+    assert "mvge-desktop" not in verify_install.RUNTIME_CLOSURE
     assert "mvgeos-gui" not in verify_install.RUNTIME_CLOSURE
 
-    resolved = dict(_coherent("0.6.17"), **{"mvgeos-gui": "0.6.17"})
+    resolved = dict(_coherent("0.6.17"), **{"mvge-desktop": "0.6.17"})
 
     assert verify_install.lockstep_failures(resolved, "0.6.17") == []
 
 
 def test_a_name_outside_the_closure_does_not_fail_the_tree() -> None:
-    """A third-party `mvgeos-*` name arriving is not this gate's business."""
-    resolved = dict(_coherent("0.6.17"), **{"mvgeos-someone-elses": "0.6.17"})
+    """A third-party `mvge-*` name arriving is not this gate's business."""
+    resolved = dict(_coherent("0.6.17"), **{"mvge-someone-elses": "0.6.17"})
 
     assert verify_install.lockstep_failures(resolved, "0.6.17") == []
 
@@ -473,13 +467,12 @@ def test_a_probe_that_ran_nothing_is_a_failure_not_a_pass() -> None:
 
 
 def test_a_missing_name_alone_is_enough_to_fail() -> None:
-    resolved = _coherent("0.6.17")
-    del resolved["mvgeos-tome"]
+    resolved = {"mvge-other": "0.6.17"}
 
     failures = verify_install.lockstep_failures(resolved, "0.6.17")
 
     assert len(failures) == 1
-    assert "mvgeos-tome" in failures[0]
+    assert "not installed by this release: mvge" in failures[0]
 
 
 def test_a_missing_bwrap_is_reported_as_the_known_reason(monkeypatch) -> None:
@@ -530,10 +523,10 @@ def test_a_working_bwrap_is_usable(monkeypatch) -> None:
 
 
 def _index_html(*versions: str) -> str:
-    """A minimal PyPI simple-index page listing ``versions`` of mvgeos."""
+    """A minimal PyPI simple-index page listing ``versions`` of mvge."""
     return "\n".join(
         '<a href="https://files.pythonhosted.org/packages/xx/'
-        f'mvgeos-{version}-py3-none-any.whl">mvgeos-{version}-py3-none-any.whl</a>'
+        f'mvge-{version}-py3-none-any.whl">mvge-{version}-py3-none-any.whl</a>'
         for version in versions
     )
 

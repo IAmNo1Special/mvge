@@ -80,7 +80,7 @@ import urllib.request
 PROJECT_API = "https://pypi.org/pypi/{package}/json"
 
 # The distribution `uvx` installs, and the one `--resolve` waits for.
-DEFAULT_PACKAGE = "mvgeos"
+DEFAULT_PACKAGE = "mvge"
 
 # Long enough for a slow index, short enough that a hung connection fails the
 # step instead of occupying a runner until the job timeout.
@@ -180,7 +180,7 @@ def resolves(version: str) -> bool:
     claim the job makes.
     """
     completed = subprocess.run(
-        ["uvx", "--from", f"mvgeos=={version}", "mvgeos", "--help"],
+        ["uvx", "--from", f"mvge=={version}", "mvge", "--help"],
         capture_output=True,
         text=True,
         stdin=subprocess.DEVNULL,
@@ -189,15 +189,15 @@ def resolves(version: str) -> bool:
 
 
 def wait_for_resolution(version: str, timeout: float, interval: float) -> bool:
-    """Wait until ``uvx --from mvgeos==VERSION mvgeos --help`` exits zero."""
+    """Wait until ``uvx --from mvge==VERSION mvge --help`` exits zero."""
     started = time.monotonic()
     while True:
         if resolves(version):
             elapsed = time.monotonic() - started
-            print(f"uvx mvgeos=={version} --help: exit 0 after {elapsed:.0f}s")
+            print(f"uvx mvge=={version} --help: exit 0 after {elapsed:.0f}s")
             return True
         if time.monotonic() - started >= timeout:
-            print(f"uvx mvgeos=={version} --help: still failing after {timeout:.0f}s")
+            print(f"uvx mvge=={version} --help: still failing after {timeout:.0f}s")
             return False
         time.sleep(interval)
 

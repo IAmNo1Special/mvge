@@ -309,7 +309,7 @@ def check_and_warn_load_failures(
         )
         msg = getattr(diag, "message", str(diag))
         out(f"  [yellow]- {name}: {msg}[/yellow]")
-    out("[dim]Run 'mvgeos info' for detailed diagnostic information.[/dim]\n")
+    out("[dim]Run 'mvge info' for detailed diagnostic information.[/dim]\n")
 
 
 def check_and_warn_missing_deps(
@@ -332,7 +332,7 @@ def check_and_warn_missing_deps(
         name = getattr(diag, "rune_name", None) or getattr(diag, "name", "unknown")
         msg = getattr(diag, "message", str(diag))
         out(f"  [yellow]- {name}: {msg}[/yellow]")
-    out("[dim]Run 'mvgeos setup install' to install the missing dependencies.[/dim]")
+    out("[dim]Run 'mvge setup install' to install the missing dependencies.[/dim]")
 
     if install is not None and prompt is not None:
         response = (

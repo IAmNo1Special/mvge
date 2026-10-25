@@ -677,7 +677,7 @@ def _repl_callback(
             console.print(
                 format_error(
                     f"API key required. Set {api_key_env_for_realm(key_realm)}, "
-                    "run 'mvgeos setup', or use --api-key"
+                    "run 'mvge setup', or use --api-key"
                 )
             )
             raise typer.Exit(1)

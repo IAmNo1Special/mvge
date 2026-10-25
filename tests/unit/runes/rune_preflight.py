@@ -75,7 +75,7 @@ def test_preflight_missing_python_dep_recorded(tmp_path: Path) -> None:
     missing = [d for d in diagnostics if d.kind == DiagnosticKind.MISSING_DEP]
     assert len(missing) == 1
     assert "a_missing_module" in missing[0].message
-    assert "mvgeos setup install" in missing[0].message
+    assert "mvge setup install" in missing[0].message
 
 
 def test_preflight_present_python_dep_no_diagnostic(tmp_path: Path) -> None:

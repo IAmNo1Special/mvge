@@ -390,7 +390,7 @@ def test_the_error_names_the_rune_for_the_models_own_realm() -> None:
     error = no_realm_registered("opencode/space-bunny-free")
     assert error.rune_name == "opencode-realm"
     assert error.realm == "opencode"
-    assert "mvgeos rune install opencode-realm" in str(error)
+    assert "mvge rune install opencode-realm" in str(error)
 
 
 def test_the_error_carries_the_realm_even_when_the_model_has_none() -> None:

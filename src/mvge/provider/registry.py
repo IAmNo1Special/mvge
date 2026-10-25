@@ -46,7 +46,7 @@ def no_realm_registered(
     rune_name = rune_for_realm(realm)
     return NoRealmRegisteredError(
         f"No Realm factory registered for model '{model_id}'. "
-        f"Run 'mvgeos rune install {rune_name}' to install it from "
+        f"Run 'mvge rune install {rune_name}' to install it from "
         "the central marketplace.",
         realm=realm,
         rune_name=rune_name,
@@ -374,7 +374,7 @@ class RealmRegistry:
         opposite answers. A slug under a Realm we ship is the second: the model
         is real, the Rune is missing, and the remedy is one command. Reporting
         it as an unknown model would send a Summoner looking for a typo when the
-        actual fix is `mvgeos rune install`.
+        actual fix is `mvge rune install`.
 
         Only the membership test is needed. An earlier draft also required the
         prefix to be unregistered, which cannot be true here: `compose_model`

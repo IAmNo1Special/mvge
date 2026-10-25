@@ -30,13 +30,13 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 #: Name of the generated project that owns every rune's dependencies.
-EXTENSIONS_PROJECT_NAME = "mvgeos-extensions"
+EXTENSIONS_PROJECT_NAME = "mvge-extensions"
 
 _EXTENSIONS_MANIFEST = f"""\
 [project]
 name = "{EXTENSIONS_PROJECT_NAME}"
 version = "0.0.0"
-description = "Shared Python environment for MvgeOS extensions"
+description = "Shared Python environment for mvge extensions"
 requires-python = ">=3.13"
 dependencies = []
 """

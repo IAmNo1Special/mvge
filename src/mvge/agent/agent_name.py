@@ -107,7 +107,7 @@ def validate_agent_name(
     raise ValueError(
         f"Unknown agent '{agent_name}'. Agent configuration or directory "
         f"does not exist at '{agent_dir}'. Configure it with "
-        f"'mvgeos config set --agent-name {agent_name} <key> <value>'."
+        f"'mvge config set --agent-name {agent_name} <key> <value>'."
     )
 
 

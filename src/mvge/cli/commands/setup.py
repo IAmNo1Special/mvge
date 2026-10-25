@@ -339,7 +339,7 @@ def setup_check(
 
     if any_missing:
         console.print(
-            "\n[yellow]Run 'mvgeos setup install' "
+            "\n[yellow]Run 'mvge setup install' "
             "to install missing dependencies[/yellow]"
         )
         raise typer.Exit(1)
@@ -455,14 +455,14 @@ def setup_install(
         help=(
             "Auto-confirm all installations (non-interactive). Without this flag "
             "the confirmation prompt reads piped stdin, so "
-            "'echo y | mvgeos setup install' also works non-interactively."
+            "'echo y | mvge setup install' also works non-interactively."
         ),
     ),
 ) -> None:
     """Install missing dependencies for runes.
 
     Non-interactive use: pass ``--yes``/``-y`` to skip the confirmation prompt,
-    or pipe stdin (``echo y | mvgeos setup install``) when prompted.
+    or pipe stdin (``echo y | mvge setup install``) when prompted.
     """
     # --agent-name may come from before the subcommand; resolve it
     # against the group context before anything uses it.

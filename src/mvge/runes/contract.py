@@ -58,12 +58,6 @@ ENGINE_PACKAGES = frozenset(
         "mvge.runes",
         "mvge.tome",
         "mvge.cli",
-        "mvgeos_core",
-        "mvgeos_agent",
-        "mvgeos_provider",
-        "mvgeos_runes",
-        "mvgeos_tome",
-        "mvgeos_cli",
     }
 )
 

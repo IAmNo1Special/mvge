@@ -80,7 +80,7 @@ class TestStartupDiagnostics:
         output = "\n".join(messages)
         assert "seeker" in output
         assert "requires python dependency 'foo'" in output
-        assert "mvgeos setup install" in output
+        assert "mvge setup install" in output
         assert "other_rune" not in output
 
     def test_check_and_warn_missing_deps_none_detected(self) -> None:
@@ -200,7 +200,7 @@ class TestStartupDiagnostics:
         captured = capsys.readouterr()
         assert "seeker" in captured.out
         assert "missing" in captured.out.lower()
-        assert "mvgeos setup install" in captured.out
+        assert "mvge setup install" in captured.out
 
     @pytest.mark.asyncio
     @patch("mvge.cli.commands.tui._create_agent")

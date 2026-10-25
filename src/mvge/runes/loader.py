@@ -105,7 +105,7 @@ def _missing_dep_diagnostic(manifest: RuneManifest, dep: str) -> Diagnostic:
         rune_name=manifest.name,
         message=(
             f"Rune '{manifest.name}' requires python dependency '{dep}' "
-            "which is not installed. Run 'mvgeos setup install' to install it."
+            "which is not installed. Run 'mvge setup install' to install it."
         ),
         scope=manifest.scope,
         path=manifest.path,

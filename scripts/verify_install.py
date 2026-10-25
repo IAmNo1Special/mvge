@@ -164,7 +164,7 @@ MAX_TOKENS = 2000
 
 # The artifact the task is asked to produce, and what it must contain.
 ARTIFACT = "hello.txt"
-ARTIFACT_CONTENT = "hello from mvgeos"
+ARTIFACT_CONTENT = "hello from mvge"
 
 
 def api_key_env_for_realm(realm: str) -> str:
@@ -204,30 +204,17 @@ TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_C
 # nothing to do with the release. That `mvgeos-gui` exists on the index at the
 # same version is checked by the publish workflow, which asks PyPI for all eight
 # by HTTP.
-RUNTIME_CLOSURE = (
-    "mvgeos",
-    "mvgeos-cli",
-    "mvgeos-agent",
-    "mvgeos-core",
-    "mvgeos-provider",
-    "mvgeos-tome",
-    "mvgeos-runes",
-)
+RUNTIME_CLOSURE = ("mvge",)
 
 # Marks the probe's answer so a uv banner, a warning, or a Realm's chatter on
 # stdout cannot be mistaken for it.
-PROBE_MARKER = "MVGEOS-PROBE:"
+PROBE_MARKER = "MVGE-PROBE:"
 
 # How long the gate waits for a fresh release to reach PyPI's simple index,
-# and how often it looks. Measured 2026-10-11: the probe ran
-# `uvx mvgeos==0.6.25` ~28 seconds after the upload landed and uv reported
-# "there is no version of mvgeos==0.6.25" -- the index CDN had not propagated
-# yet. The release was fully live; the probe was early. Ten minutes is
-# generous against a measured sub-minute lag; the poll interval keeps the CI
-# log readable while it waits.
+# and how often it looks.
 INDEX_TIMEOUT_SECONDS = 600
 INDEX_POLL_SECONDS = 15
-PYPI_SIMPLE_INDEX = "https://pypi.org/simple/mvgeos/"
+PYPI_SIMPLE_INDEX = "https://pypi.org/simple/mvge/"
 
 # Lines the CLI prints about itself before the model says anything. They are
 # local diagnostics, so counting one as the first token would understate the
@@ -471,7 +458,7 @@ def version_on_index(version: str) -> bool:
             body = response.read().decode("utf-8", "replace")
     except urllib.error.URLError:
         return False
-    return f">mvgeos-{version}-" in body
+    return f">mvge-{version}-" in body
 
 
 def wait_for_version_on_index(
@@ -494,7 +481,7 @@ def wait_for_version_on_index(
         if time.monotonic() >= deadline:
             return False
         print(
-            f"  mvgeos=={version} not on the index yet; checking again in "
+            f"  mvge=={version} not on the index yet; checking again in "
             f"{interval:g}s ..."
         )
         time.sleep(interval)
@@ -507,11 +494,11 @@ def run_uvx(
     *,
     cwd: pathlib.Path,
 ) -> tuple[int, str, float]:
-    """Run ``uvx --from mvgeos==VERSION mvgeos ...`` under ``env``.
+    """Run ``uvx --from mvge==VERSION mvge ...`` under ``env``.
 
     Returns the exit code, the combined output, and the elapsed seconds.
     """
-    command = ["uvx", "--from", f"mvgeos=={version}", "mvgeos", *args]
+    command = ["uvx", "--from", f"mvge=={version}", "mvge", *args]
     started = time.monotonic()
     process = subprocess.run(
         command,
@@ -533,7 +520,7 @@ def scrubbed(env: dict[str, str]) -> dict[str, str]:
 def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
     """Every first-party distribution this release actually resolves to.
 
-    ``uvx --from mvgeos==VERSION python`` builds the same environment the
+    ``uvx --from mvge==VERSION python`` builds the same environment the
     console script runs in and then asks that environment what it holds, so the
     answer describes the resolved tree rather than what the release claimed to
     contain.
@@ -550,12 +537,12 @@ def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
         "found = {\n"
         "    d.metadata['Name']: d.version\n"
         "    for d in distributions()\n"
-        "    if (d.metadata['Name'] or '').startswith('mvgeos')\n"
+        "    if (d.metadata['Name'] or '') == 'mvge'\n"
         "}\n"
         f"print('{PROBE_MARKER}' + json.dumps(found, sort_keys=True))\n"
     )
     process = subprocess.run(
-        ["uvx", "--from", f"mvgeos=={version}", "python", "-c", probe],
+        ["uvx", "--from", f"mvge=={version}", "python", "-c", probe],
         env=scrubbed(env),
         capture_output=True,
         text=True,
@@ -810,10 +797,10 @@ def main() -> int:
     # The release was fully live; the probe was early. Wait for the version
     # to be visible before measuring anything, so a propagation delay reads
     # as a wait rather than a failed release.
-    print(f"waiting for mvgeos=={version} to appear on the PyPI index ...")
+    print(f"waiting for mvge=={version} to appear on the PyPI index ...")
     if not wait_for_version_on_index(version):
         print(
-            f"verify_install failed: mvgeos=={version} did not appear on the "
+            f"verify_install failed: mvge=={version} did not appear on the "
             f"PyPI index within {INDEX_TIMEOUT_SECONDS}s",
             file=sys.stderr,
         )
@@ -823,7 +810,7 @@ def main() -> int:
     stamps: list[float] = []
     leaked = host_paths_reachable()
     try:
-        print(f"verify_install: mvgeos=={version} on a scratch HOME")
+        print(f"verify_install: mvge=={version} on a scratch HOME")
         print(f"  HOME   {home}")
         print(f"  cache  {cache} (empty: the install below is a real download)")
         isolation = (
@@ -836,7 +823,7 @@ def main() -> int:
             failures.append(f"{path} is reachable from inside the run")
 
         code, output, elapsed = run_uvx(version, env, ["--help"], cwd=work)
-        print(f"\n[1/5] uvx mvgeos --help -> exit {code} in {elapsed:.2f}s")
+        print(f"\n[1/5] uvx mvge --help -> exit {code} in {elapsed:.2f}s")
         if code != 0:
             failures.append(f"`--help` exited {code}")
             print(output[-2000:])
@@ -896,8 +883,8 @@ def main() -> int:
             [
                 "uvx",
                 "--from",
-                f"mvgeos=={version}",
-                "mvgeos",
+                f"mvge=={version}",
+                "mvge",
                 *task_args,
             ],
             env=scrubbed(env),

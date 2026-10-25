@@ -127,7 +127,7 @@ def test_a_project_scoped_agent_is_known(tmp_path: Path) -> None:
 
 
 def test_validate_raises_with_an_actionable_message(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="mvgeos config set --agent-name typo"):
+    with pytest.raises(ValueError, match="mvge config set --agent-name typo"):
         validate_agent_name("typo", agent_config_base=tmp_path)
 
 

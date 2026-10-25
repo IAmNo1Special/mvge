@@ -273,7 +273,7 @@ def test_resolution_waits_for_uvx_not_for_a_url(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.subprocess, "run", recording)
 
     assert wait_for_pypi.resolves("0.6.25") is True
-    assert asked == [["uvx", "--from", "mvgeos==0.6.25", "mvgeos", "--help"]]
+    assert asked == [["uvx", "--from", "mvge==0.6.25", "mvge", "--help"]]
 
 
 def test_resolution_stops_waiting_when_uvx_succeeds(monkeypatch) -> None:
@@ -342,7 +342,7 @@ def test_resolution_is_not_asked_for_unless_it_was_requested(monkeypatch) -> Non
 
 
 def test_the_default_package_is_the_one_uvx_installs() -> None:
-    assert wait_for_pypi.DEFAULT_PACKAGE == "mvgeos"
+    assert wait_for_pypi.DEFAULT_PACKAGE == "mvge"
 
 
 def test_the_project_document_is_what_is_asked(monkeypatch) -> None:
