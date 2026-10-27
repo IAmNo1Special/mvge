@@ -23,9 +23,13 @@ class TestConfigManagerDefaults:
     def test_defaults_are_used_when_no_files_exist(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
         merged = mgr.load()
-        assert merged["model"].value == ConfigManager.DEFAULTS["model"]
+        # Realm-first (ADR-0028): the defaults carry no model any more;
+        # they carry an empty Realm preference, which resolves to no
+        # model until a Realm is chosen.
+        assert "model" not in merged
+        assert merged["realm"].value == ""
+        assert merged["realm"].layer == ConfigLayer.DEFAULTS
         assert merged["max_tokens"].value == ConfigManager.DEFAULTS["max_tokens"]
-        assert merged["model"].layer == ConfigLayer.DEFAULTS
 
     def test_defaults_can_be_overridden(self, tmp_path: Path) -> None:
         custom_defaults = {"model": "custom-model", "max_tokens": 100}
@@ -181,8 +185,8 @@ class TestConfigManagerAgentScope:
 
     def test_get_single_value_with_provenance(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        val = mgr.get("model")
-        assert val.value == ConfigManager.DEFAULTS["model"]
+        val = mgr.get("realm")
+        assert val.value == ""
         assert val.layer == ConfigLayer.DEFAULTS
 
 
@@ -398,8 +402,8 @@ class TestAgentValidation:
 class TestConfigManagerOperations:
     def test_get_existing_and_default(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
-        val = mgr.get("model")
-        assert val.value == ConfigManager.DEFAULTS["model"]
+        val = mgr.get("realm")
+        assert val.value == ""
         assert val.layer == ConfigLayer.DEFAULTS
 
         missing = mgr.get("non_existent_key", default="fallback")

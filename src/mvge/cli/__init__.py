@@ -1,3 +1,7 @@
-from mvge.core.constants import DEFAULT_MODEL
+"""CLI package.
 
-__all__ = ["DEFAULT_MODEL"]
+There is no global default model exported here any more: defaults are
+resolved per Realm through ``mvge.provider.model_registry.resolve_default_model``.
+"""
+
+__all__: list[str] = []

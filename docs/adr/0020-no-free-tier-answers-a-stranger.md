@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (default-model part superseded by ADR 0028)
 
 ## Date
 

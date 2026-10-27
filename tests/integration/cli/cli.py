@@ -74,7 +74,9 @@ def test_repl_callback_no_incantation_runs_repl(mock_run_agent: AsyncMock) -> No
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
 def test_repl_callback_with_incantation(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["--incantation", "hello world"])
+    result = runner.invoke(
+        app, ["--model", "openrouter/free", "--incantation", "hello world"]
+    )
     assert result.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs = mock_run_agent.call_args[1]
@@ -197,19 +199,16 @@ def test_a_paid_model_on_zen_still_refuses_and_names_its_own_variable() -> None:
         mock_run.assert_not_called()
 
 
-def test_the_default_model_demands_its_own_credential() -> None:
-    """The shipped default must name the key a reader has to set.
+def test_no_model_no_realm_names_the_realm_choice_not_a_key() -> None:
+    """With no model and no Realm preference, the CLI names the choice.
 
-    This used to assert the opposite -- that the default runs with no
-    credential at all, because Zen's free tier was anonymous (ADR-0015). That
-    is measured false now (ADR-0020): no free tier answers an unauthenticated
-    request. The invariant is inverted, not deleted: a default that reaches the
-    agent with no key is now a Summoner told a setup step can help when it
-    cannot, so the gate must refuse and name ``OPENROUTER_API_KEY``.
-
-    Asserted as the CLI refusing at the credential gate, before any Realm is
-    resolved, so the failure is attributable to the missing key rather than to
-    whatever happens next.
+    This is the Realm-first form of the old default-credential test.
+    There is no global default any more (ADR-0028), so a prompt run
+    with nothing set cannot be gated on an OpenRouter key: there is no
+    Realm to ask a key for. The CLI refuses before any agent runs and
+    names the choice -- a model with --model, or a Realm with
+    `mvge config set realm <realm>` -- instead of silently assuming
+    OpenRouter.
     """
     env = dict(os.environ)
     env.pop("OPENROUTER_API_KEY", None)
@@ -217,6 +216,10 @@ def test_the_default_model_demands_its_own_credential() -> None:
     env.pop("MVGE_API_KEY", None)
     with (
         patch.dict(os.environ, env, clear=True),
+        patch(
+            "mvge.cli.main._load_config_preference",
+            return_value=(None, None),
+        ),
         patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
         patch("mvge.cli.main._run_agent", new_callable=AsyncMock) as mock_run,
     ):
@@ -224,8 +227,8 @@ def test_the_default_model_demands_its_own_credential() -> None:
         result = runner.invoke(app, ["hi"])
         assert result.exit_code != 0
         output = _strip_ansi(result.output)
-        assert "API key required" in output
-        assert "OPENROUTER_API_KEY" in output
+        assert "No model or Realm preference set" in output
+        assert "OPENROUTER_API_KEY" not in output
         mock_run.assert_not_called()
 
 
@@ -323,7 +326,9 @@ def test_openrouter_key_is_not_handed_to_another_realm() -> None:
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
 def test_one_shot_merges_incantation_and_positionals(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["--incantation", "p0", "p1", "p2"])
+    result = runner.invoke(
+        app, ["--model", "openrouter/free", "--incantation", "p0", "p1", "p2"]
+    )
     assert result.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs = mock_run_agent.call_args[1]
@@ -335,7 +340,7 @@ def test_one_shot_merges_incantation_and_positionals(mock_run_agent: AsyncMock) 
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
 def test_one_shot_positional_only(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["list", "files"])
+    result = runner.invoke(app, ["--model", "openrouter/free", "list", "files"])
     assert result.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs = mock_run_agent.call_args[1]
@@ -357,7 +362,9 @@ def test_leaf_subcommand_with_extra_args_routes_to_prompts(
     mock_run_agent: AsyncMock,
 ) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["info", "about", "python"])
+    result = runner.invoke(
+        app, ["--model", "openrouter/free", "info", "about", "python"]
+    )
     assert result.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs = mock_run_agent.call_args[1]
@@ -365,7 +372,9 @@ def test_leaf_subcommand_with_extra_args_routes_to_prompts(
     assert call_kwargs["prompts"] == ["info", "about", "python"]
 
     mock_run_agent.reset_mock()
-    result_build = runner.invoke(app, ["build", "a", "snake", "game"])
+    result_build = runner.invoke(
+        app, ["--model", "openrouter/free", "build", "a", "snake", "game"]
+    )
     assert result_build.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs_build = mock_run_agent.call_args[1]
@@ -377,7 +386,7 @@ def test_leaf_subcommand_with_extra_args_routes_to_prompts(
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
 def test_options_after_positionals_are_prompts(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["p1", "--model", "x"])
+    result = runner.invoke(app, ["--model", "openrouter/free", "p1", "--model", "x"])
     assert result.exit_code == 0
     mock_run_agent.assert_called_once()
     call_kwargs = mock_run_agent.call_args[1]
@@ -396,7 +405,7 @@ def test_error_exit_code_propagates(mock_run_agent: AsyncMock) -> None:
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
 def test_success_exit_code_zero(mock_run_agent: AsyncMock) -> None:
     mock_run_agent.return_value = 0
-    result = runner.invoke(app, ["p1"])
+    result = runner.invoke(app, ["--model", "openrouter/free", "p1"])
     assert result.exit_code == 0
 
 
@@ -413,7 +422,7 @@ async def test_run_agent_closes_agent_on_error() -> None:
     ):
         code = await _run_agent(
             incantation="test",
-            model_id=None,
+            model_id="openrouter/free",
             api_key="sk-or-v1-test-key",
             temperature=None,
             max_tokens=None,
@@ -532,16 +541,23 @@ def test_a_realm_that_needs_a_key_reads_its_own_api_key(
 @patch.dict(os.environ, {"OPENROUTER_API_KEY": "sk-or-test-key"})
 @patch("mvge.cli.main.load_api_key_for_realm", return_value=None)
 @patch("mvge.cli.main._run_agent", new_callable=AsyncMock)
-def test_the_default_realm_forwards_the_key_the_summoner_set(
-    mock_run_agent: AsyncMock, mock_auth: MagicMock
+@patch(
+    "mvge.cli.main._load_config_preference",
+    return_value=(None, "openrouter"),
+)
+def test_a_realm_preference_forwards_that_realms_key(
+    mock_pref: MagicMock,
+    mock_run_agent: AsyncMock,
+    mock_auth: MagicMock,
 ) -> None:
-    """The default Realm must use the credential the Summoner actually set.
+    """A stored Realm preference must use the credential actually set
+    for that Realm.
 
-    Requiring a key removes the *absence* of one, not the forwarding of one. A
-    Summoner who has set ``OPENROUTER_API_KEY`` for the default Realm -- which
-    is where it lives now that the default is the OpenRouter router -- must have
-    it reach the agent, or the gate would discard working access in order to
-    make the free path run.
+    This is the Realm-first form of the old default-Realm test: there
+    is no default Realm any more (ADR-0028), so the key forwarded is
+    the one for the Realm the Summoner chose, read from that Realm's
+    own variable. A Summoner who set ``OPENROUTER_API_KEY`` and chose
+    ``openrouter`` must have it reach the agent.
     """
     mock_run_agent.return_value = 0
     result = runner.invoke(app, ["--incantation", "hello"])
@@ -626,3 +642,33 @@ def test_the_missing_key_message_names_the_models_own_variable() -> None:
         assert result.exit_code == 1
         assert "OPENCODE_API_KEY" in result.output
         assert "OPENROUTER_API_KEY" not in result.output
+
+
+def test_resolve_cli_model_is_realm_first() -> None:
+    """The CLI key gate resolves Realm-first, never from a global default.
+
+    Explicit --model wins, then a model set in config, then the stored
+    Realm preference. With none of those the gate has no model and no
+    Realm, which the callback must handle as a Realm choice, not as an
+    OpenRouter key prompt.
+    """
+    from mvge.cli.main import resolve_cli_model
+
+    assert resolve_cli_model("opencode/glm-5", "openrouter/free", "openrouter") == (
+        "opencode/glm-5",
+        "opencode",
+    )
+    assert resolve_cli_model(None, "openrouter/free", "opencode") == (
+        "openrouter/free",
+        "openrouter",
+    )
+    assert resolve_cli_model(None, None, "opencode") == (
+        "opencode/space-bunny-free",
+        "opencode",
+    )
+    assert resolve_cli_model(None, None, "openrouter") == (
+        "openrouter/free",
+        "openrouter",
+    )
+    assert resolve_cli_model(None, None, None) == (None, "")
+    assert resolve_cli_model(None, None, "groq") == (None, "")

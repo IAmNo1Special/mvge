@@ -13,7 +13,7 @@ from typing import Any
 from mvge.agent.agent_name import validate_agent_name
 from mvge.agent.config_manager import ConfigLayer, ConfigManager, ConfigValue
 from mvge.agent.snapshot import RuntimeSnapshot, assemble_snapshot
-from mvge.core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.events import PromptSource as PromptSource
 from mvge.core.events import QueueMode
 from mvge.core.layers import (
@@ -24,6 +24,7 @@ from mvge.core.layers import (
     resolve_rune_layers,
 )
 from mvge.core.spells import MvgeSpell
+from mvge.provider.model_registry import resolve_default_model
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.types import (
     BeforeMvgeStartData,
@@ -68,6 +69,7 @@ class AgentConfig:
     spell_names: list[str] | None
     runes_paths: list[Path]
     rune_layers: list[ResolvedLayer]
+    realm_preference: str = ""
 
 
 _SYSTEM_PROMPT_BODY = (
@@ -356,8 +358,39 @@ def coerce_agent_config(
     def _get(key: str, default: Any) -> Any:
         return config.get(key, ConfigValue(default, ConfigLayer.DEFAULTS)).value
 
-    # Model
-    model_id = str(_get("model", DEFAULT_MODEL))
+    # Model, Realm-first (ADR-0028). An explicit model wins; otherwise
+    # the stored Realm preference resolves through the per-Realm default
+    # table; otherwise there is no model. An empty model_id is an
+    # undecided session, not a silent OpenRouter session: the CLI owns
+    # what happens next (bootstrap, a Realm prompt, or a Realm-choice
+    # error), and this layer must not fill the hole for it. A preference
+    # for a Realm with no default is an error, not a fallback to another
+    # Realm's model.
+    raw_model = config.get("model")
+    explicit_model = (
+        str(raw_model.value).strip()
+        if raw_model is not None and str(raw_model.value).strip()
+        else ""
+    )
+    raw_realm = config.get("realm")
+    realm_preference = (
+        str(raw_realm.value).strip()
+        if raw_realm is not None and str(raw_realm.value).strip()
+        else ""
+    )
+    if explicit_model:
+        model_id = explicit_model
+    elif realm_preference:
+        resolved = resolve_default_model(realm=realm_preference)
+        if resolved is None:
+            raise ValueError(
+                f"Realm {realm_preference!r} has no default model. "
+                "Set a model with --model, or a Realm with a default "
+                "with `mvge config set realm <realm>`."
+            )
+        model_id = resolved
+    else:
+        model_id = ""
 
     # Temperature
     raw_temp = _get("temperature", 0.7)
@@ -460,6 +493,7 @@ def coerce_agent_config(
 
     return AgentConfig(
         model_id=model_id,
+        realm_preference=realm_preference,
         temperature=temperature,
         max_tokens=max_tokens,
         contemplation_level=contemplation_level,
