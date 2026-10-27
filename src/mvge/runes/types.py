@@ -358,6 +358,7 @@ class SkillManifest:
 @dataclass
 class SkillLoad:
     manifest: SkillManifest
+    source_rune: str | None = None
 
 
 class SkillDiagnosticKind(StrEnum):
