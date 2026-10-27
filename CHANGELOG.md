@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2026-10-27
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2c9c4ce)
+
+- **deps:** bump the uv group across 1 directory with 3 updates (b4f1b75)
+
+- **deps:** bump portalocker from 4.4.0 to 4.4.1 (470b05e)
+
+- **release:** v0.2.12 (1d40ea6)
+
+
+### Features
+
+- **cli:** bind non-interactive approval modes in TUI (92de5f9)
+
+
 ## [0.2.11] - 2026-10-27
 
 
@@ -63,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Chores
 
 - update CHANGELOG.md [skip ci] (8f7a958)
+
+- **deps-dev:** bump ruff from 0.17.0 to 0.17.2 (21c720c)
 
 - **release:** v0.1.4 (bb8171e)
 
@@ -182,6 +203,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Chores
 
 - update CHANGELOG.md [skip ci] (337a3e2)
+
+- **deps-dev:** bump pre-commit from 4.6.2 to 4.7.0 (64035be)
 
 - **release:** v0.7.7 (bbee77d)
 
