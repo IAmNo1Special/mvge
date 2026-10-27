@@ -31,6 +31,13 @@ from rich.text import Text
 
 from mvge.agent.protocol import AgentFactory, MvgeAgent
 from mvge.cli.agent_factory import create_agent, validate_api_key
+from mvge.cli.approval_binding import (
+    NO_SLOT_WARNING,
+    bind_approval_presenter,
+    resolve_approval_mode,
+    unbind_approval_presenter,
+)
+from mvge.cli.approval_presenter import CliApprovalPresenter
 from mvge.cli.commands.dispatcher import CliCommandDispatcher
 from mvge.cli.commands.repl import (
     NoConsoleScreenBufferError,
@@ -486,6 +493,7 @@ async def run_tui(
     tome_dir: str | None = None,
     agent_name: str = DEFAULT_AGENT_NAME,
     agent_factory: AgentFactory | None = None,
+    approval_mode: str | None = None,
 ) -> None:
     if api_key is None:
         api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -524,25 +532,51 @@ async def run_tui(
     renderer = StreamRenderer(sink)
     app = TuiApp(agent, sink, registry, renderer)
     sink.set_redraw_cb(app.application.invalidate)
-    check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
-    check_and_warn_missing_deps(
-        agent.environment.diagnostics,
-        out=app._out,
-        install=lambda: install_missing_deps(
-            agent_name=agent_name,
-            extension_dir=extension_dir,
-            yes=True,
-        ),
-    )
-
-    unsubs: list[object] = [
-        agent.on("message_update", renderer.on_message_update),
-        agent.on("spell_casting_start", renderer.on_spell_start),
-        agent.on("spell_casting_end", renderer.on_spell_end),
-        agent.on("turn_start", renderer.on_turn_start),
-        agent.on("turn_end", renderer.on_turn_end),
-    ]
+    # Approval: same host presenter slot as the REPL, but only for modes
+    # that never prompt. A prompt-mode CliApprovalPresenter reads stdin
+    # and writes to stdout, which would fight the full-screen app, so
+    # prompt mode stays unbound and the Approval Rune gate denies, exactly
+    # as the CLI note says. allow-all and deny return immediately without
+    # any terminal I/O, so they are safe to bind here. The rune's policy
+    # still runs first: explicit deny/allow rules decide before the
+    # presenter is ever consulted, and every decision is still audited
+    # by the gate.
+    # Binding, diagnostics, and subscriptions all live inside the try so
+    # a failure anywhere before app.run still unbinds (and closes) the
+    # presenter and closes the agent, instead of leaking a bound slot.
+    presenter: CliApprovalPresenter | None = None
+    runner: Any | None = None
+    presenter_bound = False
+    unsubs: list[object] = []
     try:
+        mode = resolve_approval_mode(approval_mode)
+        if mode != "prompt":
+            presenter = CliApprovalPresenter(mode=mode)
+            runner = getattr(agent, "runner", None)
+            presenter_bound = bind_approval_presenter(runner, presenter)
+            if not presenter_bound:
+                app._out(f"[yellow]{NO_SLOT_WARNING}[/yellow]")
+                # Never bound, so unbind will never close it: close it
+                # here so a failed bind leaves no live presenter behind.
+                presenter.close()
+        check_and_warn_load_failures(agent.environment.diagnostics, out=app._out)
+        check_and_warn_missing_deps(
+            agent.environment.diagnostics,
+            out=app._out,
+            install=lambda: install_missing_deps(
+                agent_name=agent_name,
+                extension_dir=extension_dir,
+                yes=True,
+            ),
+        )
+
+        unsubs = [
+            agent.on("message_update", renderer.on_message_update),
+            agent.on("spell_casting_start", renderer.on_spell_start),
+            agent.on("spell_casting_end", renderer.on_spell_end),
+            agent.on("turn_start", renderer.on_turn_start),
+            agent.on("turn_end", renderer.on_turn_end),
+        ]
         await app.run()
     except NoConsoleScreenBufferError:
         console.print(
@@ -555,5 +589,7 @@ async def run_tui(
         for unsub in unsubs:
             if callable(unsub):
                 unsub()
+        if presenter_bound:
+            unbind_approval_presenter(runner, presenter)
         await agent.close()
         sink.print_transcript()

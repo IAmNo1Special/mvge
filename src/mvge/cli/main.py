@@ -431,11 +431,12 @@ async def _run_agent(
             if notice is not None:
                 style = "yellow" if approval_mode_val == "allow-all" else "dim"
                 console.print(f"[{style}]{notice}[/{style}]")
-        if tui and not prompts_out:
+        if tui and not prompts_out and approval_mode_val == "prompt":
             console.print(
                 "[dim]Note: approval prompts are unavailable in TUI mode; "
                 "gated spell casts will be denied. Use the REPL for "
-                "interactive approval.[/dim]"
+                "interactive approval, or --approval-mode allow-all/deny "
+                "for this run.[/dim]"
             )
         if execution_mode == "rpc":
             validate_api_key(api_key, model_id=model_id)
@@ -470,6 +471,7 @@ async def _run_agent(
                     tome_dir=tome_dir,
                     agent_name=agent_name,
                     agent_factory=agent_factory,
+                    approval_mode=approval_mode,
                 )
                 return 0
 
