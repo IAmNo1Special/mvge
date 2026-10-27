@@ -702,9 +702,18 @@ class TomeHandleFactory:
             return None
 
     def tome_file(self, tome_id: str) -> Path:
-        """Resolve a tome id (or file path) to its JSONL file."""
+        """Resolve a tome id (or file path) to its JSONL file.
+
+        A located file must live inside the tome directory. ``_locate``
+        accepts any existing file path, so without this check a
+        caller-supplied traversal such as ``../../etc/passwd`` that
+        happens to exist would be returned verbatim, bypassing the
+        id allowlist that the not-found fallback applies.
+        """
         try:
             path, _codec = self._locate(tome_id)
+            if not path.resolve().is_relative_to(self._tome_dir.resolve()):
+                raise ValueError(f"Invalid tome id: {tome_id!r}")
             return path
         except FileNotFoundError:
             return self._tome_dir / f"{_validate_tome_id(tome_id)}.jsonl"
