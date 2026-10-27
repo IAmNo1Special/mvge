@@ -126,3 +126,45 @@ class TestSkillCatalog:
         catalog.mark_skill_active("a")
         catalog.mark_skill_active("b")
         assert catalog.get_active_skills() == {"a", "b"}
+
+    def test_load_skills_stamps_source_rune(self) -> None:
+        catalog = SkillCatalog()
+        manifest = SkillManifest(name="stamped", description="Stamped on load")
+        catalog.load_skills([SkillLoad(manifest=manifest)], source_rune="rune-a")
+        catalog.clear_rune("rune-a")
+        assert catalog.get_skills() == []
+
+    def test_clear_rune_keeps_other_runes_skills(self) -> None:
+        catalog = SkillCatalog()
+        mine = SkillManifest(name="mine", description="From rune-a")
+        theirs = SkillManifest(name="theirs", description="From rune-b")
+        catalog.load_skills([SkillLoad(manifest=mine)], source_rune="rune-a")
+        catalog.load_skills([SkillLoad(manifest=theirs)], source_rune="rune-b")
+        catalog.clear_rune("rune-a")
+        assert catalog.get_skills() == [theirs]
+
+    def test_clear_rune_drops_active_state(self) -> None:
+        catalog = SkillCatalog()
+        manifest = SkillManifest(name="active-skill", description="Activated")
+        catalog.load_skills([SkillLoad(manifest=manifest)], source_rune="rune-a")
+        catalog.mark_skill_active("active-skill")
+        catalog.clear_rune("rune-a")
+        assert not catalog.is_skill_active("active-skill")
+
+    def test_register_skill_records_source_rune(self) -> None:
+        catalog = SkillCatalog()
+        manifest = SkillManifest(name="api-skill-2", description="API registered")
+        catalog.register_skill(manifest, source_rune="rune-a")
+        catalog.clear_rune("rune-a")
+        assert catalog.get_skills() == []
+
+    def test_clear_rune_ignores_untagged_marketplace_loads(self) -> None:
+        class UntaggedLoad:
+            def __init__(self, manifest):
+                self.manifest = manifest
+
+        catalog = SkillCatalog()
+        manifest = SkillManifest(name="bridge-skill", description="Untagged")
+        catalog.load_skills([UntaggedLoad(manifest)])  # type: ignore[arg-type]
+        catalog.clear_rune("skills-bridge")
+        assert catalog.get_skills() == [manifest]

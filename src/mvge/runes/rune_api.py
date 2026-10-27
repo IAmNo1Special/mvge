@@ -260,7 +260,7 @@ class RuneAPI:
 
     def register_skill(self, manifest: SkillManifest) -> None:
         """Dynamically register an in-memory SkillManifest."""
-        self._runner.skill_catalog.register_skill(manifest)
+        self._runner.skill_catalog.register_skill(manifest, source_rune=self._rune_name)
 
     def send_message(self, content: str) -> None:
         self._runner.send_message(content)
