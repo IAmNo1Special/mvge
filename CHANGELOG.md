@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-10-27
+
+
+### Bug Fixes
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (063a37c)
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (61af1b7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (8f7a958)
+
+- **release:** v0.1.4 (bb8171e)
+
+
+### Documentation
+
+- add PyPI and CI status badges to README (1992998)
+
+
 ## [0.1.3] - 2026-10-25
 
 
