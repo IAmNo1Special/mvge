@@ -209,24 +209,26 @@ def test_a_realm_not_in_either_table_still_requires_a_credential() -> None:
     assert model_requires_credential(None) is True
 
 
-def test_no_realm_has_an_anonymous_free_tier_any_more() -> None:
-    """The anonymous-free set is empty, and that emptiness is measured.
+def test_only_pollinations_has_an_anonymous_free_tier() -> None:
+    """Pollinations alone earned the anonymous-free exemption, by measurement.
 
     ADR-0015 exempted `opencode` because Zen's free tier answered a request
     carrying no `Authorization` header. Measured 2026-10-11 (ADR-0020): every
     free slug on the live Zen catalogue refuses with ``FreeTierError: OpenCode's
     free tier can only be used from within OpenCode``, and OpenRouter's ``:free``
-    slugs answer ``401``. There is no Realm left whose free tier is anonymous.
+    slugs answer ``401``. Pollinations re-earned the exemption on a new
+    measurement, 2026-10-27: a POST to ``https://text.pollinations.ai/openai``
+    with model ``openai`` and no `Authorization` header answered HTTP 200
+    with ``user_tier: "anonymous"``. That is a legacy lane whose current
+    guide documents no anonymous tier, so it is a bootstrap fallback only.
 
-    The set is asserted empty rather than deleted, because the exemption is a
-    real concept a Realm can earn back -- and re-earning it must come with a
-    measurement, which is what this assertion points at.
+    Any other Realm added here must come with a measurement of the same
+    shape, as of the date its ADR records -- not with its free tier existing.
     """
-    assert frozenset() == REALMS_WITH_ANONYMOUS_FREE_TIER, (
-        "a Realm was added to the anonymous-free set. That is only correct if "
-        "it has been measured to answer a request with no Authorization header "
-        "as of the date the ADR records -- see ADR-0020 for what that looks like"
-    )
+    assert frozenset({"pollinations"}) == REALMS_WITH_ANONYMOUS_FREE_TIER
+    assert model_requires_credential("pollinations/openai") is False
+    assert model_requires_credential("opencode/space-bunny-free") is True
+    assert model_requires_credential("openrouter/free") is True
 
 
 def test_a_paid_model_on_zen_still_requires_a_credential() -> None:
@@ -273,9 +275,15 @@ def test_every_per_realm_default_requires_a_documented_credential() -> None:
     """
     assert REALM_DEFAULT_MODELS, "no per-Realm default is recorded"
     for model_id in REALM_DEFAULT_MODELS.values():
+        realm = realm_for_model_id(model_id)
+        if realm in REALMS_WITH_ANONYMOUS_FREE_TIER:
+            # An anonymous default needs no credential and therefore no
+            # credential variable: Pollinations is the bootstrap fallback,
+            # and demanding a key for it would defeat its purpose.
+            assert model_requires_credential(model_id) is False
+            continue
         assert model_requires_credential(model_id) is True
 
-        realm = realm_for_model_id(model_id)
         assert realm in REALM_API_KEY_ENV, (
             f"the default {model_id} resolves to the {realm!r} Realm, "
             "which has no documented credential variable, so a reader "
@@ -317,6 +325,7 @@ def test_resolve_default_model_is_realm_first() -> None:
     )
     assert resolve_default_model(realm="openrouter") == "openrouter/free"
     assert resolve_default_model(realm="opencode") == "opencode/space-bunny-free"
+    assert resolve_default_model(realm="pollinations") == "pollinations/openai"
     assert resolve_default_model() is None
     assert resolve_default_model(realm="groq") is None
     assert resolve_default_model(realm="") is None
