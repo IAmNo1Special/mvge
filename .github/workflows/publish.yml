@@ -180,7 +180,7 @@ jobs:
             # `Generator: uv <version>` in its WHEEL metadata and setup-uv@v7
             # installs the newest uv available, so the same commit rebuilt on a
             # different day is a different file. Measured on v0.6.17: the
-            # published mvgeos_core-0.6.17-py3-none-any.whl carries `Generator:
+            # published mvge-0.1.2-py3-none-any.whl carries `Generator:
             # uv 0.12.24` and a rebuild of the identical commit carries a
             # different version. The entire payload is byte-identical; only that
             # line and the RECORD hash of it differ. uv refused with "Local
@@ -234,7 +234,7 @@ jobs:
               # workflow filename or environment refuses all eight, while a
               # refusal partway means only those names are unregistered.
               if printf '%s' "$output" | grep -qi "not valid for project"; then
-                echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvgeos, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
+                echo "::error::$package was refused: PyPI has no trusted publisher that matches this run's OIDC token for '$package'. Register one at https://pypi.org/manage/project/$package/settings/publishing/ with owner IAmNo1Special, repository mvge, workflow filename publish.yml, environment pypi. Everything before this package already uploaded; re-run the same tag to upload the rest."
                 exit "$status"
               fi
               echo "::error::$package failed for a reason other than rate limiting or a missing trusted publisher"
@@ -252,7 +252,7 @@ jobs:
     # .version` was blank, and this job polled
     # `https://pypi.org/pypi/<name>//json` -- which is 200 for every package
     # that has ever existed. Measured on the v0.6.25 tag: every line printed
-    # `mvgeos-core : HTTP 200` with the version blank, over a run whose publish
+    # `mvge : HTTP 200` with the version blank, over a run whose publish
     # had been refused. `wait_for_pypi.py` refuses a version it cannot name
     # rather than asking that question, so the next regression of this fails
     # the run instead of greening it.
@@ -266,7 +266,7 @@ jobs:
     # `needs: publish` skips verify the moment publish fails, and a publish that
     # died on the seventh of eight names leaves six on PyPI with nothing in the
     # run saying which two are missing. v0.6.20 through v0.6.23 were each cut
-    # three times and each half-landed on `mvgeos` and `mvgeos-gui` with no
+    # three times and each half-landed on `mvge` and `mvge-desktop` with no
     # diagnosis, because the job whose whole purpose is that diagnosis was the
     # one being skipped. The run is red either way; this way it is red for a
     # reason a person can act on.
@@ -284,7 +284,7 @@ jobs:
       # An upload returning is not a release being installable; the index is
       # what decides that, and it lags. Measured on v0.6.19: the upload
       # returned at 00:03:12Z and this run's first `uvx` failed at 00:03:26Z
-      # with "there is no version of mvgeos==0.6.19" -- a release that had
+      # with "there is no version of mvge==0.6.19" -- a release that had
       # already landed, measured two seconds too early. So this waits, and the
       # wait is also what turns the failure back into a diagnosis: a name that
       # is still absent when the wait expires is a half-landed release, which
@@ -317,7 +317,7 @@ jobs:
       # upload it actually was.
       - name: Run the command a stranger types
         if: ${{ needs.publish.result == 'success' }}
-        run: uvx mvgeos --help
+        run: uvx mvge --help
 
       # verify ran for a reason, so it has to carry publish's failure forward. A
       # green verify over a red publish would read as a pass.
@@ -335,7 +335,7 @@ jobs:
   #
   # It checks out the repository, unlike `verify` above, and that is not a
   # contradiction: only the harness script is taken from the checkout. Every
-  # mvgeos the run touches still comes from PyPI via uvx, so the thing under test
+  # mvge the run touches still comes from PyPI via uvx, so the thing under test
   # is the published distribution and never the workspace.
   verify-install:
     needs: publish
@@ -390,14 +390,14 @@ jobs:
       # release is installable. PyPI answers an upload before the index that
       # `uvx` resolves against holds the release: the simple index is served
       # from cache -- measured as `cache-control: max-age=600` on
-      # `https://pypi.org/simple/mvgeos/` -- and only the upload's cache purge
+      # `https://pypi.org/simple/mvge/` -- and only the upload's cache purge
       # makes it fresh, which takes a moment. Measured on v0.6.19: the upload
       # returned at 00:03:12Z and this job's first uvx failed at 00:03:26Z with
-      # "there is no version of mvgeos==0.6.19", on a release that had already
+      # "there is no version of mvge==0.6.19", on a release that had already
       # landed.
       #
       # `--resolve` waits for the command a stranger types, run verbatim:
-      # `uvx --from mvgeos==<version> mvgeos --help`. That resolves the whole
+      # `uvx --from mvge==<version> mvge --help`. That resolves the whole
       # runtime closure, so it also proves the seven distributions the command
       # needs are on the index together, which is the half of the question
       # `verify` above answers for all eight.

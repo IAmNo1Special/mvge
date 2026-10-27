@@ -3,8 +3,8 @@
 ## Setup
 
 ```bash
-git clone https://github.com/IAmNo1Special/mvgeos.git
-cd mvgeos
+git clone https://github.com/IAmNo1Special/mvge.git
+cd mvge
 uv sync
 pre-commit install
 ```
@@ -13,7 +13,7 @@ pre-commit install
 
 Scoped, unassigned work carries the `help wanted` label:
 
-<https://github.com/IAmNo1Special/mvgeos/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>
+<https://github.com/IAmNo1Special/mvge/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22>
 
 Contributing needs no published release — a clone and `uv sync` are enough. The
 setup above is all the tooling there is; there is nothing to install first.
@@ -22,8 +22,7 @@ Before writing code:
 
 1. Read [`CONTEXT.md`](CONTEXT.md) for the domain vocabulary (Mvge, Spell, Realm,
    Tome, Rune, Sigil). Use those words, not the generic ones.
-2. Read the `AGENTS.md` of the package you are changing. Each one states that
-   package's contract and its testing expectations.
+2. Read `AGENTS.md` for project contracts and testing expectations.
 3. Read a recent test in the file you are about to change and copy its shape.
    This project is TDD: failing test first, then implement.
 4. Comment on the issue before you start, so two people do not build the same
@@ -44,8 +43,8 @@ Testing standards are defined in [TESTING.md](TESTING.md). Canonical invocations
 # Full suite with the 90% combined coverage floor (fail_under)
 uv run python -m pytest --cov
 
-# One package, both tiers
-uv run python -m pytest mvgeos-agent/tests
+# Unit tests
+uv run python -m pytest tests/unit
 ```
 
 Requirement: all tests passing, 90% combined coverage floor enforced via pyproject.

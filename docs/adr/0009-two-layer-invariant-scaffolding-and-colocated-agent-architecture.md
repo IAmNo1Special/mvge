@@ -9,7 +9,7 @@ Accepted (amended 2026-10-04: Layer-2 content list relocated to Runes)
 > most load-bearing thing in this repo and is not in question. What drifted is the
 > Layer-2 content list, and it drifted by **relocation, not deletion**:
 >
-> `render_prompt` (`mvgeos-agent/src/mvgeos_agent/environment.py:139-179`) now
+> `render_prompt` (`mvge-agent/src/mvge_agent/environment.py:139-179`) now
 > renders only two Layer-2 sections itself:
 >
 > - `Active spells:` (dynamically populated from coerced callables and Rune spells)
@@ -43,7 +43,7 @@ Accepted (amended 2026-10-04: Layer-2 content list relocated to Runes)
 
 ## Context
 
-Previously, agents in MvgeOS required manual spell list definitions, programmatic prompt wiring, and hardcoded tool registrations in Python code (e.g. `CodingMvge(spells=[bash, read, write, edit, find, list_files, grep])`). System prompts were tightly coupled with engine scaffolding, making self-modification and dynamic extension cumbersome.
+Previously, agents in Mvge required manual spell list definitions, programmatic prompt wiring, and hardcoded tool registrations in Python code (e.g. `CodingMvge(spells=[bash, read, write, edit, find, list_files, grep])`). System prompts were tightly coupled with engine scaffolding, making self-modification and dynamic extension cumbersome.
 
 Research across Pi, Google ADK, and modern Agent-Computer Interface (ACI) architectures demonstrated that separating static persona/guidelines from dynamic invariant engine scaffolding significantly improves model adherence, eliminates prompt degradation, and facilitates autonomous self-modification.
 

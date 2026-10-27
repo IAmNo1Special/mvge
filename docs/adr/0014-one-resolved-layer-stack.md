@@ -25,22 +25,22 @@ The directory scheme in [ADR 0002](0002-dotagents-protocol.md) and
 
 `AGENTS.md` states the **Protocol Boundary Pattern**: standard protocol
 directory names at the filesystem seam (`~/.agents/sessions/`,
-`~/.agents/extensions/`), MvgeOS terminology only inside Python. ADR-0002 chose
-the opposite — a proprietary `.mvgeos/` subdirectory:
+`~/.agents/extensions/`), Mvge terminology only inside Python. ADR-0002 chose
+the opposite — a proprietary `.mvge/` subdirectory:
 
 ```
-.agents/.mvgeos/runes/manifest.json
-.agents/.mvgeos/tomes/
-.agents/.mvgeos/auth/
-.agents/.mvgeos/models.json
+.agents/.mvge/runes/manifest.json
+.agents/.mvge/tomes/
+.agents/.mvge/auth/
+.agents/.mvge/models.json
 ```
 
-No `.mvgeos/` directory exists in any `src/`. The last two `.mvgeos` matches in
+No `.mvge/` directory exists in any `src/`. The last two `.mvge` matches in
 first-party Rune code were legacy compatibility string tests
-(`mvgeos-agent/src/mvgeos_agent/rune_lifecycle.py:121,128`), which the repo's own
+(`mvge-agent/src/mvge_agent/rune_lifecycle.py:121,128`), which the repo's own
 **Zero Backward Compatibility Burden** rule says to delete; they are deleted.
-The one surviving `.mvgeos` path is `mvgeos-gui/src/mvgeos_gui/main.py:27`,
-which writes NiceGUI's signed-cookie secret to `~/.mvgeos/.storage_secret`.
+The one surviving `.mvge` path is `mvge-gui/src/mvge_gui/main.py:27`,
+which writes NiceGUI's signed-cookie secret to `~/.mvge/.storage_secret`.
 That is outside the `.agents` layer entirely and out of scope here.
 
 Resolution had become the resolver of record — `global_agents_dir()` and
@@ -55,13 +55,13 @@ in-repo sites that disagreed:
 
 | Site | Divergence |
 | --- | --- |
-| `RuneLifecycle.resolve_paths` | Infers `Scope` by substring-matching the path string; still recognised the dead `.mvgeos/{agent}/runes` and `.mvgeos/runes` forms. |
+| `RuneLifecycle.resolve_paths` | Infers `Scope` by substring-matching the path string; still recognised the dead `.mvge/{agent}/runes` and `.mvge/runes` forms. |
 | `Mvge.__init__` | ~~Appended colocated `runes/`, config `runes/`+`extensions/`, package `runes/` — a second precedence pass with its own rules.~~ **Deleted 2026-10-11**: `resolve_active_agent_name` answers which Mvge runs, once, and `discover_agent_rune_extras` reads that answer. |
 | `dynamic_commands.get_extension_dirs` | Used the ambient `Path.cwd()` and probed the non-standard `<cwd>/extensions`. Rune *CLI command* discovery, so the same divergence class as Rune loading. |
 
 A fourth site, `approval-rune/gate.py:71`
 (`DEFAULT_DATA_DIR = Path.home() / ".agents" / "approval"`), ignores
-`MVGEOS_GLOBAL_DIR` entirely. That code lives in the marketplace repository and
+`MVGE_GLOBAL_DIR` entirely. That code lives in the marketplace repository and
 is tracked there.
 
 Persona and prompt resolution is deliberately **not** in this set.
@@ -75,21 +75,21 @@ reads `AGENTS.md`; `steering-bridge` owns it through `BEFORE_MVGE_START`.
 
 `steering-bridge` was the reference implementation of this decision: it derives
 its resolver's global layer from `global_agents_dir()` and honours
-`MVGEOS_GLOBAL_DIR`. Every resolver here is now one call into
-`mvgeos_core.layers`, which is that shape.
+`MVGE_GLOBAL_DIR`. Every resolver here is now one call into
+`mvge_core.layers`, which is that shape.
 
 ### Implementation note
 
-`Scope` and every path function moved to `mvgeos_core.layers`;
-`mvgeos_core.constants` retains only the four protocol-facing names
+`Scope` and every path function moved to `mvge_core.layers`;
+`mvge_core.constants` retains only the four protocol-facing names
 (`DEFAULT_AGENT_NAME`, `DEFAULT_MODEL`, `GLOBAL_DIR_ENV`, `PROJECT_RUNE_PATH`).
 `Scope` had to move down regardless of module layout, because
-`mvgeos-core/tests/unit/dependency_direction.py` forbids core importing runes
+`mvge-core/tests/unit/dependency_direction.py` forbids core importing runes
 and the resolver needs to *rank* scopes.
 
 `constants.py` deliberately keeps no re-export facade. Two import paths to one
 path-derivation helper is the failure this ADR exists to end. The supported
-import path for everything below is the package root, `from mvgeos_core
+import path for everything below is the package root, `from mvge_core
 import ...`, which is where the moved symbols are re-exported. That is also
 what the marketplace runes use, so moving the symbols out of `constants` did
 not reach them.
@@ -110,7 +110,7 @@ One module owns the layer stack and is the only place a path is derived.
    redirected afterwards.
 
 2. **Layer order, most general to most specific.** global → user → agent →
-   project. `$MVGEOS_GLOBAL_DIR` overrides the global layer for every read and
+   project. `$MVGE_GLOBAL_DIR` overrides the global layer for every read and
    every write, which is what makes an isolated run possible.
 
 3. **Project is anchored, never ambient — for search paths.** The project layer
@@ -154,11 +154,11 @@ documented single resolver. `Scope` is what decision 5 turns into a ranking rule
 
 - One place to change when the layout moves. Install path and discovery path
   cannot diverge, because they are one call rather than two.
-- `MVGEOS_GLOBAL_DIR` isolates a whole run — global Rune layer, Tomes, auth,
+- `MVGE_GLOBAL_DIR` isolates a whole run — global Rune layer, Tomes, auth,
   approval state and model cache together. That is what lets the root
   `conftest.py` make the suite hermetic regardless of what the developer has
   installed.
-- The legacy `.mvgeos/{agent}/runes` matching becomes deletable, removing the
+- The legacy `.mvge/{agent}/runes` matching becomes deletable, removing the
   last first-party reference to a scheme this decision retired.
 - `approval-rune` stops writing grants outside the relocated global layer.
 
@@ -170,5 +170,5 @@ documented single resolver. `Scope` is what decision 5 turns into a ranking rule
 - Moving the five resolvers onto one module is a cross-package change touching
   core, agent, runes, and cli. It cannot be done package-locally.
 - Any Rune already published against the old resolvers needs re-checking. The
-  `mvgeos-marketplace` contract check gates engine removals but not path
+  `mvge-marketplace` contract check gates engine removals but not path
   resolution.

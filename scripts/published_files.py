@@ -12,13 +12,13 @@ a wheel built by `setup-uv@v7` they usually do: the wheel embeds
 ``Generator: uv <version>`` in its ``WHEEL`` metadata, and setup-uv installs the
 newest uv available, so the same commit rebuilt on a different day produces
 different bytes. Measured on `v0.6.17`: the published
-``mvgeos_core-0.6.17-py3-none-any.whl`` carries ``Generator: uv 0.12.24`` and a
+``mvge.core-0.6.17-py3-none-any.whl`` carries ``Generator: uv 0.12.24`` and a
 rebuild of the identical commit carries a different version. Every other byte of
 the wheel, including the entire package payload, is identical -- only that line
 and the ``RECORD`` hash of it differ. uv refused with
 
     error: Local file and index file do not match for
-    `mvgeos_core-0.6.17-py3-none-any.whl`
+    `mvge.core-0.6.17-py3-none-any.whl`
 
 which is the resume mechanism refusing to resume.
 
@@ -29,7 +29,7 @@ that died between two files -- so the check is per file rather than per version,
 and a version that is wholly absent reports every file as missing.
 
 Usage:
-    python scripts/published_files.py --package mvgeos --version 0.6.17 \\
+    python scripts/published_files.py --package mvge --version 0.1.2 \\
         --dist-dir dist
 
 Prints one filename per line for each file not yet on PyPI. Prints nothing and

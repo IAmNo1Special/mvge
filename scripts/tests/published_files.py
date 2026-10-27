@@ -20,9 +20,9 @@ import urllib.request
 
 import published_files
 
-DIST = "dist/mvgeos"
-WHEEL = "mvgeos-0.6.17-py3-none-any.whl"
-SDIST = "mvgeos-0.6.17.tar.gz"
+DIST = "dist/mvge"
+WHEEL = "mvge-0.6.17-py3-none-any.whl"
+SDIST = "mvge-0.6.17.tar.gz"
 
 
 class _Response(io.BytesIO):
@@ -54,7 +54,7 @@ def _published(*filenames: str, monkeypatch) -> None:
 def test_a_version_with_nothing_on_it_reports_every_file(monkeypatch) -> None:
     monkeypatch.setattr(published_files.urllib.request, "urlopen", _missing_404)
 
-    missing = published_files.missing_files("mvgeos", "0.6.17", [WHEEL, SDIST])
+    missing = published_files.missing_files("mvge", "0.6.17", [WHEEL, SDIST])
 
     assert missing == [WHEEL, SDIST]
 
@@ -62,7 +62,7 @@ def test_a_version_with_nothing_on_it_reports_every_file(monkeypatch) -> None:
 def test_a_fully_published_version_reports_nothing(monkeypatch) -> None:
     _published(WHEEL, SDIST, monkeypatch=monkeypatch)
 
-    missing = published_files.missing_files("mvgeos", "0.6.17", [WHEEL, SDIST])
+    missing = published_files.missing_files("mvge", "0.6.17", [WHEEL, SDIST])
 
     assert missing == []
 
@@ -71,7 +71,7 @@ def test_a_half_uploaded_version_reports_only_what_is_absent(monkeypatch) -> Non
     """An upload can die between two files, so this is the interesting case."""
     _published(WHEEL, monkeypatch=monkeypatch)
 
-    missing = published_files.missing_files("mvgeos", "0.6.17", [WHEEL, SDIST])
+    missing = published_files.missing_files("mvge", "0.6.17", [WHEEL, SDIST])
 
     assert missing == [SDIST]
 
@@ -89,7 +89,7 @@ def test_an_index_that_cannot_be_reached_is_not_a_skip(monkeypatch) -> None:
 
     monkeypatch.setattr(published_files.urllib.request, "urlopen", refused)
 
-    assert published_files.missing_files("mvgeos", "0.6.17", [WHEEL]) is None
+    assert published_files.missing_files("mvge", "0.6.17", [WHEEL]) is None
 
 
 def test_a_server_error_is_not_a_skip(monkeypatch) -> None:
@@ -100,7 +100,7 @@ def test_a_server_error_is_not_a_skip(monkeypatch) -> None:
 
     monkeypatch.setattr(published_files.urllib.request, "urlopen", failing)
 
-    assert published_files.missing_files("mvgeos", "0.6.17", [WHEEL]) is None
+    assert published_files.missing_files("mvge", "0.6.17", [WHEEL]) is None
 
 
 def test_a_response_that_is_not_the_expected_shape_is_not_a_skip(
@@ -113,11 +113,11 @@ def test_a_response_that_is_not_the_expected_shape_is_not_a_skip(
     """
 
     def malformed(url: str, timeout: int = 0) -> _Response:
-        return _Response(json.dumps({"info": {"name": "mvgeos"}}).encode())
+        return _Response(json.dumps({"info": {"name": "mvge"}}).encode())
 
     monkeypatch.setattr(published_files.urllib.request, "urlopen", malformed)
 
-    assert published_files.missing_files("mvgeos", "0.6.17", [WHEEL]) is None
+    assert published_files.missing_files("mvge", "0.6.17", [WHEEL]) is None
 
 
 def test_a_build_directory_gitignore_is_not_a_distribution(
@@ -129,7 +129,7 @@ def test_a_build_directory_gitignore_is_not_a_distribution(
     run then tries to upload it. Measured against PyPI before this filter
     existed: all six landed packages reported one missing file.
     """
-    dist = tmp_path / "mvgeos"
+    dist = tmp_path / "mvge"
     dist.mkdir()
     (dist / ".gitignore").write_text("*\n", encoding="utf-8")
     (dist / WHEEL).write_bytes(b"wheel")
@@ -141,7 +141,7 @@ def test_a_build_directory_gitignore_is_not_a_distribution(
         [
             "published_files.py",
             "--package",
-            "mvgeos",
+            "mvge",
             "--version",
             "0.6.17",
             "--dist-dir",

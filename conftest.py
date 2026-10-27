@@ -25,7 +25,7 @@ from collections.abc import Iterator
 import pytest
 
 #: Every variable the engine reads as a credential, sourced from the
-#: ``os.environ.get`` calls in ``mvgeos-*/src`` rather than guessed.
+#: ``os.environ.get`` calls in ``src/mvge`` rather than guessed.
 #:
 #: ``OPENCODE_API_KEY`` belongs here and was missing until 2026-10-11. Its
 #: absence let one test's key leak into the next: the suite passed locally while
@@ -35,7 +35,7 @@ import pytest
 CREDENTIAL_ENV_VARS = (
     "OPENROUTER_API_KEY",
     "OPENCODE_API_KEY",
-    "MVGEOS_API_KEY",
+    "MVGE_API_KEY",
     "GEMINI_API_KEY",
     "GOOGLE_API_KEY",
     "STORAGE_SECRET",
@@ -77,18 +77,18 @@ def _isolate_global_agents_dir(
     property for a test to have.
 
     A test that wants the real global layer, or wants to assert the default
-    resolution, sets or deletes ``MVGEOS_GLOBAL_DIR`` itself; this fixture only
+    resolution, sets or deletes ``MVGE_GLOBAL_DIR`` itself; this fixture only
     supplies a harmless default and restores whatever was there before.
 
     The resolvers read the variable on every call rather than caching it at
     import, which is what makes this work without reimporting anything.
     """
-    previous = os.environ.get("MVGEOS_GLOBAL_DIR")
-    os.environ["MVGEOS_GLOBAL_DIR"] = str(tmp_path_factory.mktemp("global-agents"))
+    previous = os.environ.get("MVGE_GLOBAL_DIR")
+    os.environ["MVGE_GLOBAL_DIR"] = str(tmp_path_factory.mktemp("global-agents"))
     try:
         yield
     finally:
         if previous is None:
-            os.environ.pop("MVGEOS_GLOBAL_DIR", None)
+            os.environ.pop("MVGE_GLOBAL_DIR", None)
         else:
-            os.environ["MVGEOS_GLOBAL_DIR"] = previous
+            os.environ["MVGE_GLOBAL_DIR"] = previous

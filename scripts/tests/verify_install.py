@@ -1,7 +1,7 @@
 """Tests for the install-verification harness.
 
 `scripts/verify_install.py` exists to answer one question for a release: would a
-stranger who has never seen this repository get a working `mvgeos`? The
+stranger who has never seen this repository get a working `mvge`? The
 expensive half of that -- installing from PyPI, calling a model -- is mocked out
 by never being run here. What is under test is every judgement the harness makes
 about what it saw, because each of those can be wrong while still printing a
@@ -30,10 +30,10 @@ import sys
 
 import pytest
 import verify_install
-from mvgeos_core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
-from mvgeos_provider.realms import (
-    DEFAULT_REALM,
+
+from mvge.provider.realms import (
     REALM_API_KEY_ENV,
+    REALM_DEFAULT_MODELS,
     rune_for_realm,
 )
 
@@ -42,7 +42,7 @@ def test_clean_env_cannot_see_the_host(
     tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The harness must not inherit state from the machine running it."""
-    monkeypatch.setenv("MVGEOS_SESSION", "leaked")
+    monkeypatch.setenv("MVGE_SESSION", "leaked")
     monkeypatch.setenv("HOME", "/home/somebody-else")
 
     env = verify_install.clean_env(
@@ -51,7 +51,7 @@ def test_clean_env_cannot_see_the_host(
 
     assert env["HOME"] == str(tmp_path / "home")
     assert env["OPENROUTER_API_KEY"] == "sk-or-v"
-    assert "MVGEOS_SESSION" not in env
+    assert "MVGE_SESSION" not in env
     # Rich reflows to the console width; the harness needs it pinned so a
     # multi-line preamble stays recognisable as one message.
     assert env["COLUMNS"] == "400"
@@ -133,17 +133,18 @@ def test_the_harness_owns_the_only_two_marketplace_copies() -> None:
 
 
 def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
-    """What CI actually runs, with no flags, must be the Realm the engine defaults to.
+    """What CI actually runs, with no flags, must probe a Realm the engine knows.
 
-    This is the assertion that was missing. An earlier revision hardcoded
-    ``default="openrouter"`` in the parser while ``DEFAULT_PROVIDER`` and the
-    engine both said ``opencode``, so every other test in this file stayed green
-    and the gate would have exercised a Realm no new Summoner starts on.
+    There is no single engine default Realm any more (ADR-0028: defaults are
+    per Realm). The gate is an OpenRouter probe by construction, so what this
+    pins is the smaller invariant that survives: the gate's probe defaults
+    agree with the engine's per-Realm table entry for the gate's own
+    provider, rather than naming a model the table has never heard of.
     """
     arguments = verify_install.build_parser().parse_args(["--version", "0.0.0"])
 
-    assert arguments.provider == DEFAULT_REALM
-    assert arguments.model == CORE_DEFAULT_MODEL
+    assert arguments.provider == verify_install.DEFAULT_PROVIDER
+    assert arguments.model == REALM_DEFAULT_MODELS[verify_install.DEFAULT_PROVIDER]
 
 
 def test_the_default_gate_requires_a_credential_and_says_so() -> None:
@@ -178,9 +179,9 @@ def test_the_default_gate_requires_a_credential_and_says_so() -> None:
         for entry in json.loads(
             (
                 pathlib.Path(verify_install.__file__).resolve().parent.parent
-                / "mvgeos-provider"
                 / "src"
-                / "mvgeos_provider"
+                / "mvge"
+                / "provider"
                 / "models.json"
             ).read_text()
         )[bucket]
@@ -425,40 +426,33 @@ def test_a_coherent_tree_is_accepted() -> None:
 def test_the_half_landed_release_is_detected() -> None:
     """The 2026-10-09 tree: six at 0.6.17, root at 0.6.16, gui never attempted.
 
-    Every constraint `mvgeos 0.6.16` declared was satisfied by this tree --
-    `mvgeos-cli>=0.6.16` against a 0.6.17 cli -- and `uvx mvgeos --help` exited
+    Every constraint `mvge 0.6.16` declared was satisfied by this tree --
+    `mvge-cli>=0.6.16` against a 0.6.17 cli -- and `uvx mvge --help` exited
     zero on it. It is the shape the assertion exists to refuse.
     """
     resolved = _coherent("0.6.17")
-    resolved["mvgeos"] = "0.6.16"
-    del resolved["mvgeos-tome"]
+    resolved["mvge"] = "0.6.16"
 
     failures = verify_install.lockstep_failures(resolved, "0.6.17")
 
-    assert len(failures) == 2
-    assert any("mvgeos-tome" in failure for failure in failures)
-    assert any("mvgeos 0.6.16" in failure for failure in failures)
+    assert len(failures) == 1
+    assert any("mvge 0.6.16" in failure for failure in failures)
 
 
 def test_the_gui_is_not_required_in_the_runtime_tree() -> None:
-    """`mvgeos-gui` is published in lockstep and installed by nothing.
-
-    Reading it off the published 0.6.17 metadata: `mvgeos` requires
-    `mvgeos-cli`, which requires agent, core, provider, tome and runes. Nothing
-    requires the GUI. Asserting all eight are present would fail on every
-    correct release, for a reason that has nothing to do with the packaging --
-    which is worse than no gate, because it teaches everyone to ignore it.
+    """The companion desktop package is published separately and not in runtime
+    closure.
     """
-    assert "mvgeos-gui" not in verify_install.RUNTIME_CLOSURE
+    assert "mvge-desktop" not in verify_install.RUNTIME_CLOSURE
 
-    resolved = dict(_coherent("0.6.17"), **{"mvgeos-gui": "0.6.17"})
+    resolved = dict(_coherent("0.6.17"), **{"mvge-desktop": "0.6.17"})
 
     assert verify_install.lockstep_failures(resolved, "0.6.17") == []
 
 
 def test_a_name_outside_the_closure_does_not_fail_the_tree() -> None:
-    """A third-party `mvgeos-*` name arriving is not this gate's business."""
-    resolved = dict(_coherent("0.6.17"), **{"mvgeos-someone-elses": "0.6.17"})
+    """A third-party `mvge-*` name arriving is not this gate's business."""
+    resolved = dict(_coherent("0.6.17"), **{"mvge-someone-elses": "0.6.17"})
 
     assert verify_install.lockstep_failures(resolved, "0.6.17") == []
 
@@ -472,13 +466,12 @@ def test_a_probe_that_ran_nothing_is_a_failure_not_a_pass() -> None:
 
 
 def test_a_missing_name_alone_is_enough_to_fail() -> None:
-    resolved = _coherent("0.6.17")
-    del resolved["mvgeos-tome"]
+    resolved = {"mvge-other": "0.6.17"}
 
     failures = verify_install.lockstep_failures(resolved, "0.6.17")
 
     assert len(failures) == 1
-    assert "mvgeos-tome" in failures[0]
+    assert "not installed by this release: mvge" in failures[0]
 
 
 def test_a_missing_bwrap_is_reported_as_the_known_reason(monkeypatch) -> None:
@@ -529,10 +522,10 @@ def test_a_working_bwrap_is_usable(monkeypatch) -> None:
 
 
 def _index_html(*versions: str) -> str:
-    """A minimal PyPI simple-index page listing ``versions`` of mvgeos."""
+    """A minimal PyPI simple-index page listing ``versions`` of mvge."""
     return "\n".join(
         '<a href="https://files.pythonhosted.org/packages/xx/'
-        f'mvgeos-{version}-py3-none-any.whl">mvgeos-{version}-py3-none-any.whl</a>'
+        f'mvge-{version}-py3-none-any.whl">mvge-{version}-py3-none-any.whl</a>'
         for version in versions
     )
 

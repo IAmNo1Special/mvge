@@ -21,7 +21,7 @@ repos:
 
       - id: mypy
         name: mypy
-        entry: uv run --no-sync python -m mypy .
+        entry: uv run --no-sync python -m mypy src
         language: system
         types: [python]
         pass_filenames: false
@@ -32,7 +32,7 @@ repos:
         name: unit tests
         # `scripts/tests` last: it is the release tooling, not a package, and
         # it runs in about a tenth of a second.
-        entry: uv run --no-sync python -m pytest mvgeos-agent/tests/unit mvgeos-provider/tests/unit mvgeos-runes/tests/unit mvgeos-tome/tests/unit mvgeos-cli/tests/unit mvgeos-gui/tests/unit scripts/tests
+        entry: uv run --no-sync python -m pytest tests/unit scripts/tests
         language: system
         types: [python]
         pass_filenames: false

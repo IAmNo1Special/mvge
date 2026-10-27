@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (default-model part superseded by ADR 0028)
 
 ## Date
 
@@ -28,8 +28,8 @@ one premise the decision called cheap.
 `verify-install` on 0.6.29 failed at step 5, the documented first task:
 
 ```
-[1/5] uvx mvgeos --help -> exit 0
-[2/5] resolved tree -> mvgeos 0.6.29, ... all seven at 0.6.29
+[1/5] uvx mvge --help -> exit 0
+[2/5] resolved tree -> mvge 0.6.29, ... all seven at 0.6.29
 [3/5] rune install opencode-realm -> exit 0
 [4/5] mvge install coding_mvge -> exit 0
 [5/5] real task -> exit 1 in 0.74s

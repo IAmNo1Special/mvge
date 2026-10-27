@@ -3,7 +3,7 @@
   "generated_by": "scripts/scorecard.py",
   "measured_at": "2026-10-05T13:06:45+00:00",
   "projects": {
-    "mvgeos": {
+    "mvge": {
       "commit": "f946644",
       "commit_published": true,
       "source_loc": 41321,
@@ -27,14 +27,7 @@
       "annotation_partial": 0,
       "annotation_weighted": 0.821918,
       "install": {
-        "pypi:mvgeos": "404",
-        "pypi:mvgeos-core": "200",
-        "pypi:mvgeos-agent": "404",
-        "pypi:mvgeos-provider": "200",
-        "pypi:mvgeos-tome": "200",
-        "pypi:mvgeos-runes": "200",
-        "pypi:mvgeos-cli": "404",
-        "pypi:mvgeos-gui": "404"
+        "pypi:mvge": "200"
       },
       "workflow_files": 4
     },

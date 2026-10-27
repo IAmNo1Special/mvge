@@ -1,171 +1,185 @@
-# MvgeOS
+# Mvge
 
-MvgeOS is an operating system for AI agents: a Mvge (agent) casts Spells (tools) against models served by Realms (model providers), conversations persist as Tomes, and capabilities extend through Runes.
+Mvge is an operating system for AI agents: a Mvge casts Spells against models served by Realms, conversations persist as Tomes, and capabilities extend through Runes.
 
 ## Language
+
+### Core Persona & Turn Cycle
 
 **Mvge** (pronounced "Mage"):
 An autonomous agent that acts on behalf of a Summoner by casting Spells against models served by Realms.
 _Avoid_: Agent (as a spoken term), assistant, bot
 
 **Active Mvge**:
-The Mvge an invocation runs, decided once per `Mvge` by `mvgeos_agent.agent_name.resolve_active_agent_name`. Three rules, each a reason not to guess: a requested name with an agent-scope directory is that Mvge; `DEFAULT_AGENT_NAME` ("default-mvge") means the Summoner asked for no particular Mvge and adopts the single installed one when there is exactly one; any other name is a request and survives even unbacked, so a typo surfaces where it is actionable. The engine discovers installed Mvges and never names a published artifact — see ADR-0014 decisions 3 and 5.
-_Avoid_: default agent, boilerplate
+The concrete Mvge identity an invocation runs, resolved either from an explicit Summoner request or by adopting the single installed Mvge when none is specified.
+_Avoid_: Default agent, boilerplate
+
+**Summoner**:
+The human or external orchestrator on whose behalf a Mvge acts.
+_Avoid_: User (as a spoken term), human, operator
+
+**Summoning**:
+Delegating a scoped sub-task from a parent Mvge to a child Mvge that runs with its own persisted sub-session Tome, a restricted Spell set, live status attribution, and inherited cancellation and approval channels.
+_Avoid_: Sub-agent spawning, ephemeral worker, handoff
+
+**Profile**:
+A named, curated bundle of a Mvge and complementary Runes (such as `minimal`, `coding`, or `autonomous`) that provisions a complete runtime tier.
+_Avoid_: Preset, flavor, bundle
 
 **Spell**:
-A tool a Mvge can cast during a run.
+A callable capability a Mvge can cast during a run to observe or mutate its environment, accompanied by a Summoner-visible action phrase and summary explaining why the Spell is being cast.
 _Avoid_: Tool (as a spoken term), function, action
 
-**Realm**:
-A model provider — a service that serves models to Mvges. OpenRouter is a Realm that routes requests onward to many upstream providers. For a direct Realm (e.g., Google), the Realm and the upstream provider are the same organization; the distinction only matters for router Realms.
-_Avoid_: Backend, endpoint
+**Spell Context**:
+The engine-supplied runtime envelope injected into a Spell execution carrying the cast identifier, cooperative cancellation signal, active Execution Backend, workspace root, and session metadata without exposing those parameters in the model-facing schema.
+_Avoid_: ToolContext, global state, hidden arguments
 
-**Provider** (plain English):
-The organization that provides a model (e.g., Google, Anthropic, NVIDIA). Derived from the model-ID prefix (`google/gemini...` → provider = "google"). Not a stored field on `Model` — computed from the ID.
-_Avoid_: Realm (do not conflate with the abstraction)
+**Realm**:
+A model service that streams or completes Invocations for a Mvge, either directly for a single model family or as a router across many upstream Providers.
+_Avoid_: Backend, endpoint, client
+
+**Provider**:
+The upstream organization that authors and hosts a model (derived from the model identifier prefix), distinct from the Realm that serves the request.
+_Avoid_: Realm
+
+**Channeling**:
+Receiving a model response incrementally as a live stream of text, contemplation, and Spell cast deltas.
+_Avoid_: Streaming (as a spoken term)
+
+**Contemplation**:
+The depth of reasoning effort a Mvge applies before acting during a turn.
+_Avoid_: Thinking, reasoning effort, chain-of-thought
+
+**Steering**:
+A Summoner Invocation injected between turns while a Mvge is actively working to redirect the current run in flight.
+_Avoid_: Interruption, mid-run prompt
+
+**Follow-up**:
+A queued Summoner Invocation that automatically resumes a Mvge after the current run would otherwise settle.
+_Avoid_: Queued prompt, continuation
+
+### Mana & Context Management
 
 **Mana**:
-Tokens — the unit in which model usage is measured and budgeted.
+The unit in which model context consumption and generation cost are measured.
 _Avoid_: Tokens (as a spoken term), credits, units
 
 **Mana Pool**:
-The model's context window — the maximum number of Mana (tokens) that fit in a single request context. Renamed from `context_window` in code.
+The maximum amount of Mana that fits within a model's single request context.
 _Avoid_: Context window (as a spoken term)
 
-**Mana Budget**:
-The cap on total Mana the Mvge can spend during a single run. **Not currently implemented.** Enforcement was removed from the loop because Pi has no equivalent — Pi handles context pressure with compaction, not by aborting the run. It will return as a user-installed Rune once the loop inversion adds a stop-capable sigil (no sigil can halt a run today; only `BEFORE_SPELL_CAST` can veto). Distinct from Contemplation Budget, which is a per-request Realm parameter, not a run-level cap.
-
 **Mana Used**:
-Cumulative Mana consumed during a run (`mana_used`). Carried on every `MESSAGE_END` and `TURN_END` event; reduced into `MvgeState` by `MvgeHarness`. Read by compaction to size the Mana Pool.
+The cumulative Mana consumed across turns within a run.
+_Avoid_: Token count, usage total
+
+**Mana Budget**:
+A run-level cap on total Mana a Mvge may spend before halting.
+_Avoid_: Max tokens, thinking budget, contemplation budget
+
+**Compaction**:
+Replacing the older prefix of a Tome's branch with a synthesized summary once the transcript approaches the Mana Pool limit.
+_Avoid_: Truncation, context pruning, summarization
+
+**Cut Point**:
+The turn-aligned boundary in a transcript where Compaction separates summarized history from the Retained Tail; never splits a Spell result from the Invocation that requested it.
+_Avoid_: Split index, truncation offset
+
+**Retained Tail**:
+The recent Invocations kept verbatim after Compaction so immediate conversational context remains intact.
+_Avoid_: Recent window, sliding window
+
+### Tome & Session Tree
 
 **Tome**:
-A single persisted conversation between a Summoner and a Mvge, recorded as an append-only sequence of Invocations. Per the Protocol Boundary Pattern, stored on disk in standard session directories (`~/.agents/sessions/`, `.agents/sessions/`) using standard JSONL v1 wire format (`type: "session"`, `parentSession`) — Pi-inspired, but not byte-compatible with Pi session files. "Session" is the standard protocol term at filesystem, wire, and CLI command boundaries (`mvgeos session`); "Tome" is the domain term inside the persona, Python model, and user presentation (`mvgeos tome` alias).
-_Avoid_: Session (as an internal domain/persona term; use Tome internally and Session at protocol boundaries), conversation, chat
+A persisted, tree-structured conversation between a Summoner and a Mvge recorded as an append-only sequence of entries.
+_Avoid_: Session (as an internal domain term; use Session only at standard filesystem and wire protocol boundaries), conversation, chat log
 
 **Invocation**:
-Any single message in a Tome's transcript — a SummonerRequest, an MvgeResponse, or a SpellResultMessage.
+A single conversational message in a Tome's transcript — a Summoner request, a Mvge response, or a Spell result.
 _Avoid_: Message (as a spoken term), turn, event
 
 **Invocation Transcript**:
-The rendered structure of one Mvge Invocation — its ordered parts (contemplation, execution steps, text, artifacts) as shown to the Summoner. Parts are authoritative; plain-text content and contemplation lists are projections of the parts.
+The ordered, Summoner-visible projection of a single Mvge Invocation's parts (contemplation, Spell executions, text, and artifacts).
 _Avoid_: Bubble builder, parts assembler
 
 **Leaf**:
-The active position marker in a Tome — an explicit entry pointing to the current tip of a conversation branch. The "current position" is the entry the Leaf points to.
+The active position marker pointing to the current tip entry of a conversation path within a Tome.
 _Avoid_: Head, cursor, pointer
 
 **Fork**:
-A new Tome created by branching from an entry in a parent Tome. The child Tome's header stores a reference to the parent Tome (`parentSession`). The branch path (ancestors up to the chosen entry) is copied into the child.
-_Avoid_: Branch (as a noun — the branch is implicit in the tree; Fork is the action and result)
+A new Tome created by branching from a specific entry in a parent Tome, copying the ancestor path up to that entry.
+_Avoid_: Branch (as a noun for the resulting Tome), clone
 
-**Summoner**:
-The user on whose behalf a Mvge acts. A SummonerRequest is the Summoner's input to a run.
-_Avoid_: User (as a spoken term), human, operator
+**Workspace Checkpoint**:
+A recoverable snapshot of working-tree files associated with a Tome entry so rewinding or forking a Leaf can restore filesystem state alongside the conversation transcript.
+_Avoid_: Git commit, backup
+
+### Extensions, Skills & Seam Capabilities
 
 **Rune**:
-An extension: a packaged unit that hooks into a Mvge's lifecycle and can register Spells, commands, shortcuts, and Realms. Per the Protocol Boundary Pattern, discovered on disk from standard extension directories (`~/.agents/extensions/`, `~/.agents/agents/{agent}/extensions/`, `{cwd}/.agents/extensions/`). Built-in Runes live at `~/.agents/agents/<agent>/runes/<name>/` (e.g., `skill_evolution`). "Extension" is the standard protocol term at filesystem and CLI command boundaries (`mvgeos extension`); "Rune" is the domain term inside the persona, Python model, and user presentation (`mvgeos rune` alias).
-_Avoid_: Extension (as an internal domain/persona term; use Rune internally and Extension at protocol boundaries), plugin, addon, Skill
-
-**Skill**:
-A capability pack discovered per `agentskills.io` via `SKILL_SCOPES` (`PROJECT:.agents/skills`, `USER:~/.agents/skills`, `AGENT:~/.agents/agents/{agent}/skills` (returned by `agent_skills_dir`). There is no `SKILL_SCOPES` constant in the engine — the scopes are enumerated by the skills-bridge Rune, which also adds a fourth, `PLUGINS`, that no engine module knows about.): a directory named `^[a-z0-9]+(-[a-z0-9]+)*$` (1-64 chars, must match `name` in frontmatter) containing `SKILL.md` (YAML frontmatter `name`/`description` 1-1024 chars + markdown instructions) and per WikiSkill `PURPOSE.md` (`Origin` + `Patterns Addressed` + `Evolution History`). Disclosed progressively (catalog → full instructions → resources), never executed directly. Distinct from Rune (executable extension) and Spell (executable tool).
-_Avoid_: Tool, Spell, Rune, plugin
-
-**Skill Evolution Store**:
-The persistent, compounding store that compiles `Raw Experience` into `skill_evolution/index.md` (catalog `[name]` linking to `patterns/name.md`: specific desc), `skill_evolution/logs.md`, `skill_evolution/skill-impact.md` (harness-appended diff + `R_val` + `Accepted/Rejected`), and `skill_evolution/patterns/*.md` (10-30 lines: what, root cause, commands, workarounds) via `SkillEvolutionMaintainer` patch ops (`append`/`replace`/`insert_after` exact target). Formerly referred to as Knowledge Store; updated to eliminate ambiguous knowledge naming.
-_Avoid_: Knowledge, wiki, memory, store
-
-**Raw Experience**:
-Immutable execution traces `raw_experience/iter_<k>/<trace>.json` (`T_train,k` per paper `§3.1`), the sole input to `SkillEvolutionMaintainer` alongside existing `Skill Evolution Store`. Never mutated, only appended.
-_Avoid_: Raw Knowledge, raw, traces, history
-
-**skill_evolution Rune**:
-The Rune at `~/.agents/agents/coding_mvge/runes/skill_evolution/` that is our implementation of `WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution` (`arxiv:2608.27454`). It harvests `Raw Experience` via `AFTER_INVOCATION`, consolidates into `Skill Evolution Store` (`ExperienceConsolidator`), and evolves `Skills` atomically (`SkillEvolutionEngine` with same-location saves via `SkillManifest.path`). Provides Spells `skill_evolution_consolidate`/`skill_evolution_export`, never mutates `.skill-lock.json` (reproducibility lock `~/.agents/.skill-lock.json` per `vercel-labs/skills`).
-_Avoid_: knowledge_skill, wiki_skill, WikiSkill (as a spoken term for the rune)
-
-**Channeling**:
-Streaming a response from a Realm — the act of receiving tokens incrementally. The protocol method is `stream()`; the renderer is `StreamRenderer`. (`channel` survives only as the module holding the vocabulary — `mvgeos_core/channel.py`, which carries `Model`, `ChannelConfig`, `RealmResponse`, and `StopReason`.)
-_Avoid_: Streaming, stream (as a spoken term)
+A packaged lifecycle extension that hooks into a Mvge via Sigils and can register Spells, commands, Realms, session codecs, and Approval Gates.
+_Avoid_: Extension (as an internal domain term; use Extension only at standard filesystem and CLI protocol boundaries), plugin, addon, Skill
 
 **Sigil**:
-A callback a Rune registers on a lifecycle hook. The hook points themselves are `SigilHook` enum values (e.g., `BEFORE_SPELL_CAST`, `AFTER_PROVIDER_RESPONSE`).
-_Avoid_: Callback (as a spoken term), hook (for the callback — the hook is the lifecycle point)
+A callback registered by a Rune on a specific lifecycle hook point to observe, transform, or veto runtime behavior.
+_Avoid_: Callback (as a spoken term), hook (for the callback itself — the hook is the lifecycle point)
 
-**Contemplation**:
-The depth of reasoning the Mvge applies during a run, requested by the Summoner (or set by the Mvge's defaults) and conveyed to the Realm as reasoning effort. Optionally capped by `contemplation_budget` — a per-request parameter sent to the Realm (Pi's `ThinkingBudgets`), not a run-level cap. Do not conflate with Mana Budget.
-_Avoid_: Reasoning (as a spoken term), thinking (for the concept)
+**Capability Bridge**:
+A Rune that binds an open specification or external protocol (such as `.agents` steering, `agentskills.io`, Open Knowledge Format, MADR, MCP, or OpenTelemetry) into a Mvge's system prompt, context, or Spells.
+_Avoid_: Adapter, wrapper, integration
 
-**MvgeOS GUI**:
-The native desktop interface for MvgeOS, built on NiceGUI with PyWebView, providing a 1:1 visual experience for multi-turn Summoner interactions, live Spell tracking, Git diff inspection, and Tome navigation.
-_Avoid_: Web client, frontend dashboard
+**Spell Gateway**:
+A Rune that suppresses upfront Spell, Skill, and MCP schema injection to expose a minimal discovery surface, activating capabilities into the active allowlist on demand and evicting or unloading them when no longer needed.
+_Avoid_: Tool router, proxy
 
+**Skill**:
+A progressively disclosed capability pack conforming to `agentskills.io` (frontmatter metadata, markdown instructions, and optional bundled resources) that teaches a Mvge how to perform a specialized task; never executed directly as a Spell or loaded as a Rune.
+_Avoid_: Tool, Spell, Rune, plugin
 
-## Loop architecture
+**Plugin**:
+A portable package adhering to the Agent Plugins specification that bundles Skills and MCP server configurations for distribution across `.agents`-compatible clients.
+_Avoid_: Rune, extension
 
-**Loop Core** (`run_loop`):
-The stateless heart of the turn cycle. Takes a frozen `LoopContext`, a `StreamFn`, an `emit` sink, and `LoopCallbacks`; returns the new Invocations. The loop **drives** the Realm: it calls `StreamFn` once per turn with the running transcript, channels the response, casts Spells, and goes round again while Spell results, steering, or follow-ups remain. Imports no `Realm`, no `RuneRunner`, no `SigilHook`, no `MvgeTome`, no `EventBus` — all outside contact flows through `emit` and the callbacks. Mirrors Pi's `runAgentLoop`.
+**Raw Experience**:
+Immutable execution trajectories captured from completed runs as the empirical input to autonomous Skill synthesis and evaluation.
+_Avoid_: Raw knowledge, logs, chat history
 
-**Stream Fn**:
-`Callable[[list[MvgeInvocation]], AsyncIterator[RealmResponse]]` — one Realm request per call. Built by `BaseMvge._make_stream_fn` from a Realm and Model. Keeps the provider layer out of the core; tests supply a plain function returning canned responses. Mirrors Pi's `StreamFn`.
+**Skill Evolution Store**:
+The persistent, validated repository of failure patterns, impact metrics, and consolidation logs compiled from Raw Experience to evolve Skills atomically.
+_Avoid_: Knowledge store, wiki, memory
 
-**Loop Context**:
-Frozen snapshot of everything the core reads (~9 fields). Diverges from Pi, which passes a mutable `AgentContext`; the frozen dataclass is what enforces the seam.
+### Security, Governance & Execution Substrate
 
-**Loop Callbacks**:
-The value-returning extension points: `transform_context`, `before_realm_headers`, `before_spell_cast` (veto), `after_spell_result`, `should_stop_after_turn`, `prepare_next_turn`, plus the queue drains `get_steering_messages` and `get_follow_up_messages`. Every callback is optional and must not raise — return a safe fallback instead. `MvgeHarness` honours this contract when building them from a Rune runner. Mirrors Pi's `AgentLoopConfig` callbacks.
+**Approval Gate**:
+A fail-closed policy checkpoint registered by a Rune that evaluates every Spell cast against security rules and session grants before execution is permitted.
+_Avoid_: Permission middleware, tool interceptor
 
-**Steering** / **Follow-up**:
-Steering Invocations are injected between turns while the Mvge is still working; follow-ups resume it after it would otherwise settle. The loop drains `MvgeState.steer_queue` after each turn that cast no Spells, and `followup_queue` at the outer-loop boundary. Each queue's drain strategy is controlled by `MvgeState.queue_mode` (`QueueMode.ALL` drains the entire queue, `QueueMode.ONE_AT_A_TIME` drains one message at a time, leaving the rest queued for subsequent drain points — matching Pi's `PendingMessageQueue.drain()` semantics).
+**Approval Presenter**:
+The host UI channel bound to the runtime that renders an Approval Gate's interactive prompt to the Summoner and returns their decision.
+_Avoid_: Confirmation dialog, UI callback
 
-**MvgeHarness**:
-The session-aware operational owner of the agent loop. Orchestrates session lifecycle, prompt dispatch, compaction history synchronization, event fan-out, and turn driving by executing `run_loop` directly behind a deep interface. Mirrors Pi's `AgentHarness`.
+**Workspace Trust**:
+The Summoner's explicit authorization permitting project-scoped Runes and Spells inside a working directory to be loaded and executed.
+_Avoid_: Repo permission, auto-load
 
-**Emit Sink**:
-The single async channel out of the core: `Callable[[MvgeEvent], Awaitable[None]]`. `MvgeHarness._emit` fans one event out to four effects — `MvgeState` reduction, the event bus, the mapped Sigil, and Tome recording. Recording happens only on `MESSAGE_END`, which the core emits for Summoner, Mvge, and Spell-result Invocations alike (Pi's one-recording-point model).
+**Code Sandbox**:
+Static verification that dynamically authored or synthesized Python code adheres to its declared module privilege budget and uses no forbidden host primitives.
+_Avoid_: Execution Backend, container
 
-**Spell Dispatcher** (`SpellDispatcher`):
-The deep module responsible for executing tool call batches concurrently (`asyncio.gather`) or fallback sequential execution (`mvgeos_core/dispatcher.py`). Evaluates `before_spell_cast` vetoes and `after_spell_result` transforms per task, preserves assistant request order, isolates exceptions into `SpellResultMessage(is_error=True)`, and evaluates batch termination (`terminate` flag) matching Pi's `executeToolCalls`.
+**Execution Backend**:
+The runtime substrate (such as the local host OS, a persistent container, or an ephemeral micro-VM) on which Spells execute commands and file operations.
+_Avoid_: Code Sandbox, AST guard
 
-**MvgeEnvironment**:
-The deep module responsible for resolving agent configuration, system prompts, guidelines, and runtime snapshot introspection (`mvgeos_agent/environment.py`). Consolidates layered config loading, prompt resolution, and diagnostic collection behind a single `resolve()` seam. Mirrors Pi's `AgentSessionServices` + `ResourceLoader`.
+### Desktop & Interaction Surface
 
-**Two-Layer Invariant Scaffolding**:
-The architecture that strictly decouples agent persona and behavioral guidelines (Layer 1: stored in colocated `SYSTEM.md` and `GUIDELINES.md`) from dynamic, engine-rendered Agent-Computer Interface scaffolding (Layer 2: `Active spells:`, `Environment:`, `Self-Modification & Customization:` on-demand reference pointers, and `<project_context>`).
+**Canvas**:
+A docked or slide-over interactive workspace surface in the Mvge desktop GUI positioned alongside the Tome transcript, used for reading, editing, and previewing Artifacts, unified diffs, and live documents without modal interruption.
+_Avoid_: Popup, modal dialog, preview window
 
-**Spell Auto-Discovery**:
-The engine capability in `discover_spells_from_dir` that discovers tools from a caller-adjacent `spells/` directory via 3-tier precedence (`__all__` in `__init__.py` -> function matching file stem -> single public function -> `SpellDiscoveryError`). Allows zero-boilerplate agent creation (`root_mvge = Mvge(name="...")`).
+**Steering Control**:
+An in-flight Composer interaction in the Mvge desktop GUI that dispatches guidance directly to an actively Channeling Mvge at the next turn boundary without aborting the run.
+_Avoid_: Interruption button, cancel-and-replace
 
-
-
-## Compaction
-
-**Compaction**:
-Replacing the earlier part of a transcript with a summary once it crowds the Mana Pool. Triggered after each Mvge Invocation, matching where Pi checks it. Pure measuring and splitting live in `mvgeos_agent/compaction.py`; the side effects (Realm call, events, Tome record) live in `CompactionRunner`. On any failure the run continues uncompacted — compaction is a recovery mechanism and must never become a new failure mode.
-
-**Cut Point**:
-Where a transcript is split. A Spell result is never a valid cut point: it must stay with the Invocation that requested it.
-
-**Retained Tail**:
-The recent Invocations kept verbatim after compaction. Persisted on the Tome's compaction entry alongside the summary and `manaBefore`, so context can be rebuilt without replaying what the summary replaced.
-
-**Realm.complete()**:
-A non-channelled Realm request, used for standalone calls that are not part of a Tome's transcript. Takes wire-format messages rather than Invocations, and deliberately offers no Spells. Compaction summaries use it.
-
-## Retry
-
-Two layers in `mvgeos_provider/retry.py`, mirroring Pi:
-
-- **`retry_realm_request`** — one HTTP request. Retries 408/409/429/5xx, honours `Retry-After` (failing hard beyond 60s rather than stalling), backs off exponentially capped at 8s with downward jitter, and respects an `x-should-retry` header.
-- **`retry_invocation`** — a whole Invocation. Realms report transient trouble as a `RealmResponse` carrying an error rather than raising, so this layer classifies the response: a Realm-set `error_code` is authoritative, otherwise the error prose is matched against deterministic patterns (quota, billing) before transient ones.
-
-Both accept a `signal` that is currently ignored, reserved so the abort work does not reshape the interfaces.
-
-## Default Model
-
-The system-wide default model across all MvgeOS packages and test suites is `openrouter/free` (`DEFAULT_MODEL` in `mvgeos_core.constants`, with the serving Realm recorded as `DEFAULT_REALM` in `mvgeos_provider.realms`). Resolving it needs an `OPENROUTER_API_KEY`, and no Realm answers a stranger without a credential — `REALMS_WITH_ANONYMOUS_FREE_TIER` is empty. See ADR-0015 through ADR-0020 for how the default moved and why each alternative failed.
-
-## Operational Capabilities
-
-- **Abort**: Implemented via `AbortController`, `AbortSignal`, and `BaseMvge.abort()`, providing cooperative cancellation across channeling and spell execution.
-- **Queue modes**: `ONE_AT_A_TIME` drains one message per turn; `ALL` drains the entire queue. Both `queue_mode` and `one-at-a-time` semantics implemented.
-- **Command Dispatcher** (`CommandDispatcher`): The deep module in `mvgeos-agent` responsible for parsing, routing, and executing interactive slash commands against the `MvgeAgent` interface, returning structured `CommandOutcome` values across the seam to Summoner presentation adapters.
-
+**Summoning Card**:
+An in-stream transcript card that visually represents a child Mvge's execution under a Summoning delegation, displaying live status attribution and offering one-click inspection into its child Tome.
+_Avoid_: Sub-agent box, nested chat

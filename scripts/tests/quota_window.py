@@ -108,9 +108,9 @@ def test_published_at_asks_the_json_api_for_that_name(
 ) -> None:
     requested = _stub_urlopen(monkeypatch, _payload(["2026-10-05T11:24:00.000000Z"]))
 
-    window.published_at("mvgeos-tome")
+    window.published_at("mvge-tome")
 
-    assert requested == ["https://pypi.org/pypi/mvgeos-tome/json"]
+    assert requested == ["https://pypi.org/pypi/mvge-tome/json"]
 
 
 def test_published_at_takes_the_earliest_upload(
@@ -134,7 +134,7 @@ def test_published_at_takes_the_earliest_upload(
         ),
     )
 
-    landed = window.published_at("mvgeos-cli")
+    landed = window.published_at("mvge-cli")
 
     assert landed == dt.datetime(2026, 10, 5, 11, 24, 3, tzinfo=dt.UTC)
 
@@ -160,7 +160,7 @@ def test_published_at_counts_a_version_with_no_files_of_its_own(
         },
     )
 
-    assert window.published_at("mvgeos") == dt.datetime(
+    assert window.published_at("mvge") == dt.datetime(
         2026, 10, 5, 11, 24, 3, tzinfo=dt.UTC
     )
 
@@ -177,7 +177,7 @@ def test_published_at_reads_a_name_with_no_uploads_at_all_as_absent(
         monkeypatch, {"info": {"version": "0.0.0"}, "urls": [], "releases": {}}
     )
 
-    assert window.published_at("mvgeos-nope") is None
+    assert window.published_at("mvge-nope") is None
 
 
 def test_published_at_reads_a_404_as_not_published(
@@ -187,7 +187,7 @@ def test_published_at_reads_a_404_as_not_published(
         monkeypatch, urllib.error.HTTPError("u", 404, "Not Found", None, None)
     )
 
-    assert window.published_at("mvgeos-tome") is None
+    assert window.published_at("mvge-tome") is None
 
 
 def test_published_at_reraises_every_other_http_error(
@@ -201,7 +201,7 @@ def test_published_at_reraises_every_other_http_error(
     _stub_urlopen(monkeypatch, urllib.error.HTTPError("u", 429, "Too Many", None, None))
 
     with pytest.raises(urllib.error.HTTPError) as caught:
-        window.published_at("mvgeos-tome")
+        window.published_at("mvge-tome")
 
     assert caught.value.code == 429
 
@@ -222,10 +222,10 @@ def test_describe_reads_the_index_for_every_name(
 
     monkeypatch.setattr(window, "published_at", record)
     window.describe(
-        ["mvgeos-core", "mvgeos-cli"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
+        ["mvge-core", "mvge-cli"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
     )
 
-    assert asked == ["mvgeos-core", "mvgeos-cli"]
+    assert asked == ["mvge-core", "mvge-cli"]
 
 
 def test_describe_splits_published_from_missing(
@@ -234,18 +234,18 @@ def test_describe_splits_published_from_missing(
     _stub_index(
         monkeypatch,
         {
-            "mvgeos-core": "2026-10-05T11:24:03+00:00",
-            "mvgeos-cli": "2026-10-05T11:25:00+00:00",
+            "mvge-core": "2026-10-05T11:24:03+00:00",
+            "mvge-cli": "2026-10-05T11:25:00+00:00",
         },
     )
 
     report = window.describe(
-        ["mvgeos-cli", "mvgeos-core", "mvgeos-tome", "mvgeos-runes"],
+        ["mvge-cli", "mvge-core", "mvge-tome", "mvge-runes"],
         now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
     )
 
-    assert sorted(report["published"]) == ["mvgeos-cli", "mvgeos-core"]
-    assert sorted(report["missing"]) == ["mvgeos-runes", "mvgeos-tome"]
+    assert sorted(report["published"]) == ["mvge-cli", "mvge-core"]
+    assert sorted(report["missing"]) == ["mvge-runes", "mvge-tome"]
 
 
 def test_describe_frees_a_slot_a_full_window_after_the_oldest_creation(
@@ -259,13 +259,13 @@ def test_describe_frees_a_slot_a_full_window_after_the_oldest_creation(
     _stub_index(
         monkeypatch,
         {
-            "mvgeos-core": "2026-10-05T11:24:03+00:00",
-            "mvgeos-cli": "2026-10-05T11:24:31+00:00",
+            "mvge-core": "2026-10-05T11:24:03+00:00",
+            "mvge-cli": "2026-10-05T11:24:31+00:00",
         },
     )
     now = dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
 
-    report = window.describe(["mvgeos-core", "mvgeos-cli"], now=now)
+    report = window.describe(["mvge-core", "mvge-cli"], now=now)
 
     assert report["next_slot_at"] == "2026-10-06T11:24:03+00:00"
     assert report["seconds_until_next_slot"] == 84243
@@ -284,21 +284,21 @@ def test_describe_frees_a_batch_created_seconds_apart_in_one_go(
     _stub_index(
         monkeypatch,
         {
-            "mvgeos-core": "2026-10-05T11:24:03+00:00",
-            "mvgeos-cli": "2026-10-05T11:24:07+00:00",
-            "mvgeos-tome": "2026-10-05T11:24:19+00:00",
-            "mvgeos-runes": "2026-10-05T11:24:22+00:00",
+            "mvge-core": "2026-10-05T11:24:03+00:00",
+            "mvge-cli": "2026-10-05T11:24:07+00:00",
+            "mvge-tome": "2026-10-05T11:24:19+00:00",
+            "mvge-runes": "2026-10-05T11:24:22+00:00",
         },
     )
     now = dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
 
     report = window.describe(
         [
-            "mvgeos-core",
-            "mvgeos-cli",
-            "mvgeos-tome",
-            "mvgeos-runes",
-            "mvgeos-agent",
+            "mvge-core",
+            "mvge-cli",
+            "mvge-tome",
+            "mvge-runes",
+            "mvge-agent",
         ],
         now=now,
     )
@@ -306,7 +306,7 @@ def test_describe_frees_a_batch_created_seconds_apart_in_one_go(
     # 24h after the OLDEST creation, not after the newest: 11:24:03, not 11:24:22.
     assert report["next_slot_at"] == "2026-10-06T11:24:03+00:00"
     assert report["seconds_until_next_slot"] == 84243
-    assert report["missing"] == ["mvgeos-agent"]
+    assert report["missing"] == ["mvge-agent"]
     assert report["slots_in_next_window"] == 1
     assert report["windows_needed"] == 1
 
@@ -320,10 +320,10 @@ def test_describe_never_reports_a_wait_in_the_past(
     re-check, and a negative interval is the kind of thing that turns into a
     sleep.
     """
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-01T00:00:00+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-01T00:00:00+00:00"})
 
     report = window.describe(
-        ["mvgeos-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
+        ["mvge-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
     )
 
     assert report["seconds_until_next_slot"] == 0
@@ -341,7 +341,7 @@ def test_describe_counts_windows_by_ceiling_division(
     _stub_index(monkeypatch, {})
 
     report = window.describe(
-        [f"mvgeos-pkg{index}" for index in range(5)],
+        [f"mvge-pkg{index}" for index in range(5)],
         now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
     )
 
@@ -355,7 +355,7 @@ def test_describe_clamps_the_slots_in_the_next_window_to_the_quota(
     _stub_index(monkeypatch, {})
 
     report = window.describe(
-        [f"mvgeos-pkg{index}" for index in range(9)],
+        [f"mvge-pkg{index}" for index in range(9)],
         now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
     )
 
@@ -366,10 +366,10 @@ def test_describe_clamps_the_slots_in_the_next_window_to_the_quota(
 def test_describe_reports_no_windows_when_nothing_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-05T11:24:03+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-05T11:24:03+00:00"})
 
     report = window.describe(
-        ["mvgeos-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
+        ["mvge-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
     )
 
     assert report["missing"] == []
@@ -388,18 +388,18 @@ def test_describe_sorts_published_names_so_two_runs_render_identically(
     _stub_index(
         monkeypatch,
         {
-            "mvgeos-tome": "2026-10-05T11:24:03+00:00",
-            "mvgeos-cli": "2026-10-05T11:24:04+00:00",
-            "mvgeos-core": "2026-10-05T11:24:05+00:00",
+            "mvge-tome": "2026-10-05T11:24:03+00:00",
+            "mvge-cli": "2026-10-05T11:24:04+00:00",
+            "mvge-core": "2026-10-05T11:24:05+00:00",
         },
     )
 
     report = window.describe(
-        ["mvgeos-tome", "mvgeos-cli", "mvgeos-core"],
+        ["mvge-tome", "mvge-cli", "mvge-core"],
         now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
     )
 
-    assert list(report["published"]) == ["mvgeos-cli", "mvgeos-core", "mvgeos-tome"]
+    assert list(report["published"]) == ["mvge-cli", "mvge-core", "mvge-tome"]
 
 
 def test_describe_defaults_to_the_wall_clock(
@@ -409,9 +409,9 @@ def test_describe_defaults_to_the_wall_clock(
 
     `main` never passes one; this is the path every actual invocation takes.
     """
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-05T11:24:03+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-05T11:24:03+00:00"})
 
-    report = window.describe(["mvgeos-core"])
+    report = window.describe(["mvge-core"])
 
     assert dt.datetime.fromisoformat(report["checked_at"]).tzinfo is dt.UTC
 
@@ -472,12 +472,10 @@ def test_render_names_the_oldest_creation_in_the_window(
 
     Without it there is nothing to check the printed slot time against.
     """
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-05T11:24:03+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-05T11:24:03+00:00"})
 
     text = window.render(
-        window.describe(
-            ["mvgeos-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
-        )
+        window.describe(["mvge-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC))
     )
 
     assert "Oldest creation in the window: 2026-10-05 11:24:03 UTC." in text
@@ -487,16 +485,16 @@ def test_render_names_the_oldest_creation_in_the_window(
 def test_render_lists_the_names_still_waiting_for_a_slot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-05T11:24:03+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-05T11:24:03+00:00"})
 
     text = window.render(
         window.describe(
-            ["mvgeos-core", "mvgeos-cli"],
+            ["mvge-core", "mvge-cli"],
             now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
         )
     )
 
-    assert "Still to create (1): `mvgeos-cli`" in text
+    assert "Still to create (1): `mvge-cli`" in text
     assert "1 of 2" in text
 
 
@@ -507,7 +505,7 @@ def test_render_says_plainly_when_a_release_needs_more_than_one_window(
 
     text = window.render(
         window.describe(
-            [f"mvgeos-pkg{index}" for index in range(6)],
+            [f"mvge-pkg{index}" for index in range(6)],
             now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
         )
     )
@@ -528,7 +526,7 @@ def test_render_omits_the_multi_window_advice_when_one_window_is_enough(
 
     text = window.render(
         window.describe(
-            [f"mvgeos-pkg{index}" for index in range(4)],
+            [f"mvge-pkg{index}" for index in range(4)],
             now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC),
         )
     )
@@ -539,12 +537,10 @@ def test_render_omits_the_multi_window_advice_when_one_window_is_enough(
 def test_render_says_nothing_is_waiting_when_every_name_is_on_the_index(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _stub_index(monkeypatch, {"mvgeos-core": "2026-10-05T11:24:03+00:00"})
+    _stub_index(monkeypatch, {"mvge-core": "2026-10-05T11:24:03+00:00"})
 
     text = window.render(
-        window.describe(
-            ["mvgeos-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC)
-        )
+        window.describe(["mvge-core"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC))
     )
 
     assert "Every distribution is on the index." in text
@@ -562,7 +558,7 @@ def test_render_calls_a_refusal_a_full_quota_and_not_a_bad_distribution(
     _stub_index(monkeypatch, {})
 
     text = window.render(
-        window.describe(["mvgeos-cli"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC))
+        window.describe(["mvge-cli"], now=dt.datetime(2026, 10, 5, 12, tzinfo=dt.UTC))
     )
 
     assert "A refusal is a full quota, not a bad distribution." in text
@@ -584,7 +580,7 @@ def test_main_renders_markdown_and_reports_success(
     """
     _stub_index(monkeypatch, {})
     monkeypatch.setattr(window, "workspace_packages", dict)
-    monkeypatch.setattr(window, "publish_order", lambda _packages: ["mvgeos-cli"])
+    monkeypatch.setattr(window, "publish_order", lambda _packages: ["mvge-cli"])
     monkeypatch.setattr("sys.argv", ["pypi_new_project_window.py"])
 
     assert window.main() == 0
@@ -597,11 +593,11 @@ def test_main_emits_json_when_asked(
     """`--json` output has to round-trip: a follow-up job diffs these reports."""
     _stub_index(monkeypatch, {})
     monkeypatch.setattr(window, "workspace_packages", dict)
-    monkeypatch.setattr(window, "publish_order", lambda _packages: ["mvgeos-cli"])
+    monkeypatch.setattr(window, "publish_order", lambda _packages: ["mvge-cli"])
     monkeypatch.setattr("sys.argv", ["pypi_new_project_window.py", "--json"])
 
     assert window.main() == 0
 
     report = json.loads(capsys.readouterr().out)
-    assert report["missing"] == ["mvgeos-cli"]
+    assert report["missing"] == ["mvge-cli"]
     assert report["quota"] == window.QUOTA

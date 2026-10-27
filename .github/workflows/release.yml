@@ -33,7 +33,7 @@ jobs:
         with:
           version: "0.12.24"
           enable-cache: true
-      - run: uv sync --all-packages
+      - run: uv sync
       - name: Full suite with the combined coverage floor
         run: uv run python -m pytest --cov
 
