@@ -16,14 +16,14 @@ implementations they named do not.
 
 ## Context
 
-ADR-0007 unified MvgeOS on one JSONL file per Tome, which was the right call and
+ADR-0007 unified Mvge on one JSONL file per Tome, which was the right call and
 is still exactly what the code does. Every mechanism it named is gone:
 
 | ADR-0007 / ADR-0003 named | Reality |
 | --- | --- |
 | `TomeLedger` | No such symbol in any `src/`. Replaced by `TomeHandleFactory` + `TomeHandle`. |
 | "in-memory `Index` rebuilt on startup" | No index. `TomeHandleFactory` docstring: *"Holds no caches: every query rescans the directory or revalidates the file revision."* |
-| `filelock` | Zero hits in any `src/`. `portalocker` is used (`mvgeos-tome/src/mvgeos_tome/handle.py:16`). |
+| `filelock` | Zero hits in any `src/`. `portalocker` is used (`mvge-tome/src/mvge_tome/handle.py:16`). |
 | "Pi's 12 entry types" | Six: `MESSAGE`, `LABEL`, `COMPACTION`, `CUSTOM`, `LEAF`, `TOME_INFO`. |
 
 The in-memory index turned out to be the wrong shape, not merely the wrong name.
@@ -32,10 +32,10 @@ write the same file, and there is no cheap way to know when the index is stale. 
 had to be invalidated by hand on every write path, and every write path that
 forgot was a silent-corruption bug waiting to happen.
 
-Meanwhile ADR-0003 committed MvgeOS to *"the exact same JSONL session schema as
-Pi (all 12 entry types)"*. Pi's format is not byte-compatible with what MvgeOS
+Meanwhile ADR-0003 committed Mvge to *"the exact same JSONL session schema as
+Pi (all 12 entry types)"*. Pi's format is not byte-compatible with what Mvge
 actually writes — `TomeV1Codec.fork` says so explicitly
-(`mvgeos-tome/src/mvgeos_tome/codec.py:301-305`: *"tome-v1 forks go through
+(`mvge-tome/src/mvge_tome/codec.py:301-305`: *"tome-v1 forks go through
 TomeHandleFactory.create_branched_tome"*). That commitment made genuine Pi
 interoperability impossible without a conversion step nobody wanted.
 
@@ -49,7 +49,7 @@ revision check, and format shape belongs to a codec.
 
 2. **Reads revalidate against a `Revision` token.** `Revision` is a frozen
    `slots` dataclass of `(mtime_ns, size, ino)` built from `path.stat()`
-   (`mvgeos-tome/src/mvgeos_tome/handle.py:37-51`). A `TomeHandle` keeps an
+   (`mvge-tome/src/mvge_tome/handle.py:37-51`). A `TomeHandle` keeps an
    in-memory mirror purely as a read-through accelerator and reloads the whole
    file whenever the token moves. Disk is the only authority; the mirror is a
    hint that is checked before it is trusted.
@@ -101,7 +101,7 @@ renaming any of them is a breaking change to this ADR.
 - Cache coherence becomes a property of the filesystem rather than of our
   bookkeeping. Cross-process safety needs no index-invalidation protocol.
 - Adding a format is adding a codec, not writing a migration.
-- ADR-0006's claim that "a session started in Pi can be resumed in MvgeOS and
+- ADR-0006's claim that "a session started in Pi can be resumed in Mvge and
   vice versa" becomes *true* — but conditionally, and as an installed Rune rather
   than a build-time assumption. That is a better answer than the one ADR-0006
   asserted and could not deliver.

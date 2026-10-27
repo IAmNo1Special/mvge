@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-MvgeOS needs a Python monorepo structure. The project consists of multiple packages that share types and depend on each other. We need a fast, reliable package manager and workspace tool.
+Mvge needs a Python monorepo structure. The project consists of multiple packages that share types and depend on each other. We need a fast, reliable package manager and workspace tool.
 
 `uv` is a modern Python package manager written in Rust that offers:
 

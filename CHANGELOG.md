@@ -5,6 +5,168 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-10-27
+
+
+### Bug Fixes
+
+- **cli:** carry the callback Realm choice into _run_agent, name the key prompt (a7920f0)
+
+- **agent:** snapshot reports the agent's own model, not its config's (d6399a6)
+
+- **cli:** do not load an OpenRouter key on the deferred credential path (d9caed3)
+
+- **ci:** advance bump version past already-taken tags (69248b2)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (5a7e098)
+
+- **release:** v0.2.11 (38b357d)
+
+
+### Features
+
+- **provider:** realm-first default models, remove global default model **BREAKING CHANGE** (9d134bf)
+
+- **provider:** pollinations as the keyless bootstrap fallback (a2c3a02)
+
+
+## [0.1.5] - 2026-10-27
+
+
+### Bug Fixes
+
+- **tome:** reject paths escaping the tome directory in tome_file (1933983)
+
+- **tome:** reject paths escaping the tome directory in tome_file (6182b45)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (c5cc23f)
+
+- **release:** v0.1.5 (9ccbe8a)
+
+
+## [0.1.4] - 2026-10-27
+
+
+### Bug Fixes
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (063a37c)
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (61af1b7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (8f7a958)
+
+- **release:** v0.1.4 (bb8171e)
+
+
+### Documentation
+
+- add PyPI and CI status badges to README (1992998)
+
+
+## [0.1.3] - 2026-10-25
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (1eea37f)
+
+- **release:** v0.1.3 (3f6218c)
+
+
+### Documentation
+
+- **marketplace:** update marketplace references to mvge-marketplace (5bac9dc)
+
+
+### Refactoring
+
+- **engine:** purge all remaining mvgeos references (c0b922c)
+
+
+## [0.1.2] - 2026-10-25
+
+
+### Bug Fixes
+
+- **ci:** copy uv and uvx into sandbox bin so verify_install finds uvx in runner (5d72411)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (75da476)
+
+- **release:** v0.1.2 (83f340c)
+
+
+## [0.1.1] - 2026-10-25
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (bd38972)
+
+- **release:** v0.1.1 (e4b2726)
+
+
+### Continuous Integration
+
+- **workflow:** set coverage artifact path and fix mypy exclude patterns (bfc2ac7)
+
+
+### Documentation
+
+- prune obsolete technical debt plans and redundant specifications (d21623c)
+
+
+### Features
+
+- **gui:** implement adaptive canvas, in-flight steering, and rune UI contributions (ADR-0026, ADR-0027) (500be01)
+
+- **gui:** integrate nicegui-ai component primitives (ab79826)
+
+- **gui:** adopt Variant B Ambient Glass Studio layout in chat panel (1223f52)
+
+- **gui:** extract mvgeos-gui to standalone mvge-desktop repository (bec59dd)
+
+
+### Refactoring
+
+- **core:** unify workspace into single mvge package (b080b2b)
+
+- **cli:** remove backward compatibility alias and reset version to 0.1.0 (098fbe4)
+
+- **docs:** update repository name and links to mvge (b8ed3f0)
+
+
+### Tests
+
+- **agent:** make profile installer tests hermetic and align with default minimal runes (2022307)
+
+
+## [0.7.8] - 2026-10-21
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (e28149f)
+
+- **release:** v0.7.8 (d5faf7a)
+
+
+### Features
+
+- **engine:** resolve technical debt across determinism, scale, and resilience (phases 1-3) (0d6598c)
+
+
 ## [0.7.7] - 2026-10-20
 
 
@@ -2328,8 +2490,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Bug Fixes
 
-- **provider:** handle openrouter rate limits (bde8219)
-
 - **root:** fix MD022/MD036/MD047 lint violations in handoff generator (3debd6f)
 
 - **ci:** align pre-commit hooks with CI workflow (4e5bad4)
@@ -2454,8 +2614,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Chores
 
-- add pre-commit hooks (bfa2c30)
-
 - generate CHANGELOG.md for v0.1.0-dev (593e1f0)
 
 - **agent:** update package configuration (3a7c211)
@@ -2521,8 +2679,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Continuous Integration
 
-- add release workflow with git-cliff (3ecf9c4)
-
 - make heal-my-goap optional dependency for CI (66b4845)
 
 - fix heal-my-goap local path source and sync test extra (e302579)
@@ -2549,8 +2705,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 
 ### Documentation
-
-- add architecture decision records (ab077de)
 
 - **root:** update documentation and configuration (a891aae)
 
@@ -2604,10 +2758,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 
 ### Features
-
-- initial mvgeos monorepo setup (3a9e5a1)
-
-- **agent:** add Mvge core loop with event bus (6417554)
 
 - **coding-mvge:** add coding agent package with spells and tests (e5a8cc7)
 
@@ -2720,8 +2870,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Performance
 
-- **agent:** optimize mana pool allocation (d3dbbe6)
-
 - **tome:** optimize ledger index updates and use atomic line appends (5988ae3)
 
 - **cli:** stream tokens instantly without line-buffering delay (ce1e9e1)
@@ -2734,8 +2882,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 
 ### Refactoring
-
-- **tome:** improve JSONL locking (5a010ba)
 
 - **cli:** restructure to flat layout (d3484b0)
 
@@ -2824,8 +2970,6 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 
 ### Tests
 
-- **spells:** add unit tests for bash spell (ee2501c)
-
 - **cli:** commit changes (01e8129)
 
 - **all:** restructure tests into tests/unit and tests/integration (f611625)
@@ -2869,6 +3013,51 @@ Command sources disagree on the slash convention: CLI keys carry it (/help), run
 - fix ruff formatting in base_mvge.py and main.py (b3fd848)
 
 - **gui:** collapse line continuations and remove redundant lambdas (9508116)
+
+
+## [0.1.0-dev] - 2026-07-28
+
+
+### Bug Fixes
+
+- **provider:** handle openrouter rate limits (bde8219)
+
+
+### Chores
+
+- add pre-commit hooks (bfa2c30)
+
+
+### Continuous Integration
+
+- add release workflow with git-cliff (3ecf9c4)
+
+
+### Documentation
+
+- add architecture decision records (ab077de)
+
+
+### Features
+
+- initial mvgeos monorepo setup (3a9e5a1)
+
+- **agent:** add Mvge core loop with event bus (6417554)
+
+
+### Performance
+
+- **agent:** optimize mana pool allocation (d3dbbe6)
+
+
+### Refactoring
+
+- **tome:** improve JSONL locking (5a010ba)
+
+
+### Tests
+
+- **spells:** add unit tests for bash spell (ee2501c)
 
 ---
 *Generated by [git-cliff](https://github.com/orhun/git-cliff)*

@@ -28,20 +28,20 @@ Run the project's tests and linters and review your own diff for unintended scop
 
 ## Design Philosophy & Standards
 
-- **Strict Standards Adherence (No Proprietary Polyfills)**: MvgeOS adheres 100% to open, consensus-driven protocols and standards (e.g., the `.agents` protocol, `agentskills.io` specification, standard JSON Schema, OpenRouter APIs, MCP, standard Python typing and PEPs). Never implement proprietary fallbacks, vendor-specific shims, or polyfills for tools that diverge from standard protocols (e.g., strictly discover and inject `AGENTS.md`, never `CLAUDE.md`). External tools and ecosystems align with the open standard, not the other way around.
-- **Protocol Boundary Pattern (Standard at the Boundary, Persona Inside)**: MvgeOS strictly enforces open, standard protocols at all system boundaries (filesystem directory names, network wire formats, HTTP headers, CLI arguments, and API payloads), while reserving MvgeOS domain terminology (Mvge, Spell, Mana, Realm, Tome, Rune, Sigil, Summoner) for internal Python abstractions, user-facing persona, and presentation.
+- **Strict Standards Adherence (No Proprietary Polyfills)**: Mvge adheres 100% to open, consensus-driven protocols and standards (e.g., the `.agents` protocol, `agentskills.io` specification, standard JSON Schema, OpenRouter APIs, MCP, standard Python typing and PEPs). Never implement proprietary fallbacks, vendor-specific shims, or polyfills for tools that diverge from standard protocols (e.g., strictly discover and inject `AGENTS.md`, never `CLAUDE.md`). External tools and ecosystems align with the open standard, not the other way around.
+- **Protocol Boundary Pattern (Standard at the Boundary, Persona Inside)**: Mvge strictly enforces open, standard protocols at all system boundaries (filesystem directory names, network wire formats, HTTP headers, CLI arguments, and API payloads), while reserving Mvge domain terminology (Mvge, Spell, Mana, Realm, Tome, Rune, Sigil, Summoner) for internal Python abstractions, user-facing persona, and presentation.
   - **Filesystem boundaries**: Use standard protocol directory names — `~/.agents/sessions/` (never `tomes/`), `~/.agents/extensions/` (never `runes/`), `~/.agents/skills/`, `~/.agents/models.json`, `~/.agents/mcp.json`.
   - **Wire boundaries**: Use standard payload fields — `type: "session"` (never `"tome"`), `tools: [...]` (never `"spells"`), `tool_calls: [...]`, `usage: { prompt_tokens, completion_tokens }` (never `"mana"`).
-  - **CLI boundaries**: Persona commands are the exclusive CLI interface (`mvgeos tome`, `mvgeos rune`).
+  - **CLI boundaries**: Persona commands are the exclusive CLI interface (`mvge tome`, `mvge rune`).
 - **Zero Backward Compatibility Burden**: Prioritize clean, greenfield architecture and modern standards over backward compatibility. Never retain legacy shims, deprecated code paths, or obsolete conventions.
-- **Check the marketplace before claiming something is unimplemented**: Rune capabilities live in `mvgeos-marketplace`, not in this repository. Before asserting that some behaviour does not exist, grep `mvgeos-marketplace/runes/` for a Rune that already owns it. `steering-bridge` is the reference implementation for resolving the `.agents` layers and for Sigil payload discipline.
+- **Check the marketplace before claiming something is unimplemented**: Rune capabilities live in `mvge-marketplace`, not in this repository. Before asserting that some behaviour does not exist, grep `mvge-marketplace/runes/` for a Rune that already owns it. `steering-bridge` is the reference implementation for resolving the `.agents` layers and for Sigil payload discipline.
   - Read engine source and a Rune before concluding a gap. The failure mode is symmetrical in both directions: assuming a gap that a Rune already closed, and assuming a Rune does something the engine never asked it to.
-  - Cite line numbers only for code in this repository. A `file:line` reference into `mvgeos-marketplace` will be stale the moment that repository changes, which is how a corrected claim in ADR-0014 came to assert work a Rune had already done.
-- **Records must be checkable, not merely current**: An ADR, issue, or doc that describes code is a claim about code, and nothing notices when it stops being true. `mvgeos-core/scripts/check_adr_contract.py` enforces this for ADRs by asserting every symbol an ADR's `## Contract` section names still exists. When a decision's mechanism is deliberately replaced, amend or supersede the record **in the same commit** — never let the two drift.
+  - Cite line numbers only for code in this repository. A `file:line` reference into `mvge-marketplace` will be stale the moment that repository changes, which is how a corrected claim in ADR-0014 came to assert work a Rune had already done.
+- **Records must be checkable, not merely current**: An ADR, issue, or doc that describes code is a claim about code, and nothing notices when it stops being true. `scripts/check_adr_contract.py` enforces this for ADRs by asserting every symbol an ADR's `## Contract` section names still exists. When a decision's mechanism is deliberately replaced, amend or supersede the record **in the same commit** — never let the two drift.
 
 ## Development Rules
 
-MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https://github.com/earendil-works/pi) CHECK OUT IT'S SOURCE CODE FOR A REFRESHER ON HOW WE ARE MAKING MVGEOS
+MVGE IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https://github.com/earendil-works/pi) CHECK OUT ITS SOURCE CODE FOR A REFRESHER ON HOW WE ARE MAKING MVGE
 
 ## Conversational Style
 
@@ -55,7 +55,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 - Read files in full before wide-ranging changes
 - No inline imports (`await import()`, `import("pkg").Type`). Top-level imports only
 - Use `pathlib.Path` for all file path operations — never raw string concatenation
-- Follow MvgeOS terminology (Mvge, Spell, Realm, Mana, Mana Pool, Tome, Invocation, Summoner, Rune, Skill, Channeling, Sigil, Contemplation, Leaf, Fork)
+- Follow Mvge terminology (Mvge, Spell, Realm, Mana, Mana Pool, Tome, Invocation, Summoner, Rune, Skill, Channeling, Sigil, Contemplation, Leaf, Fork)
 - All code follows the red-green-refactor TDD cycle: write failing test first, then implement
 
 ## Commands
@@ -83,7 +83,7 @@ MVGEOS IS A CUSTOM IMPLEMENTATION OF THE ARCHITECTURE INTRODUCED BY [Pi](https:/
 
 ## Testing
 
-Testing standards are defined in the [Testing Standards Charter](TESTING.md) — the single authority for how MvgeOS is tested. Its hard requirements:
+Testing standards are defined in the [Testing Standards Charter](TESTING.md) — the single authority for how Mvge is tested. Its hard requirements:
 
 - **Two tiers only**: unit (`<package>/tests/unit/`) and integration (`<package>/tests/integration/`), mirroring source structure, flat file naming, never `__init__.py` in test dirs
 - **Hermetic suites**: no network, no real secrets, no wall-clock dependence; external seams mocked at dependency boundaries (HTTP clients, sleep, environment)
@@ -99,21 +99,21 @@ Testing standards are defined in the [Testing Standards Charter](TESTING.md) —
 
 ## Architecture
 
-MvgeOS is a monorepo with uv workspaces:
+Mvge is a single unified Python package under `src/mvge/` (following the `google/adk-python` architectural style):
 
-| Package | Purpose |
+| Submodule | Purpose |
 | --- | --- |
-| mvgeos | Root distribution; owns the published name and its `mvgeos` console script so `uvx mvgeos` resolves directly |
-| mvgeos-core | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero first-party deps) |
-| mvgeos-agent | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
-| mvgeos-provider | Realm protocol + model registry (depends on core); concrete Realms ship as marketplace runes, including the default `opencode` one |
-| mvgeos-tome | JSONL session persistence with file locking |
-| mvgeos-runes | Rune/Extension manifest, loader, sigil hooks (depends on core) |
-| mvgeos-cli | CLI entry point (`mvgeos` command) |
-| mvgeos-gui | Desktop GUI application powered by NiceGUI with 1:1 Antigravity UI |
+| `mvge.core` | Canonical loop vocabulary: abort, invocations, spells, events, pure turn loop (zero dependencies) |
+| `mvge.agent` | Mvge class, session lifecycle (MvgeHarness, MvgeState), environment, spell coercion, installer |
+| `mvge.provider` | Realm protocol + model registry; concrete Realms ship as marketplace runes, including the default `opencode` one |
+| `mvge.tome` | JSONL session persistence with file locking |
+| `mvge.runes` | Rune/Extension manifest, loader, sigil hooks |
+| `mvge.cli` | CLI entry point (`mvge` command) |
+
+The desktop GUI application (`mvge-desktop`) has been extracted to its own standalone companion repository at `/mnt/storage/projects/mvge-desktop`.
 
 Config follows dotagents protocol at `~/.agents/`.
-Mvges (agents) are installable via marketplace (`mvgeos mvge install <name>`) at `~/.agents/agents/`.
+Mvges (agents) are installable via marketplace (`mvge mvge install <name>`) at `~/.agents/agents/`.
 Rune/Extension manifests at `~/.agents/extensions/`.
 
 **Prompt & Agent Architecture**:
@@ -124,7 +124,7 @@ Agents use zero-config auto-discovery: an Mvge named for its own directory auto-
 
 **Terminology updates**: `ProviderRegistry` → `RealmRegistry` (Realm = provider abstraction). `Model.provider` field removed — provider derived from model ID prefix (e.g., `nvidia/nemotron` → provider = "nvidia").
 
-## Key Types (MvgeOS Terminology)
+## Key Types (Mvge Terminology)
 
 | Concept | Type |
 | --- | --- |
@@ -144,9 +144,9 @@ Agents use zero-config auto-discovery: an Mvge named for its own directory auto-
 ## Changelog & Releases
 
 - **git-cliff** configured at `cliff.toml` — generates CHANGELOG.md from conventional commits
-- **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps all workspace packages in lockstep via `uv version --bump --package` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag, then dispatches `release.yml` and `publish.yml` itself (the tag push uses `GITHUB_TOKEN`, so GitHub's loop guard stops it triggering either workflow on its own)
+- **Automated version bumps**: `bump` job in `.github/workflows/ci.yml` — runs after `test`/`coverage`/`lint` pass on pushes to `main`, scans commits since last tag (`feat`→minor, `fix`/`perf`→patch, `!`/`BREAKING CHANGE`→major; `docs`/`test`/`ci`/etc. produce no bump), bumps package version via `uv version --bump` + `uv.lock`, and pushes `chore(release): vX.Y.Z` + `v*` tag, then dispatches `release.yml` and `publish.yml` itself (the tag push uses `GITHUB_TOKEN`, so GitHub's loop guard stops it triggering either workflow on its own)
 - **Release workflow**: `.github/workflows/release.yml` — triggers on `v*` tags or manual dispatch
-- **Publish workflow**: `.github/workflows/publish.yml` — triggers on `v*` tags or manual dispatch, and the `bump` job in `ci.yml` also dispatches it explicitly against the tag on every version bump, because a `GITHUB_TOKEN` tag push does not fire workflows; uploads all eight distributions to PyPI in dependency order using the `PYPI_API_TOKEN` secret on the `pypi` environment, then proves `uvx mvgeos --help` from a checkout-free runner and runs one real task through `scripts/verify_install.py`. Uploads authenticate with a stored token again as of SOM-95: OIDC trusted publishing was reverted on 2026-10-09 because PyPI has no trusted publisher registered for the `mvgeos` and `mvgeos-gui` names, and registering one is a pypi.org web action no agent can perform. Migrating all eight names to OIDC and deleting the token is the end state, not the current one. `scripts/check_publish.py` is the gate: it derives the publish order from the dependency graph and fails the release if any first-party `Requires-Dist` lacks a version constraint. Full procedure, secret setup, and the migration path: `docs/agents/releasing.md`
+- **Publish workflow**: `.github/workflows/publish.yml` — triggers on `v*` tags or manual dispatch, and the `bump` job in `ci.yml` also dispatches it explicitly against the tag on every version bump, because a `GITHUB_TOKEN` tag push does not fire workflows; uploads `mvge` to PyPI using trusted publishing (OIDC), then proves `uvx mvge --help` from a checkout-free runner and runs one real task through `scripts/verify_install.py`. `scripts/check_publish.py` is the preflight gate: it verifies metadata and package readiness. Full procedure, secret setup, and the migration path: `docs/agents/releasing.md`
 - **Conventional commits required**: `feat(scope):`, `fix(scope):`, `perf(scope):`, `refactor(scope):`, `docs(scope):`, `test(scope):`, `build(scope):`, `ci(scope):`, `chore(scope):`, `revert(scope):`
 - **Breaking changes**: include `BREAKING CHANGE:` in commit body
 - **Commands**:

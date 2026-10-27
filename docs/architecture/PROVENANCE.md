@@ -1,10 +1,10 @@
-﻿# Architecture Provenance & Interoperability
+# Architecture Provenance & Interoperability
 
 ## Architectural Origins & Independence
 
-MvgeOS is an independent, ground-up agentic operating system architecture built in Python.
+Mvge is an independent, ground-up agentic operating system architecture built in Python.
 
-While MvgeOS implements its own clean-room design and domain model (Mvges, Spells, Realms, Tomes, Runes, Sigils), its design was informed and inspired by notable open-source architectures and research in the autonomous agent ecosystem:
+While Mvge implements its own clean-room design and domain model (Mvges, Spells, Realms, Tomes, Runes, Sigils), its design was informed and inspired by notable open-source architectures and research in the autonomous agent ecosystem:
 
 - **Pi (earendil-works/pi)**: Pioneer of lightweight, streaming JSONL session logs and modular extension hooks.
 - **Google ADK (Agent Development Kit)**: Concepts around structural agent-environment scaffolding and declarative tool manifests.
@@ -15,16 +15,16 @@ While MvgeOS implements its own clean-room design and domain model (Mvges, Spell
 
 ## Frictionless Migration & Compatibility
 
-MvgeOS was deliberately engineered with immediate, frictionless interoperability for users transitioning from other ecosystems:
+Mvge was deliberately engineered with immediate, frictionless interoperability for users transitioning from other ecosystems:
 
 ### 1. Pi Session Compatibility
-The Tome format (`mvgeos-tome`) was inspired by Pi's streaming JSONL session logs, but it is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema). Native Pi support lives in the session codec architecture: `mvgeos-tome` defines a format-agnostic `SessionCodec` protocol, and the marketplace `pi-codec` rune provides a codec that reads, resumes, appends to, compacts, and forks real Pi session logs (JSONL v3/v4) natively — a Pi session stays a Pi session, with no conversion. Tome v1 remains the built-in default for new MvgeOS sessions.
+The Tome format (`mvge.tome`) was inspired by Pi's streaming JSONL session logs, but it is **not byte-compatible** with Pi session files (different header version, timestamp encoding, and entry schema). Native Pi support lives in the session codec architecture: `mvge.tome` defines a format-agnostic `SessionCodec` protocol, and the marketplace `pi-codec` rune provides a codec that reads, resumes, appends to, compacts, and forks real Pi session logs (JSONL v3/v4) natively — a Pi session stays a Pi session, with no conversion. Tome v1 remains the built-in default for new Mvge sessions.
 
 ### 2. Universal Agent Session Reconstruction (Roadmap)
-MvgeOS's persistence and session abstractions are designed to expand beyond Pi. The roadmap includes universal session reconstructors capable of parsing and resuming trajectories originated in:
+Mvge's persistence and session abstractions are designed to expand beyond Pi. The roadmap includes universal session reconstructors capable of parsing and resuming trajectories originated in:
 - **Codex CLI / Assistants**
 - **Claude Code**
 - **PaLM / Gemini Agent Harnesses**
 - **DeepSeek Agent Harness**
 
-By treating conversation logs, tool invocations, and execution snapshots as first-class, reconstructible state graphs, MvgeOS aims to serve as a universal substrate where summoners can continue sessions regardless of where they began.
+By treating conversation logs, tool invocations, and execution snapshots as first-class, reconstructible state graphs, Mvge aims to serve as a universal substrate where summoners can continue sessions regardless of where they began.

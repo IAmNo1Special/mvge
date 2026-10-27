@@ -27,7 +27,7 @@ were wrong in the specific ways §2.4 records. The strawman is kept in the
 history of this file; what follows replaces it as the contract.
 
 The seam is three capability protocols plus a thin composing facade. New
-file `mvgeos-agent/src/mvgeos_agent/harness/capabilities.py` — the three
+file `mvge-agent/src/mvge_agent/harness/capabilities.py` — the three
 protocols below — is the seam. Everything else is implementation detail.
 
 ```python
@@ -248,8 +248,8 @@ reader can see what was rejected and why.
 1. **The GUI never writes engine state.** Issue #165's leak table lists
    `agent_service.py` writes to `state.is_channeling` / `state.total_mana_used`,
    but that `state` is the GUI's own `AppState` view-model
-   (`mvgeos-gui/src/mvgeos_gui/state.py:315`), not `MvgeState`.
-   `grep MvgeState mvgeos-gui/src mvgeos-cli/src` returns nothing. Verified
+   (`mvge-gui/src/mvge_gui/state.py:315`), not `MvgeState`.
+   `grep MvgeState mvge-gui/src mvge-cli/src` returns nothing. Verified
    against the tree, not just asserted. The GUI's only engine coupling is
    method calls plus the `MvgeEvent` stream — a seam-shape question, not a
    mutation leak. #165's criterion 1 loses a row.

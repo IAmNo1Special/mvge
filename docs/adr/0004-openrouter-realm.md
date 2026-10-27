@@ -16,8 +16,8 @@ Accepted (amended 2026-10-05: default Realm changed to OpenCode Zen)
 >   catalog; it is simply no longer what a first run reaches for.
 > - **Implementation location.** "MVP includes only the OpenRouter provider
 >   (`OpenRouterRealm`)" described an in-package class. `OpenRouterRealm` ships as
->   the `openrouter-realm` Rune in `mvgeos-marketplace` and registers itself at
->   runtime, so `mvgeos-provider` contains the Realm *protocol* and no concrete
+>   the `openrouter-realm` Rune in `mvge-marketplace` and registers itself at
+>   runtime, so `mvge-provider` contains the Realm *protocol* and no concrete
 >   Realm. That is the shape the package's own AGENTS.md now documents.
 >
 > The claim worth keeping from the original: the decision was made to build the
@@ -26,25 +26,25 @@ Accepted (amended 2026-10-05: default Realm changed to OpenCode Zen)
 
 ## Context
 
-MvgeOS needs at least one provider (realm) to be functional. OpenRouter provides unified access to 60+ LLM models through a single API. Starting with OpenRouter allows the provider abstraction to be built and validated before expanding.
+Mvge needs at least one provider (realm) to be functional. OpenRouter provides unified access to 60+ LLM models through a single API. Starting with OpenRouter allows the provider abstraction to be built and validated before expanding.
 
 ## Decision
 
-MVP includes only the OpenRouter provider (`OpenRouterRealm`). The Realm seam is declared in `mvgeos_provider.realm_seam`, which lists every member a Realm supplies and — for each — whether the engine calls it, whether a Realm may override it, and whether it is engine machinery it should not touch. The `Realm` base (`mvgeos_provider.base`) is the minimal contract: `stream`, `complete`, `close`, plus `is_router`. `SSEStreamingRealm` is the implementation a RealM speakers of the Chat Completions dialect subclass, and it declares the required pair as `@abstractmethod`. The `Model` type holds provider/model identification and configuration. A `models.json` file in the config directory holds the model catalog.
+MVP includes only the OpenRouter provider (`OpenRouterRealm`). The Realm seam is declared in `mvge_provider.realm_seam`, which lists every member a Realm supplies and — for each — whether the engine calls it, whether a Realm may override it, and whether it is engine machinery it should not touch. The `Realm` base (`mvge_provider.base`) is the minimal contract: `stream`, `complete`, `close`, plus `is_router`. `SSEStreamingRealm` is the implementation a RealM speakers of the Chat Completions dialect subclass, and it declares the required pair as `@abstractmethod`. The `Model` type holds provider/model identification and configuration. A `models.json` file in the config directory holds the model catalog.
 
 ## Consequences
 
 - Single dependency on OpenRouter API for v0.1
 - Provider abstraction (Realm protocol) is implemented first, enabling future providers
 - Model configuration is externalized to `models.json`
-- Authentication via API key stored in `~/.agents/.mvgeos/auth/`
+- Authentication via API key stored in `~/.agents/.mvge/auth/`
 
 
 ## Amendment — 2026-10-11
 
-Amended in the same commit that published `mvgeos_provider.realm_seam` and moved
+Amended in the same commit that published `mvge_provider.realm_seam` and moved
 the two shipped Realm runes onto a package-root import. The Realm seam is now
 declared rather than implicit, and a member the engine never calls
 (`_prepare_request_url_and_headers`) is marked as a Rune convention so a Realm
-author can find it. `mvgeos-provider/tests/unit/realm_seam.py` holds the
+author can find it. `mvge-provider/tests/unit/realm_seam.py` holds the
 declaration to the implementation.

@@ -6,7 +6,7 @@ the index said, because each of those can be wrong in a direction that produces
 a confident wrong answer:
 
 * a version that is not on the index reported as present, which is the vacuous
-  check that ran on v0.6.19 -- `/pypi/mvgeos//json` is 200 for every package
+  check that ran on v0.6.19 -- `/pypi/mvge//json` is 200 for every package
   that has ever existed;
 * an index that could not be reached reported as absent, which sends the reader
   hunting for an upload problem that does not exist;
@@ -27,7 +27,7 @@ import urllib.error
 
 import wait_for_pypi
 
-PROJECT = "https://pypi.org/pypi/mvgeos/json"
+PROJECT = "https://pypi.org/pypi/mvge/json"
 
 
 class _Response(io.BytesIO):
@@ -42,9 +42,9 @@ def _document(*versions: str) -> bytes:
     """A project document whose releases are exactly ``versions``."""
     return json.dumps(
         {
-            "info": {"name": "mvgeos", "version": "0.6.25"},
+            "info": {"name": "mvge", "version": "0.6.25"},
             "releases": {
-                name: [{"filename": f"mvgeos-{name}-py3-none-any.whl"}]
+                name: [{"filename": f"mvge-{name}-py3-none-any.whl"}]
                 for name in versions
             },
         }
@@ -73,14 +73,14 @@ def _failing(url: str, timeout: float = 0) -> _Response:
 def test_a_released_version_is_present(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", _serving("0.6.25"))
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.PRESENT
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.PRESENT
 
 
 def test_a_version_that_never_landed_is_absent(monkeypatch) -> None:
     """The half-landed release: the project exists, the version does not."""
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", _serving("0.6.24"))
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.ABSENT
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.ABSENT
 
 
 def test_a_version_with_no_files_is_absent(monkeypatch) -> None:
@@ -91,7 +91,7 @@ def test_a_version_with_no_files_is_absent(monkeypatch) -> None:
 
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", empty_version)
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.ABSENT
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.ABSENT
 
 
 def test_a_document_that_changed_shape_is_unknown_not_absent(
@@ -103,30 +103,30 @@ def test_a_document_that_changed_shape_is_unknown_not_absent(
     """
 
     def malformed(url: str, timeout: float = 0) -> _Response:
-        return _Response(json.dumps({"info": {"name": "mvgeos"}}).encode())
+        return _Response(json.dumps({"info": {"name": "mvge"}}).encode())
 
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", malformed)
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.UNKNOWN
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.UNKNOWN
 
 
 def test_an_unreachable_index_is_unknown(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", _unreachable)
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.UNKNOWN
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.UNKNOWN
 
 
 def test_a_server_error_is_unknown(monkeypatch) -> None:
     """Only a 404 means "not there". 500 means "we do not know"."""
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", _failing)
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.UNKNOWN
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.UNKNOWN
 
 
 def test_a_project_that_does_not_exist_is_absent(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", _refusing)
 
-    assert wait_for_pypi.release_state("mvgeos", "0.6.25") == wait_for_pypi.ABSENT
+    assert wait_for_pypi.release_state("mvge", "0.6.25") == wait_for_pypi.ABSENT
 
 
 def test_the_wait_stops_as_soon_as_the_version_arrives(monkeypatch) -> None:
@@ -149,9 +149,9 @@ def test_the_wait_stops_as_soon_as_the_version_arrives(monkeypatch) -> None:
         wait_for_pypi.time, "sleep", lambda seconds: asked.append(seconds)
     )
 
-    states = wait_for_pypi.wait_for_release(["mvgeos"], "0.6.25", 30, 5)
+    states = wait_for_pypi.wait_for_release(["mvge"], "0.6.25", 30, 5)
 
-    assert states == {"mvgeos": wait_for_pypi.PRESENT}
+    assert states == {"mvge": wait_for_pypi.PRESENT}
     assert asked == [5, 5]
 
 
@@ -166,12 +166,12 @@ def test_a_release_that_never_arrives_gives_up_at_the_timeout(monkeypatch) -> No
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", every_round)
 
     states = wait_for_pypi.wait_for_release(
-        ["mvgeos", "mvgeos-gui"], "0.6.25", 0.2, 0.01
+        ["mvge", "mvge-desktop"], "0.6.25", 0.2, 0.01
     )
 
     assert states == {
-        "mvgeos": wait_for_pypi.ABSENT,
-        "mvgeos-gui": wait_for_pypi.ABSENT,
+        "mvge": wait_for_pypi.ABSENT,
+        "mvge-desktop": wait_for_pypi.ABSENT,
     }
     # Asked more than once: the wait polled until its deadline rather than
     # asking a single question and concluding.
@@ -194,13 +194,13 @@ def test_every_package_is_asked_in_one_round(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", every_round)
 
     wait_for_pypi.wait_for_release(
-        ["mvgeos", "mvgeos-gui", "mvgeos-cli"], "0.6.25", 0.05, 0.01
+        ["mvge", "mvge-desktop", "mvge-cli"], "0.6.25", 0.05, 0.01
     )
 
     assert asked[:3] == [
-        "https://pypi.org/pypi/mvgeos/json",
-        "https://pypi.org/pypi/mvgeos-gui/json",
-        "https://pypi.org/pypi/mvgeos-cli/json",
+        "https://pypi.org/pypi/mvge/json",
+        "https://pypi.org/pypi/mvge-desktop/json",
+        "https://pypi.org/pypi/mvge-cli/json",
     ]
 
 
@@ -212,7 +212,7 @@ def test_a_tag_style_version_is_the_version_the_index_records(monkeypatch) -> No
 def test_a_version_that_cannot_be_named_is_refused() -> None:
     """The v0.6.19 gate's defect, in one place.
 
-    An empty version asks the index `/pypi/mvgeos//json`, which is 200 for every
+    An empty version asks the index `/pypi/mvge//json`, which is 200 for every
     package that has ever existed, so the gate reports eight green over a
     release that is not there. Refusing is the only answer that cannot be read
     as success.
@@ -273,7 +273,7 @@ def test_resolution_waits_for_uvx_not_for_a_url(monkeypatch) -> None:
     monkeypatch.setattr(wait_for_pypi.subprocess, "run", recording)
 
     assert wait_for_pypi.resolves("0.6.25") is True
-    assert asked == [["uvx", "--from", "mvgeos==0.6.25", "mvgeos", "--help"]]
+    assert asked == [["uvx", "--from", "mvge==0.6.25", "mvge", "--help"]]
 
 
 def test_resolution_stops_waiting_when_uvx_succeeds(monkeypatch) -> None:
@@ -342,7 +342,7 @@ def test_resolution_is_not_asked_for_unless_it_was_requested(monkeypatch) -> Non
 
 
 def test_the_default_package_is_the_one_uvx_installs() -> None:
-    assert wait_for_pypi.DEFAULT_PACKAGE == "mvgeos"
+    assert wait_for_pypi.DEFAULT_PACKAGE == "mvge"
 
 
 def test_the_project_document_is_what_is_asked(monkeypatch) -> None:
@@ -350,7 +350,7 @@ def test_the_project_document_is_what_is_asked(monkeypatch) -> None:
 
     `/pypi/<name>/<version>/json` answers 200 while the index `uvx` reads is
     still stale, and 404 after the release published -- measured on
-    `/pypi/mvgeos/0.6.99.json`, which answered 404 from cache for six minutes.
+    `/pypi/mvge/0.6.99.json`, which answered 404 from cache for six minutes.
     The project document is the one cached under the key the upload purges.
     """
     asked: list[str] = []
@@ -361,6 +361,6 @@ def test_the_project_document_is_what_is_asked(monkeypatch) -> None:
 
     monkeypatch.setattr(wait_for_pypi.urllib.request, "urlopen", every_round)
 
-    wait_for_pypi.release_state("mvgeos", "0.6.25")
+    wait_for_pypi.release_state("mvge", "0.6.25")
 
     assert asked == [PROJECT]

@@ -15,24 +15,13 @@ jobs:
   # floor -- enforcement happens once, in the aggregate job below.
   # Each leg uploads its .coverage.* data file for the aggregate job.
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        package:
-          - mvgeos-core
-          - mvgeos-agent
-          - mvgeos-provider
-          - mvgeos-runes
-          - mvgeos-tome
-          - mvgeos-cli
-          - mvgeos-gui
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
-      install-command: "uv sync --all-packages"
+      install-command: "uv sync"
       run-lint: false
-      # COVERAGE_FILE inline: each matrix leg writes its own data file for the aggregate job.
-      test-commands: "COVERAGE_FILE=.coverage.${{ matrix.package }} uv run python -m pytest --cov --cov-report=term-missing --cov-fail-under=0 ${{ matrix.package }}/tests/unit ${{ matrix.package }}/tests/integration"
-      coverage-artifact-name: "coverage-data-${{ matrix.package }}"
+      test-commands: "uv run python -m pytest --cov --cov-report=term-missing"
+      coverage-artifact-name: "coverage-data"
+      coverage-artifact-path: ".coverage"
       timeout-minutes: 20
 
   coverage:
@@ -45,14 +34,10 @@ jobs:
         with:
           version: "0.12.24"
           enable-cache: true
-      - run: uv sync --all-packages
+      - run: uv sync
       - uses: actions/download-artifact@v4
         with:
-          pattern: coverage-data-*
-          path: coverage-data
-          merge-multiple: true
-      - name: Combine coverage across packages
-        run: uv run python -m coverage combine coverage-data
+          name: coverage-data
       - name: Enforce the combined coverage floor
         run: uv run python -m coverage report
 
@@ -77,7 +62,7 @@ jobs:
           version: "0.12.24"
 
       - name: Verify every ADR status and contracted symbol matches the source
-        run: uv run --no-project python mvgeos-core/scripts/check_adr_contract.py
+        run: uv run --no-project python scripts/check_adr_contract.py
 
   # The release tooling in `scripts/` gates every publish: `check_publish.py`
   # is what refuses to ship a wheel whose `Requires-Dist` cannot resolve on
@@ -102,10 +87,10 @@ jobs:
           version: "0.12.24"
           enable-cache: true
 
-      - run: uv sync --all-packages
+      - run: uv sync
 
-      # No coverage gate: `[tool.coverage.run] source` lists the eight
-      # `mvgeos_*` distributions, and these scripts ship in no wheel.
+      # No coverage gate: `[tool.coverage.run] source` lists the
+      # `mvge` package, and these scripts ship in no wheel.
       - run: uv run python -m pytest scripts/tests
 
   # Verifies every engine import in a marketplace checkout resolves and is
@@ -124,17 +109,17 @@ jobs:
           version: "0.12.24"
           enable-cache: true
 
-      - run: uv sync --all-packages
+      - run: uv sync
 
       - name: Check out the marketplace
         uses: actions/checkout@v5
         with:
-          repository: IAmNo1Special/mvgeos-marketplace
+          repository: IAmNo1Special/mvge-marketplace
           path: marketplace
 
       - name: Verify the marketplace only imports declared engine API
         run: >-
-          uv run python mvgeos-core/scripts/check_marketplace_contract.py
+          uv run python scripts/check_marketplace_contract.py
           marketplace
 
   # Reproduces the published scorecard: the same numbers `uv run python
@@ -210,7 +195,7 @@ jobs:
   lint:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
-      install-command: "uv sync --all-packages"
+      install-command: "uv sync"
       run-tests: false
       timeout-minutes: 10
 
@@ -223,7 +208,7 @@ jobs:
     uses: IAmNo1Special/actions/.github/workflows/python-ci.yml@v1
     with:
       runs-on: ${{ matrix.os }}
-      install-command: "uv sync --all-packages"
+      install-command: "uv sync"
       run-lint: false
       test-commands: "uv run python -m pytest"
       timeout-minutes: 25
@@ -308,64 +293,32 @@ jobs:
           echo "type=$TYPE" >> "$GITHUB_OUTPUT"
           echo "Bump type since last tag: $TYPE (current version: $CURRENT_VERSION)"
 
-      - name: Bump workspace versions
+      - name: Bump package version
         if: steps.bump_type.outputs.type != 'none'
         id: bump
         env:
           BUMP_TYPE: ${{ steps.bump_type.outputs.type }}
         run: |
-          for pkg in mvgeos mvgeos-core mvgeos-agent mvgeos-provider mvgeos-tome \
-                     mvgeos-runes mvgeos-cli mvgeos-gui; do
-            uv version --bump "$BUMP_TYPE" --package "$pkg" --no-sync
-          done
+          uv version --bump "$BUMP_TYPE"
           uv lock
 
           NEW_VERSION="$(uv version --short)"
+          # A computed version can already be taken: main's history carries
+          # no reachable tags (post-rename reset), so the bump type is
+          # derived from the whole history, while checkout fetches every
+          # tag ever created -- including orphaned pre-rename ones such as
+          # v0.2.0. Without this loop, `git tag` in the next step fails
+          # with exit 128 on every main push and no release ever lands,
+          # which also means no reachable tag is ever created to break
+          # the cycle. Advance by patch until the version is untagged.
+          while git rev-parse --verify --quiet "refs/tags/v$NEW_VERSION" >/dev/null; do
+            echo "Version $NEW_VERSION already tagged; advancing by patch"
+            uv version --bump patch
+            uv lock
+            NEW_VERSION="$(uv version --short)"
+          done
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW_VERSION"
-
-      # uv version rewrites project.version only. Internal dependencies carry an
-      # explicit == pin so published wheels record a resolvable Requires-Dist
-      # rather than an unbounded name, and those pins must move with the
-      # lockstep bump or they silently rot back into the bug they prevent.
-      #
-      # == and not >=. A >= floor lets a release float *upward*: mvgeos 0.6.24
-      # declaring mvgeos-cli>=0.6.24 resolves a 0.6.25 cli, so
-      # `uvx mvgeos==0.6.24` hands a stranger six packages at 0.6.24 and one at
-      # 0.6.25. That is the mixed tree verify-install caught on 2026-10-10, and
-      # it is why gate 0 exists. These packages are lockstep, so an exact pin
-      # is the honest constraint and >= guarded a problem this repo does not have.
-      - name: Refresh internal dependency pins
-        if: steps.bump_type.outputs.type != 'none'
-        run: |
-          NEW_VERSION="$(uv version --short)"
-          python3 - "$NEW_VERSION" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          new = sys.argv[1]
-          pattern = re.compile(
-              r'^(?P<prefix>\s*")(?P<name>mvgeos(?:-[a-z]+)?)==\d[^"]*(?P<suffix>",?\s*)$',
-              re.MULTILINE,
-          )
-          for path in [Path("pyproject.toml"), *sorted(Path(".").glob("*/pyproject.toml"))]:
-              text = path.read_text()
-              updated, count = pattern.subn(rf'\g<prefix>\g<name>=={new}\g<suffix>', text)
-              if count:
-                  path.write_text(updated)
-                  print(f"{path}: refreshed {count} internal dep pin(s)")
-          PY
-          uv lock
-
-          # Nothing is committed here on purpose. There is no release commit to
-          # amend yet -- the step that makes one runs next -- so an --amend here
-          # rewrites whatever commit was checked out instead. On a push to main
-          # that is a merge commit, which meant folding the version bump into
-          # someone else's merge under the merge's own message, and leaving the
-          # real "chore(release)" step with an empty tree and exit code 1. The
-          # refreshed floors ride along in the working tree and are staged by
-          # that next step, which is what "into the release commit" requires.
 
       - name: Commit, tag, and push
         if: steps.bump_type.outputs.type != 'none'
@@ -375,11 +328,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add pyproject.toml uv.lock \
-            mvgeos-core/pyproject.toml \
-            mvgeos-agent/pyproject.toml mvgeos-provider/pyproject.toml \
-            mvgeos-tome/pyproject.toml mvgeos-runes/pyproject.toml \
-            mvgeos-cli/pyproject.toml mvgeos-gui/pyproject.toml
+          git add pyproject.toml uv.lock
 
           git commit -m "chore(release): v$NEW_VERSION"
 

@@ -1,13 +1,13 @@
 """Prove the published distribution is usable by someone who has never seen it.
 
-`publish.yml` already runs `uvx mvgeos --help` from a checkout-free runner, which
+`publish.yml` already runs `uvx mvge --help` from a checkout-free runner, which
 proves the name resolves and the console script exists. It proves nothing about
 whether the thing then *works*: a package whose Realm Rune is missing, whose
 credential never loads, or whose Tome never reaches disk all sail past `--help`
 and fail on a stranger's first real task. This harness runs that first real
 task and asserts on the three things a Summoner would notice:
 
-1. `uvx mvgeos --help` exits zero.
+1. `uvx mvge --help` exits zero.
 2. Every first-party distribution in the resolved tree is at the released
    version -- the seven that make up the runtime closure, none missing, none
    from a different release.
@@ -16,8 +16,8 @@ task and asserts on the three things a Summoner would notice:
    served it, and records the Spell that was cast.
 
 Assertion 2 exists because of a measured failure. On 2026-10-09 a release
-half-landed: six of eight distributions reached PyPI and the root ``mvgeos``
-was refused, and ``mvgeos 0.6.16`` declares ``mvgeos-cli>=0.6.16``, so a
+half-landed: six of eight distributions reached PyPI and the root ``mvge``
+was refused, and ``mvge 0.6.16`` declares ``mvge-cli>=0.6.16``, so a
 mixed-version tree still satisfied every constraint it was given. ``--help``
 exited zero on it and the first real task completed. Nothing that existed at
 the time could tell. A half-published release is now a loud failure instead of
@@ -28,10 +28,10 @@ half-land. On 2026-10-10 verify-install failed again on a release where all
 eight packages had published::
 
     verify_install failed: a mixed-version tree resolved at released 0.6.24:
-    mvgeos-agent 0.6.25, mvgeos-cli 0.6.25, mvgeos-core 0.6.25,
-    mvgeos-provider 0.6.25, mvgeos-runes 0.6.25, mvgeos-tome 0.6.25
+    mvge-agent 0.6.25, mvge-cli 0.6.25, mvge-core 0.6.25,
+    mvge-provider 0.6.25, mvge-runes 0.6.25, mvge-tome 0.6.25
 
-``uvx mvgeos==0.6.24`` resolves ``mvgeos-cli>=0.6.24`` to a 0.6.25 cli, so the
+``uvx mvge==0.6.24`` resolves ``mvge-cli>=0.6.24`` to a 0.6.25 cli, so the
 root pins to the release a stranger asked for and every sibling floats off it.
 A fully-published release hands out a mixed tree exactly as a half-landed one
 does, as long as the internal constraint is a floor. The internal constraints
@@ -43,8 +43,8 @@ This assertion stays regardless. It is the thing that noticed while the pins
 were floors, and it is what will notice if the two ever drift apart again.
 
 On 2026-10-11 the gate failed on a fully-published release a third way: the
-probe ran ``uvx mvgeos==0.6.25`` ~28 seconds after the upload landed and uv
-reported "there is no version of mvgeos==0.6.25" -- PyPI's simple-index CDN
+probe ran ``uvx mvge==0.6.25`` ~28 seconds after the upload landed and uv
+reported "there is no version of mvge==0.6.25" -- PyPI's simple-index CDN
 had not propagated yet. The release was live; the probe was early. The
 harness now waits up to ten minutes for the version to appear on the index
 before measuring anything, so a propagation delay reads as a wait rather
@@ -138,14 +138,14 @@ REALMS_REQUIRING_CREDENTIAL = frozenset({"opencode", "openrouter"})
 
 # The environment variable each Realm reads its key from.
 #
-# A copy of ``mvgeos_provider.realms.REALM_API_KEY_ENV``, which is the authority.
+# A copy of ``mvge.provider.realms.REALM_API_KEY_ENV``, which is the authority.
 # The duplication is forced: this harness runs under a bare ``python3`` before
 # any sync, so it cannot import the workspace it ships beside. ``
 # test_api_key_env_matches_the_engine`` holds the two together, so the copy
 # cannot drift without a red build.
 #
 # It matters because the CLI falls back to ``OPENROUTER_API_KEY`` for *every*
-# Realm (``mvgeos-cli/src/mvgeos_cli/main.py``). Exporting an OpenRouter key
+# Realm (``src/mvge/cli/main.py``). Exporting an OpenRouter key
 # while testing ``--provider opencode`` therefore hands it to Zen, and the run
 # fails at the host that received it rather than at the packaging under test.
 API_KEY_ENV_BY_REALM = {
@@ -164,7 +164,7 @@ MAX_TOKENS = 2000
 
 # The artifact the task is asked to produce, and what it must contain.
 ARTIFACT = "hello.txt"
-ARTIFACT_CONTENT = "hello from mvgeos"
+ARTIFACT_CONTENT = "hello from mvge"
 
 
 def api_key_env_for_realm(realm: str) -> str:
@@ -190,44 +190,18 @@ def realm_rune_for_realm(realm: str) -> str:
 
 TASK = f"Create a file named {ARTIFACT} containing exactly the text: {ARTIFACT_CONTENT}"
 
-# The first-party distributions `uvx mvgeos` resolves. Seven, not eight:
-# `mvgeos-gui` is published in lockstep but nothing depends on it -- it is a
-# sibling front end, not part of the closure -- so a stranger running the
-# documented command never installs it. Reading this off the published metadata
-# at 0.6.17:
-#
-#   mvgeos      -> mvgeos-cli
-#   mvgeos-cli  -> mvgeos-agent, mvgeos-core, mvgeos-provider,
-#                  mvgeos-tome, mvgeos-runes
-#
-# Asserting all eight are *present* would fail forever and for a reason that has
-# nothing to do with the release. That `mvgeos-gui` exists on the index at the
-# same version is checked by the publish workflow, which asks PyPI for all eight
-# by HTTP.
-RUNTIME_CLOSURE = (
-    "mvgeos",
-    "mvgeos-cli",
-    "mvgeos-agent",
-    "mvgeos-core",
-    "mvgeos-provider",
-    "mvgeos-tome",
-    "mvgeos-runes",
-)
+# The first-party distributions `uvx mvge` resolves.
+RUNTIME_CLOSURE = ("mvge",)
 
 # Marks the probe's answer so a uv banner, a warning, or a Realm's chatter on
 # stdout cannot be mistaken for it.
-PROBE_MARKER = "MVGEOS-PROBE:"
+PROBE_MARKER = "MVGE-PROBE:"
 
 # How long the gate waits for a fresh release to reach PyPI's simple index,
-# and how often it looks. Measured 2026-10-11: the probe ran
-# `uvx mvgeos==0.6.25` ~28 seconds after the upload landed and uv reported
-# "there is no version of mvgeos==0.6.25" -- the index CDN had not propagated
-# yet. The release was fully live; the probe was early. Ten minutes is
-# generous against a measured sub-minute lag; the poll interval keeps the CI
-# log readable while it waits.
+# and how often it looks.
 INDEX_TIMEOUT_SECONDS = 600
 INDEX_POLL_SECONDS = 15
-PYPI_SIMPLE_INDEX = "https://pypi.org/simple/mvgeos/"
+PYPI_SIMPLE_INDEX = "https://pypi.org/simple/mvge/"
 
 # Lines the CLI prints about itself before the model says anything. They are
 # local diagnostics, so counting one as the first token would understate the
@@ -237,8 +211,8 @@ LOCAL_PREAMBLE = re.compile(r"^(WARNING|Error)\s*:", re.IGNORECASE)
 # Set on the re-executed child so it cannot sandbox itself again. The underscore
 # prefix is load-bearing: ``scrubbed`` drops private keys from every ``uvx``
 # child, so neither the marker nor the host paths reach the process under test.
-SANDBOX_MARKER = "_MVGEOS_VERIFY_IN_SANDBOX"
-SANDBOX_HOST_PATHS = "_MVGEOS_VERIFY_HOST_PATHS"
+SANDBOX_MARKER = "_MVGE_VERIFY_IN_SANDBOX"
+SANDBOX_HOST_PATHS = "_MVGE_VERIFY_HOST_PATHS"
 
 # A read-only view of an ordinary Linux install, and nothing else. Bubblewrap
 # cannot mount onto a destination that does not exist, so a target missing here
@@ -333,7 +307,7 @@ def sandbox_command(scratch: pathlib.Path, argv: list[str]) -> list[str] | None:
     """The argv that re-runs this harness inside a throwaway sandbox.
 
     The mount, process, IPC, UTS, and cgroup namespaces are unshared. The
-    network is deliberately not: resolving ``mvgeos`` from PyPI and reaching a
+    network is deliberately not: resolving ``mvge`` from PyPI and reaching a
     Realm are the two things being proved, and cutting the network would prove
     something else entirely -- a run that fails for want of DNS is not evidence
     of a broken release.
@@ -377,10 +351,12 @@ def sandbox_command(scratch: pathlib.Path, argv: list[str]) -> list[str] | None:
     # the task writes its artifact to, and the harness's own copy. It is the
     # only writable host path the sandbox has.
     command += ["--bind", str(scratch), str(scratch)]
+    bin_dir = scratch / "bin"
+    sandbox_path = f"{bin_dir}:{SANDBOX_PATH}" if bin_dir.is_dir() else SANDBOX_PATH
     command += [
         "--setenv",
         "PATH",
-        SANDBOX_PATH,
+        sandbox_path,
         "--setenv",
         SANDBOX_MARKER,
         "1",
@@ -459,7 +435,7 @@ def cast_spells(tome: pathlib.Path) -> list[str]:
 
 
 def version_on_index(version: str) -> bool:
-    """Whether PyPI's simple index already lists ``version`` of mvgeos.
+    """Whether PyPI's simple index already lists ``version`` of mvge.
 
     A ``False`` answer is "not visible yet", not "does not exist": the index
     CDN lags the upload, and a transient network failure reads the same way.
@@ -471,7 +447,7 @@ def version_on_index(version: str) -> bool:
             body = response.read().decode("utf-8", "replace")
     except urllib.error.URLError:
         return False
-    return f">mvgeos-{version}-" in body
+    return f">mvge-{version}-" in body
 
 
 def wait_for_version_on_index(
@@ -494,7 +470,7 @@ def wait_for_version_on_index(
         if time.monotonic() >= deadline:
             return False
         print(
-            f"  mvgeos=={version} not on the index yet; checking again in "
+            f"  mvge=={version} not on the index yet; checking again in "
             f"{interval:g}s ..."
         )
         time.sleep(interval)
@@ -507,11 +483,11 @@ def run_uvx(
     *,
     cwd: pathlib.Path,
 ) -> tuple[int, str, float]:
-    """Run ``uvx --from mvgeos==VERSION mvgeos ...`` under ``env``.
+    """Run ``uvx --from mvge==VERSION mvge ...`` under ``env``.
 
     Returns the exit code, the combined output, and the elapsed seconds.
     """
-    command = ["uvx", "--from", f"mvgeos=={version}", "mvgeos", *args]
+    command = ["uvx", "--from", f"mvge=={version}", "mvge", *args]
     started = time.monotonic()
     process = subprocess.run(
         command,
@@ -533,7 +509,7 @@ def scrubbed(env: dict[str, str]) -> dict[str, str]:
 def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
     """Every first-party distribution this release actually resolves to.
 
-    ``uvx --from mvgeos==VERSION python`` builds the same environment the
+    ``uvx --from mvge==VERSION python`` builds the same environment the
     console script runs in and then asks that environment what it holds, so the
     answer describes the resolved tree rather than what the release claimed to
     contain.
@@ -550,12 +526,12 @@ def resolved_distributions(version: str, env: dict[str, str]) -> dict[str, str]:
         "found = {\n"
         "    d.metadata['Name']: d.version\n"
         "    for d in distributions()\n"
-        "    if (d.metadata['Name'] or '').startswith('mvgeos')\n"
+        "    if (d.metadata['Name'] or '') == 'mvge'\n"
         "}\n"
         f"print('{PROBE_MARKER}' + json.dumps(found, sort_keys=True))\n"
     )
     process = subprocess.run(
-        ["uvx", "--from", f"mvgeos=={version}", "python", "-c", probe],
+        ["uvx", "--from", f"mvge=={version}", "python", "-c", probe],
         env=scrubbed(env),
         capture_output=True,
         text=True,
@@ -660,7 +636,7 @@ def run_sandboxed(arguments: argparse.Namespace) -> int:
 
     The harness is copied into the scratch rather than bound from its checkout,
     and that is not tidiness. Bubblewrap materialises a destination's parent
-    directories, so binding ``.../mvgeos/scripts/verify_install.py`` in place
+    directories, so binding ``.../mvge/scripts/verify_install.py`` in place
     rebuilds the entire ``/home/vanluther/...`` chain inside the sandbox -- the
     operator's tree, recreated, with the repository sitting at the bottom of it.
     The run still passed, which is exactly the failure mode worth being afraid
@@ -668,14 +644,20 @@ def run_sandboxed(arguments: argparse.Namespace) -> int:
     seen was sitting right there.
 
     Nothing about the measurement changes. The copy is the measuring instrument,
-    not the thing measured; every ``mvgeos`` still arrives from PyPI.
+    not the thing measured; every ``mvge`` still arrives from PyPI.
     """
-    outer = pathlib.Path(tempfile.mkdtemp(prefix="mvgeos-verify-sandbox-"))
+    outer = pathlib.Path(tempfile.mkdtemp(prefix="mvge-verify-sandbox-"))
     scratch = outer / "scratch"
-    for name in ("home", "cache", "work", "harness"):
+    for name in ("home", "cache", "work", "harness", "bin"):
         (scratch / name).mkdir(parents=True)
     harness = scratch / "harness" / pathlib.Path(__file__).name
     shutil.copyfile(pathlib.Path(__file__).resolve(), harness)
+    for tool in ("uv", "uvx"):
+        tool_path = shutil.which(tool)
+        if tool_path:
+            dest_tool = scratch / "bin" / tool
+            shutil.copy2(tool_path, dest_tool)
+            dest_tool.chmod(0o755)
     command = sandbox_command(
         scratch,
         [
@@ -779,9 +761,7 @@ def main() -> int:
         else:
             return run_sandboxed(arguments)
 
-    scratch = pathlib.Path(
-        arguments.scratch or tempfile.mkdtemp(prefix="mvgeos-verify-")
-    )
+    scratch = pathlib.Path(arguments.scratch or tempfile.mkdtemp(prefix="mvge-verify-"))
     owns_scratch = arguments.scratch is None
     home = scratch / "home"
     cache = scratch / "cache"
@@ -793,7 +773,7 @@ def main() -> int:
     # free tier keyless, and a gate that silently supplied a key would stop
     # testing the thing a stranger actually has: no key. When there is a key it
     # is written the way a Summoner types it, under the Realm's own name
-    # (`~/.agents/auth/<realm>.json`, per `mvgeos_agent.auth`), so the real
+    # (`~/.agents/auth/<realm>.json`, per `mvge.agent.auth`), so the real
     # key-resolution path is exercised rather than bypassed with --api-key. The
     # Rune and the Mvge are installed by the run below either way.
     if api_key:
@@ -804,16 +784,16 @@ def main() -> int:
     env = clean_env(home, cache, api_key, api_key_env)
     version = arguments.version
 
-    # Every probe below resolves `mvgeos=={version}` from PyPI, and the simple
+    # Every probe below resolves `mvge=={version}` from PyPI, and the simple
     # index lags the upload: on 2026-10-11 the probe ran ~28 seconds after
-    # 0.6.25 landed and uv reported "there is no version of mvgeos==0.6.25".
+    # 0.6.25 landed and uv reported "there is no version of mvge==0.6.25".
     # The release was fully live; the probe was early. Wait for the version
     # to be visible before measuring anything, so a propagation delay reads
     # as a wait rather than a failed release.
-    print(f"waiting for mvgeos=={version} to appear on the PyPI index ...")
+    print(f"waiting for mvge=={version} to appear on the PyPI index ...")
     if not wait_for_version_on_index(version):
         print(
-            f"verify_install failed: mvgeos=={version} did not appear on the "
+            f"verify_install failed: mvge=={version} did not appear on the "
             f"PyPI index within {INDEX_TIMEOUT_SECONDS}s",
             file=sys.stderr,
         )
@@ -823,7 +803,7 @@ def main() -> int:
     stamps: list[float] = []
     leaked = host_paths_reachable()
     try:
-        print(f"verify_install: mvgeos=={version} on a scratch HOME")
+        print(f"verify_install: mvge=={version} on a scratch HOME")
         print(f"  HOME   {home}")
         print(f"  cache  {cache} (empty: the install below is a real download)")
         isolation = (
@@ -836,7 +816,7 @@ def main() -> int:
             failures.append(f"{path} is reachable from inside the run")
 
         code, output, elapsed = run_uvx(version, env, ["--help"], cwd=work)
-        print(f"\n[1/5] uvx mvgeos --help -> exit {code} in {elapsed:.2f}s")
+        print(f"\n[1/5] uvx mvge --help -> exit {code} in {elapsed:.2f}s")
         if code != 0:
             failures.append(f"`--help` exited {code}")
             print(output[-2000:])
@@ -896,8 +876,8 @@ def main() -> int:
             [
                 "uvx",
                 "--from",
-                f"mvgeos=={version}",
-                "mvgeos",
+                f"mvge=={version}",
+                "mvge",
                 *task_args,
             ],
             env=scrubbed(env),

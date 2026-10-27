@@ -11,8 +11,8 @@ Accepted
 ## Context
 
 `heal-my-goap` synthesises GOAP action code at runtime with an LLM and runs it
-through `MvgeOS host sandbox executor`
-(`mvgeos-core/src/mvgeos_core/sandbox.py`). That code is not code a human wrote
+through `Mvge host sandbox executor`
+(`mvge-core/src/mvge_core/sandbox.py`). That code is not code a human wrote
 and reviewed. It is code a model wrote, this run, from a gap description built
 out of world state that the model itself observed.
 
@@ -82,12 +82,12 @@ Where the rule is enforced is split by ownership:
   through `RuneLifecycle`.
 - **The policy is the marketplace's.** A Rune's `allowed_modules` is Rune
   configuration, so the gate that polices it belongs in the repository that owns
-  Rune configuration: `mvgeos-marketplace/tests/test_sandbox_privilege_contract.py`,
+  Rune configuration: `mvge-marketplace/tests/test_sandbox_privilege_contract.py`,
   which is
   already collected by that repository's existing pytest run and needs no new
   CI wiring. Neither existing gate can host it, and neither should:
-  `mvgeos-core/scripts/check_marketplace_contract.py` asserts that imports
-  resolve, and `mvgeos-marketplace/tests/test_global_agents_dir_contract.py` is
+  `mvge-core/scripts/check_marketplace_contract.py` asserts that imports
+  resolve, and `mvge-marketplace/tests/test_global_agents_dir_contract.py` is
   scoped to the global layer resolver. This is a third kind of gate and it is
   given a third kind of home.
 
@@ -128,13 +128,13 @@ Reversing this decision is a one-line change to one constant.
 
 **Landed.** Marketplace commit `5222531`.
 
-`runes/heal-my-goap/mvgeos_runes_heal_my_goap/sandbox.py` is a near-duplicate of
+`runes/heal-my-goap/mvge_runes_heal_my_goap/sandbox.py` is a near-duplicate of
 the engine's module. It has already drifted once and had to be patched in
 lockstep, which is the whole argument against keeping it: two copies of a
 security control are one finding and two fixes.
 
 It has no dependency justification. `heal-my-goap` already imports from
-`mvgeos_core`, and `GoapEngine` receives the engine's executor through
+`mvge_core`, and `GoapEngine` receives the engine's executor through
 `api.sandbox`. The vendored copy is reachable only where no executor is
 injected, which is the standalone example path. Removing it is consistent with
 **Zero Backward Compatibility Burden**: a vendored near-duplicate of an engine

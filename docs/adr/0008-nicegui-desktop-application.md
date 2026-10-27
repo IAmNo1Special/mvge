@@ -6,17 +6,17 @@ Accepted (amended 2026-08: component inventory descoped to the shipped pipeline)
 
 ## Context
 
-MvgeOS provides CLI and TUI interfaces for Summoners to interact with Mvges. However, complex agentic workflows—such as inspecting multi-file diffs, reviewing structured markdown artifacts, monitoring concurrent subagents, tracking active skills, and managing multi-project workspaces—benefit substantially from a rich graphical desktop interface.
+Mvge provides CLI and TUI interfaces for Summoners to interact with Mvges. However, complex agentic workflows—such as inspecting multi-file diffs, reviewing structured markdown artifacts, monitoring concurrent subagents, tracking active skills, and managing multi-project workspaces—benefit substantially from a rich graphical desktop interface.
 
 The design goal is to provide a 1:1 pixel-accurate desktop experience matching Google Antigravity IDE, powered natively in Python by NiceGUI.
 
 ## Decision
 
-We will implement `mvgeos-gui` as a dedicated workspace package within the MvgeOS monorepo:
+We will implement `mvge-gui` as a dedicated workspace package within the Mvge monorepo:
 
 1. **Package Placement**:
-   - `mvgeos-gui` workspace member in `pyproject.toml`.
-   - Entry point: `mvgeos-gui` CLI command.
+   - `mvge-gui` workspace member in `pyproject.toml`.
+   - Entry point: `mvge-gui` CLI command.
 
 2. **Desktop Runtime & Windowing**:
    - Built on NiceGUI with PyWebView (`native=True`) by default for an OS-native desktop window without browser chrome.
@@ -42,12 +42,12 @@ We will implement `mvgeos-gui` as a dedicated workspace package within the MvgeO
 
 5. **Testing & Code Quality**:
    - Google Python Style Guide, Ruff formatting, Mypy strict mode.
-   - pytest test suite with >=90% test coverage in `mvgeos-gui/tests/unit/` and `mvgeos-gui/tests/integration/`.
+   - pytest test suite with >=90% test coverage in `mvge-gui/tests/unit/` and `mvge-gui/tests/integration/`.
 
 ## Consequences
 
 - Summoners gain a native desktop experience without requiring Node.js/Electron.
-- The GUI shares the unified Tome JSONL storage and MvgeOS agent abstractions without duplication.
+- The GUI shares the unified Tome JSONL storage and Mvge agent abstractions without duplication.
 - Live Git state, artifacts, and subagent lifecycles are visualized in real time.
 
 ## Amendment (2026-08): shipped pipeline

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-MvgeOS aims for 90%+ test coverage with all tests passing. The project follows Test-Driven Development (TDD) as a binding constraint for all code produced.
+Mvge aims for 90%+ test coverage with all tests passing. The project follows Test-Driven Development (TDD) as a binding constraint for all code produced.
 
 ## Decision
 
