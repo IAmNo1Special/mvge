@@ -823,7 +823,15 @@ def _repl_callback(
         # opencode.ai, authenticating at the wrong host and exposing the
         # Summoner's credential to a host that never asked for it.
         api_key = os.environ.get(api_key_env_for_realm(key_realm))
-    if api_key is None:
+    if api_key is None and key_realm:
+        # Gated on a resolved Realm, not just on a missing key. On the
+        # deferred/bootstrap path key_realm is "" and load_api_key_for_realm
+        # maps an empty Realm to the OpenRouter file, so an ungated lookup
+        # here handed _run_agent an OpenRouter key it never asked for --
+        # and _run_agent then skipped its own per-Realm resolution, so a
+        # model bootstrap resolved to opencode ran with the OpenRouter key
+        # (validate_api_key only checks the sk-or- format). Deferred runs
+        # must reach _run_agent with api_key=None.
         api_key = load_api_key_for_realm(key_realm)
     if api_key is None and not model_requires_credential(key_model):
         # A model this engine will serve without one. Only reached once every

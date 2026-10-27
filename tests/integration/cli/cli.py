@@ -840,6 +840,58 @@ def test_callback_realm_prompt_forwards_chosen_realms_key(
     assert mock_run.call_args[1]["api_key"] == "opencode-test-key"
 
 
+def test_callback_deferred_path_passes_no_key_to_run_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A deferred callback must not hand _run_agent a stored OpenRouter key.
+
+    With no model, no config model, and no Realm preference, the callback
+    defers the key gate to _run_agent (which bootstraps first). The stored
+    OpenRouter credential file must not leak across that deferral: an
+    empty Realm used to resolve to the OpenRouter file, so a bootstrap
+    that later resolved to opencode ran with the OpenRouter key.
+    """
+    from mvge.cli.main import _repl_callback
+
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
+    ctx = MagicMock()
+    ctx.invoked_subcommand = None
+    ctx.meta = {}
+    with (
+        patch("mvge.cli.main._load_config_preference", return_value=(None, None)),
+        patch(
+            "mvge.cli.main.load_api_key_for_realm",
+            return_value="sk-or-stored-key",
+        ),
+        patch("mvge.cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+    ):
+        mock_run.return_value = 0
+        _repl_callback(
+            ctx,
+            incantation=None,
+            model=None,
+            api_key=None,
+            temperature=None,
+            max_tokens=None,
+            contemplation=None,
+            spells="bash,read",
+            extension_dir=None,
+            resume=None,
+            provider=None,
+            tome_dir=None,
+            tui=False,
+            agent_name="coding",
+            approval_mode=None,
+            mode="auto",
+            bootstrap=True,
+        )
+
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["model_id"] is None
+    assert mock_run.call_args[1]["api_key"] is None
+
+
 def test_callback_realm_prompt_eof_errors_naming_choice() -> None:
     """An aborted Realm prompt in the callback names the choice and stops."""
     import typer
