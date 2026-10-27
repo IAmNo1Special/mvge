@@ -31,10 +31,9 @@ import sys
 import pytest
 import verify_install
 
-from mvge.core.constants import DEFAULT_MODEL as CORE_DEFAULT_MODEL
 from mvge.provider.realms import (
-    DEFAULT_REALM,
     REALM_API_KEY_ENV,
+    REALM_DEFAULT_MODELS,
     rune_for_realm,
 )
 
@@ -134,17 +133,21 @@ def test_the_harness_owns_the_only_two_marketplace_copies() -> None:
 
 
 def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
-    """What CI actually runs, with no flags, must be the Realm the engine defaults to.
+    """What CI actually runs, with no flags, must probe a Realm the engine knows.
 
-    This is the assertion that was missing. An earlier revision hardcoded
-    ``default="openrouter"`` in the parser while ``DEFAULT_PROVIDER`` and the
-    engine both said ``opencode``, so every other test in this file stayed green
-    and the gate would have exercised a Realm no new Summoner starts on.
+    There is no single engine default Realm any more (ADR-0028: defaults are
+    per Realm). The gate is an OpenRouter probe by construction, so what this
+    pins is the smaller invariant that survives: the gate's probe defaults
+    agree with the engine's per-Realm table entry for the gate's own
+    provider, rather than naming a model the table has never heard of.
     """
     arguments = verify_install.build_parser().parse_args(["--version", "0.0.0"])
 
-    assert arguments.provider == DEFAULT_REALM
-    assert arguments.model == CORE_DEFAULT_MODEL
+    assert arguments.provider == verify_install.DEFAULT_PROVIDER
+    assert (
+        arguments.model
+        == REALM_DEFAULT_MODELS[verify_install.DEFAULT_PROVIDER]
+    )
 
 
 def test_the_default_gate_requires_a_credential_and_says_so() -> None:

@@ -307,6 +307,16 @@ class TestConfigManagerValidation:
         ):
             mgr.set("invalid_key", "foo")
 
+    def test_set_realm_strips_and_rejects_non_string(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.set("realm", " opencode ")
+        assert (
+            json.loads(mgr.agent_config_path.read_text(encoding="utf-8"))["realm"]
+            == "opencode"
+        )
+        with pytest.raises(ValueError, match="realm"):
+            mgr.set("realm", 42)
+
     def test_set_valid_values(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
         mgr.set("temperature", 0.8)

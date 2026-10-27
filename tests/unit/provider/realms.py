@@ -505,3 +505,25 @@ def test_free_suffix_is_per_realm_not_global() -> None:
     assert free_suffix_for_realm("opencode") == "-free"
     assert free_suffix_for_realm("openrouter") == ":free"
     assert free_suffix_for_realm("ollama") == ""
+
+
+def test_register_realm_default_model_validates_and_restores() -> None:
+    """Registering a Realm default validates its inputs and is reversible."""
+    from mvge.provider.realms import (
+        REALM_DEFAULT_MODELS,
+        default_model_for_realm,
+        register_realm_default_model,
+    )
+
+    saved = dict(REALM_DEFAULT_MODELS)
+    try:
+        with pytest.raises(ValueError, match="non-empty"):
+            register_realm_default_model("", "testrealm/test-free")
+        with pytest.raises(ValueError, match="non-empty"):
+            register_realm_default_model("testrealm", "")
+        register_realm_default_model("testrealm", "testrealm/test-free")
+        assert default_model_for_realm("testrealm") == "testrealm/test-free"
+    finally:
+        REALM_DEFAULT_MODELS.clear()
+        REALM_DEFAULT_MODELS.update(saved)
+    assert default_model_for_realm("testrealm") is None

@@ -328,7 +328,7 @@ async def _run_agent(
                 api_key = ""
             if api_key is None:
                 if is_interactive:
-                    prompted_key = prompt_api_key(console)
+                    prompted_key = prompt_api_key(console, key_realm)
                     if prompted_key:
                         save_api_key_to_auth(prompted_key, key_realm)
                         api_key = prompted_key
@@ -836,7 +836,7 @@ def _repl_callback(
         api_key = ""
     if key_model is not None and api_key is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
-            prompted_key = prompt_api_key(console)
+            prompted_key = prompt_api_key(console, key_realm)
             if prompted_key:
                 saved_to = save_api_key_to_auth(prompted_key, key_realm)
                 console.print(f"[green]Saved API key to {saved_to}[/green]")
@@ -859,7 +859,13 @@ def _repl_callback(
     code = asyncio.run(
         _run_agent(
             incantation=incantation,
-            model_id=model,
+            # The callback-resolved model, not just --model: key_model
+            # carries a config model, a Realm preference, or the Realm
+            # the Summoner just chose at the prompt. Passing only --model
+            # would discard that choice, so _run_agent would prompt a
+            # second time (REPL) or error (prompt run) after the key for
+            # the chosen Realm had already been gated.
+            model_id=model or key_model,
             api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,

@@ -672,3 +672,209 @@ def test_resolve_cli_model_is_realm_first() -> None:
     )
     assert resolve_cli_model(None, None, None) == (None, "")
     assert resolve_cli_model(None, None, "groq") == (None, "")
+
+
+def _stub_env_no_model() -> object:
+    """A resolved environment with no model and no Realm preference."""
+    from types import SimpleNamespace
+
+    def _val(value: object) -> object:
+        return SimpleNamespace(value=value)
+
+    return SimpleNamespace(
+        model_id="",
+        config={
+            "temperature": _val(1.0),
+            "max_tokens": _val(1024),
+            "contemplation_level": _val("none"),
+            "spells_enabled": _val("bash,read"),
+        },
+    )
+
+
+def _run_agent_kwargs(**overrides: object) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "incantation": None,
+        "model_id": None,
+        "api_key": None,
+        "temperature": None,
+        "max_tokens": None,
+        "contemplation_level": None,
+        "spells_enabled": None,
+        "extension_dir": None,
+        "resume": None,
+        "provider_name": None,
+        "tome_dir": None,
+        "tui": False,
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+@pytest.mark.asyncio
+async def test_run_agent_no_model_text_mode_errors_without_agent() -> None:
+    """A prompt run with no model and no Realm ends before any agent runs."""
+    with (
+        patch("mvge.cli.main.MvgeEnvironment") as mock_env_cls,
+        patch("mvge.cli.main._create_agent", new_callable=AsyncMock) as mock_create,
+    ):
+        mock_env_cls.resolve.return_value = _stub_env_no_model()
+        code = await _run_agent(**_run_agent_kwargs(incantation="hi"))
+
+    assert code == 1
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_agent_realm_choice_eof_errors_without_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An aborted Realm choice in _run_agent is a Realm error, not a key error."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
+    with (
+        patch("mvge.cli.main.MvgeEnvironment") as mock_env_cls,
+        patch("mvge.cli.main._create_agent", new_callable=AsyncMock) as mock_create,
+        patch("builtins.input", side_effect=EOFError),
+    ):
+        mock_env_cls.resolve.return_value = _stub_env_no_model()
+        code = await _run_agent(**_run_agent_kwargs())
+
+    assert code == 1
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_agent_realm_choice_then_key_prompt_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a Realm choice, the key prompt is for that Realm, then an error."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
+    with (
+        patch("mvge.cli.main.MvgeEnvironment") as mock_env_cls,
+        patch("mvge.cli.main._create_agent", new_callable=AsyncMock) as mock_create,
+        patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvge.cli.main.prompt_api_key", return_value="") as mock_prompt,
+        patch("builtins.input", return_value="openrouter"),
+    ):
+        mock_env_cls.resolve.return_value = _stub_env_no_model()
+        code = await _run_agent(**_run_agent_kwargs())
+
+    assert code == 1
+    mock_prompt.assert_called_once()
+    mock_create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_agent_realm_choice_then_env_key_runs_repl(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Realm choice plus that Realm's key variable reaches the REPL."""
+    monkeypatch.setenv("OPENCODE_API_KEY", "opencode-test-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with (
+        patch("mvge.cli.main.MvgeEnvironment") as mock_env_cls,
+        patch("mvge.cli.main.run_repl", new_callable=AsyncMock) as mock_repl,
+        patch("builtins.input", return_value="opencode"),
+    ):
+        mock_env_cls.resolve.return_value = _stub_env_no_model()
+        code = await _run_agent(**_run_agent_kwargs())
+
+    assert code == 0
+    mock_repl.assert_called_once()
+    assert mock_repl.call_args[1]["model"] == "opencode/space-bunny-free"
+    assert mock_repl.call_args[1]["api_key"] == "opencode-test-key"
+
+
+def test_load_config_preference_read_failure_returns_none() -> None:
+    """An unreadable config is a missing preference, never an assumption."""
+    from mvge.cli.main import _load_config_preference
+
+    with patch("mvge.cli.main.ConfigManager", side_effect=RuntimeError("boom")):
+        assert _load_config_preference("coding") == (None, None)
+
+
+def test_callback_realm_prompt_forwards_chosen_realms_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The callback's Realm prompt gates on the chosen Realm's key."""
+    from mvge.cli.main import _repl_callback
+
+    monkeypatch.setenv("OPENCODE_API_KEY", "opencode-test-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    ctx = MagicMock()
+    ctx.invoked_subcommand = None
+    ctx.meta = {}
+    with (
+        patch("mvge.cli.main._load_config_preference", return_value=(None, None)),
+        patch("mvge.cli.main.load_api_key_for_realm", return_value=None),
+        patch("mvge.cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+        patch("sys.stdin.isatty", return_value=True),
+        patch("sys.stdout.isatty", return_value=True),
+        patch("builtins.input", return_value="opencode"),
+    ):
+        mock_run.return_value = 0
+        _repl_callback(
+            ctx,
+            incantation="hi",
+            model=None,
+            api_key=None,
+            temperature=None,
+            max_tokens=None,
+            contemplation=None,
+            spells="bash,read",
+            extension_dir=None,
+            resume=None,
+            provider=None,
+            tome_dir=None,
+            tui=False,
+            agent_name="coding",
+            approval_mode=None,
+            mode="auto",
+            bootstrap=False,
+        )
+
+    mock_run.assert_called_once()
+    assert mock_run.call_args[1]["model_id"] == "opencode/space-bunny-free"
+    assert mock_run.call_args[1]["api_key"] == "opencode-test-key"
+
+
+def test_callback_realm_prompt_eof_errors_naming_choice() -> None:
+    """An aborted Realm prompt in the callback names the choice and stops."""
+    import typer
+
+    from mvge.cli.main import _repl_callback
+
+    ctx = MagicMock()
+    ctx.invoked_subcommand = None
+    ctx.meta = {}
+    with (
+        patch("mvge.cli.main._load_config_preference", return_value=(None, None)),
+        patch("mvge.cli.main._run_agent", new_callable=AsyncMock) as mock_run,
+        patch("sys.stdin.isatty", return_value=True),
+        patch("sys.stdout.isatty", return_value=True),
+        patch("builtins.input", side_effect=EOFError),
+        pytest.raises(typer.Exit),
+    ):
+        _repl_callback(
+            ctx,
+            incantation="hi",
+            model=None,
+            api_key=None,
+            temperature=None,
+            max_tokens=None,
+            contemplation=None,
+            spells="bash,read",
+            extension_dir=None,
+            resume=None,
+            provider=None,
+            tome_dir=None,
+            tui=False,
+            agent_name="coding",
+            approval_mode=None,
+            mode="auto",
+            bootstrap=False,
+        )
+
+    mock_run.assert_not_called()
