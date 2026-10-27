@@ -755,9 +755,12 @@ def _repl_callback(
 
     # Which variable holds the credential depends on the model's Realm, so the
     # model has to be known first. With no --model the Realm is the default
-    # model's. Passing the resolved slug onwards is deliberately *not* done:
-    # an agent's own config may name a different model, and that precedence
-    # belongs to the config layer, not to this lookup.
+    # model's. The callback-resolved model IS passed onwards to _run_agent
+    # (model or key_model): key_model already follows the config layer's
+    # precedence (explicit model, then config model, then Realm
+    # preference), so it cannot disagree with what _run_agent resolves --
+    # except for a Realm the Summoner just chose at the prompt, which is
+    # exactly the choice that must reach the session.
     #
     # The Realm that serves the model, not the slug's prefix. Those differ for a
     # routed slug: `nvidia/nemotron-3-ultra-550b-a55b:free` is served by

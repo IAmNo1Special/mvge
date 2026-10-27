@@ -144,10 +144,7 @@ def test_a_bare_invocation_gates_the_engines_default_realm() -> None:
     arguments = verify_install.build_parser().parse_args(["--version", "0.0.0"])
 
     assert arguments.provider == verify_install.DEFAULT_PROVIDER
-    assert (
-        arguments.model
-        == REALM_DEFAULT_MODELS[verify_install.DEFAULT_PROVIDER]
-    )
+    assert arguments.model == REALM_DEFAULT_MODELS[verify_install.DEFAULT_PROVIDER]
 
 
 def test_the_default_gate_requires_a_credential_and_says_so() -> None:

@@ -698,6 +698,23 @@ class TestMvgeEnvironmentAssemble:
 
 
 class TestMvgeEnvironmentSnapshot:
+    def test_agent_build_snapshot_reports_the_agents_own_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An agent's snapshot names its model, not its config file's.
+
+        build_snapshot re-resolves the environment, which reports the
+        config's model; since ADR-0028 the config carries no model for
+        a Summoner who never set one, so an explicitly modelled agent
+        reported an empty model in its own snapshot.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        agent = Mvge(api_key="test-key", model_id="openrouter/free")
+        snap = agent.build_snapshot()
+
+        assert snap.model == "openrouter/free"
+
     def test_mvge_environment_build_snapshot(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
         env = MvgeEnvironment.resolve(
