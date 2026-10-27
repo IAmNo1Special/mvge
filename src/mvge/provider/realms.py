@@ -104,19 +104,56 @@ REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
     "opencode": "-free",
 }
 
-#: The Realm that serves ``mvge.core.constants.DEFAULT_MODEL``.
+#: The default model for each Realm we ship, keyed by Realm.
 #:
-#: Stated rather than derived, because the two are not the same question. For a
-#: routed slug like ``nvidia/nemotron-3-ultra-550b-a55b:free`` the id prefix is
-#: the *provider* and the Realm is ``openrouter``, so reading the Realm off the
-#: slug would open the GUI's cascading selector on a Realm that cannot serve the
-#: model it starts on.
+#: This table replaces the old single global default model. A default belongs
+#: to a Realm, not to the engine: an opencode user with no model set must get
+#: an opencode model, not ``openrouter/free`` with an OpenRouter key prompt
+#: attached. The resolution order is explicit model first, then the stored
+#: Realm preference through this table, then no model at all -- never a
+#: silent fallback to one Realm. See ADR-0028, which supersedes the
+#: default-model part of ADR-0020 (the anonymous-free-tier measurement in
+#: ADR-0020 stands).
 #:
-#: A copy is only safe while a test holds it to the shipped catalog -- see
-#: ``test_default_realm_agrees_with_the_shipped_catalog`` in
-#: ``tests/unit/provider/realms.py``. That test is the point: changing
-#: ``DEFAULT_MODEL`` without this is the drift it exists to catch.
-DEFAULT_REALM: Final[str] = "openrouter"
+#: Every entry must be a free slug in the shipped catalog; the tests in
+#: ``tests/unit/provider/realms.py`` hold that. A Realm added here must be
+#: one whose default actually answers, measured, not inferred from the
+#: catalog -- that is the ADR-0018/0019 lesson.
+#:
+#: Realms can extend the table at runtime through
+#: :func:`register_realm_default_model` (an out-of-tree Realm Rune's path).
+#: The credential gate runs before any Rune is loaded, so the gate itself
+#: reads only this shipped table, never a Rune registration.
+REALM_DEFAULT_MODELS: Final[dict[str, str]] = {
+    "openrouter": "openrouter/free",
+    "opencode": "opencode/space-bunny-free",
+}
+
+
+def default_model_for_realm(realm: str) -> str | None:
+    """Return the default model for ``realm``, or None if it has none.
+
+    An empty or unknown Realm has no default on purpose: returning a
+    guessed model here would reintroduce the global-default bug through
+    the back door, with the caller's Realm silently replaced by another.
+    """
+    if not realm:
+        return None
+    return REALM_DEFAULT_MODELS.get(realm)
+
+
+def register_realm_default_model(realm: str, model_id: str) -> None:
+    """Register ``model_id`` as the default model for ``realm``.
+
+    Intended for Realm Runes that ship outside this repository. The
+    shipped table above is a plain dict, so registration is an explicit
+    assignment rather than a merge: the last registration wins, and a
+    caller that needs the shipped value reads the table before any Rune
+    runs.
+    """
+    if not realm or not model_id:
+        raise ValueError("realm and model_id must both be non-empty")
+    REALM_DEFAULT_MODELS[realm] = model_id
 
 
 def realm_for_model_id(model_id: str) -> str:
@@ -183,15 +220,17 @@ def free_suffix_for_realm(realm: str) -> str:
 
 
 __all__ = [
-    "DEFAULT_REALM",
     "REALM_API_KEY_ENV",
     "REALM_BASE_URLS",
+    "REALM_DEFAULT_MODELS",
     "REALM_FREE_SUFFIXES",
     "REALM_RUNES",
     "REALMS_WITHOUT_CREDENTIAL",
     "REALMS_WITH_ANONYMOUS_FREE_TIER",
     "api_key_env_for_realm",
+    "default_model_for_realm",
     "free_suffix_for_realm",
     "realm_for_model_id",
+    "register_realm_default_model",
     "rune_for_realm",
 ]

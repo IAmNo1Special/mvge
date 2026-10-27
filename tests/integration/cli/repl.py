@@ -7,7 +7,6 @@ import pytest
 
 from mvge.agent.mvge import Mvge
 from mvge.cli.commands.dispatcher import CliCommandDispatcher
-from mvge.core.constants import DEFAULT_MODEL
 from mvge.core.events import (
     MvgeEvent,
     MvgeEventType,
@@ -23,7 +22,7 @@ def registry() -> ModelRegistry:
 
 @pytest.fixture
 def agent() -> Mvge:
-    return Mvge(api_key="test-key")
+    return Mvge(api_key="test-key", model_id="openrouter/free")
 
 
 class TestSlashCommands:
@@ -80,7 +79,7 @@ class TestSlashCommands:
         dispatcher = CliCommandDispatcher(agent, registry)
         result = await dispatcher.dispatch("/model unknown/model")
         assert result is False
-        assert agent.model_id == DEFAULT_MODEL
+        assert agent.model_id == "openrouter/free"
 
     @pytest.mark.asyncio
     async def test_spells_no_args(self, agent: Mvge, registry: ModelRegistry) -> None:
@@ -264,7 +263,7 @@ class TestReplHelpers:
 
         monkeypatch.setattr(formatting_mod, "format_cwd", lambda: "~/proj")
 
-        agent = Mvge(api_key="test-key")
+        agent = Mvge(api_key="test-key", model_id="openrouter/free")
         info = format_tome_info(agent, branch="main")
         parts = " ".join(text for _, text in info)
         assert "~/proj (main)" in parts
@@ -272,7 +271,7 @@ class TestReplHelpers:
         # prefix. AGENTS.md already requires footer assertions to match a prefix
         # rather than a full slug, since the width truncation makes the full one
         # a formatting detail.
-        assert realm_for_model_id(DEFAULT_MODEL) in parts
+        assert realm_for_model_id("openrouter/free") in parts
 
     def test_format_tome_info_reports_mana_used(
         self, monkeypatch: pytest.MonkeyPatch
@@ -318,7 +317,7 @@ class TestReplHelpers:
         items = [
             ("bold", " ~/proj (main)"),
             ("dim", "  session abc12345"),
-            ("", f"  {DEFAULT_MODEL} • medium"),
+            ("", f"  {'openrouter/free'} • medium"),
         ]
         fitted = fit_footer(items, 40)
         plain = "".join(text for _, text in fitted)
@@ -328,7 +327,7 @@ class TestReplHelpers:
     def test_fit_footer_no_truncation_when_fits(self) -> None:
         from mvge.cli.formatting import fit_footer
 
-        items = [("bold", " ~/proj"), ("", f"  {DEFAULT_MODEL}")]
+        items = [("bold", " ~/proj"), ("", f"  {'openrouter/free'}")]
         fitted = fit_footer(items, 80)
         assert fitted == items
 

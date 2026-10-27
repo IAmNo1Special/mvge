@@ -33,7 +33,6 @@ from mvge.agent.harness.reload import (
 from mvge.agent.protocol import MvgeAgent, ReloadResult
 from mvge.agent.rune_lifecycle import RuneLifecycle
 from mvge.core.channel import MvgeResponse, RealmResponse, StopReason
-from mvge.core.constants import DEFAULT_MODEL
 from mvge.core.layers import ResolvedLayer, Scope
 from mvge.provider.base import Realm
 from mvge.provider.realms import realm_for_model_id
@@ -53,7 +52,7 @@ def _make_registry(realm: Realm | None = None) -> RealmRegistry:
     registry = RealmRegistry()
     stub = realm if realm is not None else MagicMock(spec=Realm)
     registry.register_realm_factory(
-        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: stub
+        realm_for_model_id("openrouter/free"), lambda **kwargs: stub
     )
     return registry
 
@@ -85,6 +84,7 @@ def _make_agent(
     return Mvge(
         api_key="test-key",
         name="reload-test",
+        model_id=kwargs.pop("model_id", "openrouter/free"),
         tome_dir=tmp_path / "tomes",
         caller_dir=caller_dir,
         runes_paths=[str(tmp_path / "runes")],

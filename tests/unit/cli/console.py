@@ -29,3 +29,19 @@ def test_prompt_api_key_eof_error() -> None:
     with patch("typer.prompt", side_effect=EOFError):
         key = prompt_api_key()
         assert key is None
+
+
+def test_prompt_api_key_names_the_realm() -> None:
+    """The prompt names the Realm whose key is being asked for."""
+    seen: list[str] = []
+    with patch("typer.prompt", side_effect=lambda *a, **k: seen.append(a[0]) or "k"):
+        prompt_api_key(realm="opencode")
+    assert seen == ["Enter opencode API key"]
+
+
+def test_prompt_api_key_without_realm_names_no_realm() -> None:
+    """Without a Realm the prompt stays generic, never a guessed Realm."""
+    seen: list[str] = []
+    with patch("typer.prompt", side_effect=lambda *a, **k: seen.append(a[0]) or "k"):
+        prompt_api_key()
+    assert seen == ["Enter API key"]

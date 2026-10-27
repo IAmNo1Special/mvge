@@ -17,11 +17,12 @@ from mvge.core import constants
 #: the dunders when counting public names.
 _FUTURE_FLAG_NAMES = frozenset({"annotations"})
 
-#: The four contract names. These are protocol-facing: other code and
+#: The contract names. These are protocol-facing: other code and
 #: external tools spell them literally, so they are what this module is for.
+#: There is no DEFAULT_MODEL any more (ADR-0028): defaults are per Realm,
+#: resolved from a stored Realm preference, not from a global constant.
 CONTRACT_CONSTANTS = (
     "DEFAULT_AGENT_NAME",
-    "DEFAULT_MODEL",
     "GLOBAL_DIR_ENV",
     "PROJECT_RUNE_PATH",
     "PROJECT_SKILL_PATH",

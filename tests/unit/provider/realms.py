@@ -13,21 +13,22 @@ from __future__ import annotations
 import pytest
 
 from mvge.core.channel import Model
-from mvge.core.constants import DEFAULT_MODEL
 from mvge.provider.base import NoRealmRegisteredError
 from mvge.provider.model_registry import (
     list_models,
     model_requires_credential,
+    resolve_default_model,
     serving_realm_for_model,
 )
 from mvge.provider.realms import (
-    DEFAULT_REALM,
     REALM_API_KEY_ENV,
     REALM_BASE_URLS,
+    REALM_DEFAULT_MODELS,
     REALM_FREE_SUFFIXES,
     REALM_RUNES,
     REALMS_WITH_ANONYMOUS_FREE_TIER,
     api_key_env_for_realm,
+    default_model_for_realm,
     free_suffix_for_realm,
     realm_for_model_id,
     rune_for_realm,
@@ -115,10 +116,7 @@ def test_an_uncatalogued_slug_falls_back_to_its_prefix() -> None:
     shipped_zen = [m for m in list_models() if m.realm == "opencode"]
     assert shipped_zen, "no opencode-Realm model ships, so the Realm has no entry"
     assert all(m.free for m in shipped_zen), "a paid opencode-Realm model ships"
-    assert DEFAULT_MODEL not in {m.id for m in shipped_zen}, (
-        "the default is now openrouter/free; if this is opencode again, "
-        "DEFAULT_REALM in realms.py is not being kept in step with DEFAULT_MODEL"
-    )
+    assert "openrouter/free" not in {m.id for m in shipped_zen}
 
 
 def test_the_serving_realm_agrees_with_the_catalog_for_every_shipped_model() -> None:
@@ -255,78 +253,107 @@ def test_a_realm_with_no_credential_at_all_is_exempt_for_every_model() -> None:
     assert model_requires_credential("ollama/some-model-nobody-has-catalogued") is False
 
 
-def test_the_default_model_requires_a_documented_credential() -> None:
-    """The default now needs a key, and the env var for it must be documented.
+def test_every_per_realm_default_requires_a_documented_credential() -> None:
+    """Every per-Realm default needs a key, and the env var for it must
+    be documented.
 
-    This used to assert the default needs *no* credential. That was true while
-    Zen served anonymously and is measured false now (ADR-0020): no free tier
-    answers an unauthenticated request any more. The invariant is inverted, not
-    deleted, because the failure being guarded is the same one in both
-    directions -- a default that cannot be reached is as broken as one that is
-    free, and which way it broke should be a decision on the record.
+    This is the Realm-first form of the old global-default invariant.
+    It used to assert the single default needs a key; that was true
+    while Zen served anonymously and is measured false now (ADR-0020):
+    no free tier answers an unauthenticated request any more. The
+    invariant is inverted, not deleted, because the failure being
+    guarded is the same one in both directions -- a default that cannot
+    be reached is as broken as one that is free, and which way it broke
+    should be a decision on the record.
 
-    The second assertion is the part that earns the test: the default must name
-    a Realm whose credential this repository actually documents, so that a
-    reader who is told to set a key is told *which* key.
+    The second assertion is the part that earns the test: each default
+    must name a Realm whose credential this repository actually
+    documents, so that a reader who is told to set a key is told
+    *which* key.
     """
-    assert model_requires_credential(DEFAULT_MODEL) is True
+    assert REALM_DEFAULT_MODELS, "no per-Realm default is recorded"
+    for model_id in REALM_DEFAULT_MODELS.values():
+        assert model_requires_credential(model_id) is True
 
-    realm = realm_for_model_id(DEFAULT_MODEL)
-    assert realm in REALM_API_KEY_ENV, (
-        f"the default {DEFAULT_MODEL} resolves to the {realm!r} Realm, which has "
-        "no documented credential variable, so a reader told to authenticate "
-        "would be told to set nothing"
-    )
-    assert REALM_API_KEY_ENV[realm], f"{realm!r} maps to an empty env var name"
+        realm = realm_for_model_id(model_id)
+        assert realm in REALM_API_KEY_ENV, (
+            f"the default {model_id} resolves to the {realm!r} Realm, "
+            "which has no documented credential variable, so a reader "
+            "told to authenticate would be told to set nothing"
+        )
+        assert REALM_API_KEY_ENV[realm], f"{realm!r} maps to an empty env var name"
 
 
 # ---------------------------------------------------------------------------
-# The default model and the default Realm
+# Per-Realm defaults, not a global default
 # ---------------------------------------------------------------------------
 
 
-def test_default_realm_agrees_with_the_shipped_catalog() -> None:
-    """``DEFAULT_REALM`` is a copy, and this is what holds the copy honest.
+def test_per_realm_defaults_agree_with_the_shipped_catalog() -> None:
+    """Each per-Realm default is that Realm's own catalog entry.
 
-    It cannot be derived from ``DEFAULT_MODEL``'s slug: for a routed slug like
-    ``nvidia/nemotron-3-ultra-550b-a55b:free`` the prefix is the provider and the
-    Realm is openrouter. So it is stated, and the statement is checked against the
-    catalog that actually ships. Changing ``DEFAULT_MODEL`` without this fails
-    here, which is the drift this exists to catch.
+    A default that named another Realm's model would send a credential
+    to a host that never asked for it, which is the global-default bug
+    in a table. So the table key and the catalog Realm must agree for
+    every entry, not just for one Realm.
     """
     entry = list_models()
-    default = next(m for m in entry if m.id == DEFAULT_MODEL)
-    assert default.realm == DEFAULT_REALM
+    for realm, model_id in REALM_DEFAULT_MODELS.items():
+        default = next(m for m in entry if m.id == model_id)
+        assert default.realm == realm
 
 
-def test_the_default_model_can_actually_answer_a_stranger() -> None:
-    """The default must be an endpoint that answers, not just a catalog entry.
+def test_resolve_default_model_is_realm_first() -> None:
+    """Explicit model wins, then Realm preference, then nothing.
 
-    This is the guard ADR 0019 exists to be. ADR 0018 moved the default to
-    `opencode/step-5-preview-free` on the strength of a catalogue check -- the
-    slug existed, was priced $0/$0, carried a 1,000,000-token window, and
-    reported tool calls, reasoning and structured output. Every one of those was
-    true and none of them was whether the endpoint would answer. It did not:
+    The nothing case is the behaviour the task requires: a Summoner
+    with no model and no Realm preference must not silently get an
+    OpenRouter model. An unknown Realm also resolves to nothing rather
+    than to another Realm's model.
+    """
+    assert (
+        resolve_default_model(model="opencode/glm-5", realm="openrouter")
+        == "opencode/glm-5"
+    )
+    assert resolve_default_model(realm="openrouter") == "openrouter/free"
+    assert resolve_default_model(realm="opencode") == "opencode/space-bunny-free"
+    assert resolve_default_model() is None
+    assert resolve_default_model(realm="groq") is None
+    assert resolve_default_model(realm="") is None
+
+
+def test_default_model_for_realm_returns_none_without_a_default() -> None:
+    assert default_model_for_realm("groq") is None
+    assert default_model_for_realm("") is None
+
+
+def test_the_opencode_default_is_not_a_measured_refusal() -> None:
+    """The opencode default must be an endpoint that answers, not just
+    a catalog entry.
+
+    This is the guard ADR 0019 exists to be. ADR 0018 moved the default
+    to `opencode/step-5-preview-free` on the strength of a catalogue
+    check -- the slug existed, was priced $0/$0, carried a 1,000,000-
+    token window, and reported tool calls, reasoning and structured
+    output. Every one of those was true and none of them was whether
+    the endpoint would answer. It did not:
 
         FreeTierError: OpenCode's free tier can only be used from within OpenCode
 
-    `verify-install`'s step 5 caught it, which is the only reason it did not
-    ship. The four steps before it passed, so the failure was the request and
-    not the packaging -- and the request is the one thing a default exists to
-    make.
+    `verify-install`'s step 5 caught it, which is the only reason it
+    did not ship. The four steps before it passed, so the failure was
+    the request and not the packaging -- and the request is the one
+    thing a default exists to make.
 
-    The check is offline here and that is deliberate. The suite makes no network
-    calls, and a default that can only be validated by hitting the provider on
-    every test run would be either flaky or skipped. What is asserted is the
-    negative: the default is not on the list of Zen free endpoints *measured* to
-    refuse a stranger. That list is the regression, frozen.
-
-    The list is a dated snapshot because it is a snapshot. If Zen starts serving
-    these slugs to strangers -- or starts refusing `space-bunny-free` -- the
-    honest fix is to re-measure and update this table and the default in the
-    same change. A table nobody revisits becomes the thing ADR 0018 was: a
-    confident answer to a question nobody still asks. The date is in the test on
-    purpose, so staleness is visible rather than silent.
+    The check is offline here and that is deliberate. The suite makes
+    no network calls, and a default that can only be validated by
+    hitting the provider on every test run would be either flaky or
+    skipped. What is asserted is the negative: the opencode default is
+    not on the list of Zen free endpoints *measured* to refuse a
+    stranger. That list is a dated snapshot because it is a snapshot.
+    If Zen starts serving these slugs to strangers -- or starts
+    refusing `space-bunny-free` -- the honest fix is to re-measure and
+    update this table and the default in the same change.
 
     Measured 2026-10-11, one anonymous request each, against
     `https://opencode.ai/zen/v1/models`.
@@ -346,33 +373,30 @@ def test_the_default_model_can_actually_answer_a_stranger() -> None:
         "opencode/exo-free",  # ModelDeprecated
         "opencode/ling-3.0-flash-fin-free",  # upstream unavailable
     }
-    assert DEFAULT_MODEL not in refused_by_zen_free_tier, (
-        f"{DEFAULT_MODEL} is a Zen free endpoint measured to refuse a request "
-        "that does not originate inside OpenCode. It may resolve in the catalog "
-        "and be priced at zero and still be unusable as a default, which is "
-        "exactly the regression ADR 0019 records. If Zen now serves it to "
-        "strangers, re-measure and update this table and the default together."
-    )
+    assert "opencode/space-bunny-free" not in refused_by_zen_free_tier
 
 
-def test_the_default_model_is_free() -> None:
-    """The default is what a first-time Summoner runs.
+def test_every_per_realm_default_is_free() -> None:
+    """Every per-Realm default is what a first-time Summoner runs.
 
-    A paid default would mean the documented first run asks for a card, which is
-    not what the quickstart promises.
+    A paid default would mean the documented first run asks for a
+    card, which is not what the quickstart promises.
     """
-    default = next(m for m in list_models() if m.id == DEFAULT_MODEL)
-    assert default.free is True
+    for model_id in REALM_DEFAULT_MODELS.values():
+        default = next(m for m in list_models() if m.id == model_id)
+        assert default.free is True
 
 
-def test_the_default_model_has_a_base_url_in_the_shipped_catalog() -> None:
+def test_every_per_realm_default_has_a_base_url() -> None:
     """A baseline entry is read without contacting anyone.
 
-    Before the Rune is installed this is the only base URL there is, so an empty
-    one means the catalog cannot tell a Summoner where the model lives.
+    Before the Rune is installed this is the only base URL there is,
+    so an empty one means the catalog cannot tell a Summoner where
+    the model lives.
     """
-    default = next(m for m in list_models() if m.id == DEFAULT_MODEL)
-    assert default.base_url == REALM_BASE_URLS[DEFAULT_REALM]
+    for realm, model_id in REALM_DEFAULT_MODELS.items():
+        default = next(m for m in list_models() if m.id == model_id)
+        assert default.base_url == REALM_BASE_URLS[realm]
 
 
 # ---------------------------------------------------------------------------
@@ -481,3 +505,25 @@ def test_free_suffix_is_per_realm_not_global() -> None:
     assert free_suffix_for_realm("opencode") == "-free"
     assert free_suffix_for_realm("openrouter") == ":free"
     assert free_suffix_for_realm("ollama") == ""
+
+
+def test_register_realm_default_model_validates_and_restores() -> None:
+    """Registering a Realm default validates its inputs and is reversible."""
+    from mvge.provider.realms import (
+        REALM_DEFAULT_MODELS,
+        default_model_for_realm,
+        register_realm_default_model,
+    )
+
+    saved = dict(REALM_DEFAULT_MODELS)
+    try:
+        with pytest.raises(ValueError, match="non-empty"):
+            register_realm_default_model("", "testrealm/test-free")
+        with pytest.raises(ValueError, match="non-empty"):
+            register_realm_default_model("testrealm", "")
+        register_realm_default_model("testrealm", "testrealm/test-free")
+        assert default_model_for_realm("testrealm") == "testrealm/test-free"
+    finally:
+        REALM_DEFAULT_MODELS.clear()
+        REALM_DEFAULT_MODELS.update(saved)
+    assert default_model_for_realm("testrealm") is None

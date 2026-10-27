@@ -15,10 +15,13 @@ Mvge is an operating system and runtime for AI agents, written in Python. A **Mv
 agent — casts **Spells** (tools) against models served by **Realms** (providers).
 Conversations persist as **Tomes**. Capabilities extend through **Runes**.
 
-No account to create with Mvge. No telemetry in the engine. The default model
-(`openrouter/free`) is free of per-token charges, and requires an
-`OPENROUTER_API_KEY` because as of 2026-10-11 no free tier anywhere answers an
-unauthenticated request ([ADR-0020](docs/adr/0020-no-free-tier-answers-a-stranger.md)).
+No account to create with Mvge. No telemetry in the engine. Each Realm has a
+default model that is free of per-token charges -- `openrouter/free` for
+OpenRouter, `opencode/space-bunny-free` for OpenCode Zen -- and each requires
+the key for the Realm you choose, because as of 2026-10-11 no free tier
+anywhere answers an unauthenticated request
+([ADR-0020](docs/adr/0020-no-free-tier-answers-a-stranger.md),
+[ADR-0028](docs/adr/0028-realm-first-default-models.md)).
 To use another provider, bring the key for the Realm you want.
 
 ## Install
@@ -355,7 +358,7 @@ Realm's credential:
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `OPENROUTER_API_KEY` | string | *Required for `openrouter-realm`* | API key for OpenRouter (including the default `openrouter/free` model). |
+| `OPENROUTER_API_KEY` | string | *Required for `openrouter-realm`* | API key for OpenRouter (including OpenRouter's default `openrouter/free` model). |
 | `OPENCODE_API_KEY` | string | *Optional* | API key for OpenCode Zen (`opencode-realm`). |
 | `MVGE_API_KEY` | string | *Optional* | Fallback / alias API key for Mvge operations |
 | `GEMINI_API_KEY` | string | *Optional* | API key for Gemini models |

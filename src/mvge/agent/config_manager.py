@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from mvge.core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.layers import agents_dir
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,12 @@ class ConfigManager:
     """
 
     DEFAULTS: dict[str, Any] = {
-        "model": DEFAULT_MODEL,
+        # No "model" default on purpose: a model is resolved from an
+        # explicit model first, then the stored "realm" preference through
+        # the per-Realm default table (ADR-0028). An empty "realm" means
+        # no preference, and that resolves to no model -- never to one
+        # Realm's model for every Summoner.
+        "realm": "",
         "max_tokens": 4096,
         "temperature": 0.7,
         "contemplation_level": "medium",
@@ -144,6 +149,7 @@ class ConfigManager:
 
     KNOWN_KEYS: set[str] = {
         "model",
+        "realm",
         "max_tokens",
         "temperature",
         "contemplation_level",
@@ -203,6 +209,11 @@ class ConfigManager:
             if not isinstance(value, str) or not value.strip():
                 raise ValueError("Invalid model value: expected string")
             return value
+
+        if key == "realm":
+            if not isinstance(value, str):
+                raise ValueError("Invalid realm value: expected string")
+            return value.strip()
 
         if key == "contemplation_level":
             if not isinstance(value, str) or value not in (

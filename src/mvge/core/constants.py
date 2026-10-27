@@ -24,32 +24,17 @@ from __future__ import annotations
 
 DEFAULT_AGENT_NAME = "default-mvge"
 
-#: The model every Mvge package falls back to.
+#: There is deliberately no global default model in this module any more.
 #:
-#: Resolving this needs two things that are not in the engine: a Rune that
-#: registers the ``opencode`` Realm, and an ``OPENCODE_API_KEY``. On a clean
-#: machine the CLI offers to install ``opencode-realm`` when the first is
-#: missing, which is the same bargain the previous default made with
-#: ``openrouter-realm``.
-#:
-#: Pick a free tier deliberately. This slug is what a first-time Summoner runs,
-#: so a saturated endpoint here is a broken quickstart rather than a slow one --
-#: which is exactly how the previous default failed.
-#:
-#: ``openrouter/free`` is OpenRouter's Free Models Router: it only ever routes to
-#: a free endpoint and picks a different one when one saturates. A concrete free
-#: slug cannot do that -- it moves the outage to whichever endpoint is saturated
-#: next, which is what has happened twice on the opencode Realm.
-#:
-#: It requires ``OPENROUTER_API_KEY``, and that is a real change to the first
-#: run rather than a hidden one. OpenCode closed its free tier to callers
-#: outside OpenCode on 2026-10-11 (ADR 0020), so no anonymous free endpoint is
-#: left anywhere. The quickstart gains a credential step for that reason, and
-#: ``test_the_default_model_requires_a_documented_credential`` holds this Realm's
-#: env var, the shipped catalog and the README to each other.
-#:
-#: Kept free by construction; never point this at a paid id.
-DEFAULT_MODEL = "openrouter/free"
+#: A default belongs to a Realm, not to the engine (ADR-0028). The old
+#: global default made every package fall back to one provider's router,
+#: so an opencode user with no model set was asked for an OpenRouter
+#: key. The per-Realm defaults now live in the provider layer's
+#: Realm-default table and are resolved from an explicit model first,
+#: then the stored Realm preference, then nothing at all.
+#: Callers that used to read the global constant must resolve instead; a
+#: caller that filled the empty case with a guessed model would reintroduce
+#: the bug this removal exists to fix.
 
 #: Environment variable that relocates the global ``.agents`` layer. The
 #: default is ``~/.agents``; setting this moves every global-layer read and

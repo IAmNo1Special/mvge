@@ -62,12 +62,20 @@ def configure_streams() -> None:
                 stream.reconfigure(errors="replace")
 
 
-def prompt_api_key(console: Console | None = None) -> str | None:
-    """Prompt user interactively for OpenRouter API key."""
+def prompt_api_key(
+    console: Console | None = None, realm: str | None = None
+) -> str | None:
+    """Prompt user interactively for a Realm's API key.
+
+    The Realm names the prompt: a bare "OpenRouter API key" prompt on an
+    opencode session files whatever the Summoner pastes under opencode,
+    which is the wrong-host filing this Realm-first change exists to end.
+    """
     if console is None:
         console = get_console()
+    prompt = f"Enter {realm} API key" if realm else "Enter API key"
     try:
-        entered = typer.prompt("Enter OpenRouter API key", hide_input=True)
+        entered = typer.prompt(prompt, hide_input=True)
         return entered.strip() if entered else None
     except (KeyboardInterrupt, EOFError, typer.Abort):
         console.print("[red]Aborted.[/red]")

@@ -164,7 +164,7 @@ def test_repl_callback_prompts_api_key(
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     monkeypatch.setattr(
-        "mvge.cli.main.prompt_api_key", lambda console: "sk-or-v1-prompted"
+        "mvge.cli.main.prompt_api_key", lambda console, realm=None: "sk-or-v1-prompted"
     )
     monkeypatch.setattr(
         "mvge.cli.main.save_api_key_to_auth",

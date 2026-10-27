@@ -16,6 +16,7 @@ from mvge.agent.auth import (
     load_api_key_for_realm,
     save_api_key_to_auth,
 )
+from mvge.agent.config_manager import ConfigManager
 from mvge.agent.environment import MvgeEnvironment
 from mvge.agent.protocol import AgentFactory, MvgeAgent
 from mvge.cli.agent_factory import create_agent, validate_api_key
@@ -57,16 +58,15 @@ from mvge.cli.formatting import (
     transcript_length,
 )
 from mvge.cli.rpc import run_rpc
-from mvge.core.constants import (
-    DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
-)
+from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.provider import NoRealmRegisteredError, get_default_realm_registry
 from mvge.provider.model_registry import (
     model_requires_credential,
+    resolve_default_model,
     serving_realm_for_model,
 )
 from mvge.provider.realms import (
+    REALM_DEFAULT_MODELS,
     api_key_env_for_realm,
     rune_for_realm,
 )
@@ -82,6 +82,59 @@ def _default_spells_from_config(resolved: dict[str, Any]) -> str:
     if isinstance(val, list):
         return ",".join(val)
     return str(val)
+
+
+def resolve_cli_model(
+    model: str | None,
+    config_model: str | None,
+    realm_preference: str | None,
+) -> tuple[str | None, str]:
+    """Resolve the model and Realm for the CLI key gate, Realm-first.
+
+    An explicit ``--model`` wins, then a model set in agent config, then
+    the stored Realm preference through the per-Realm default table.
+    With none of those there is no model and no Realm to gate on: the
+    caller must bootstrap, prompt for a Realm, or error naming the
+    choice. Returning a guessed model here would be the global-default
+    bug in a new place.
+    """
+    resolved = resolve_default_model(
+        model=model or config_model, realm=realm_preference
+    )
+    if resolved is None:
+        return None, ""
+    return resolved, serving_realm_for_model(resolved)
+
+
+def _load_config_preference(
+    agent_name: str,
+) -> tuple[str | None, str | None]:
+    """Read the stored model and Realm preference for ``agent_name``.
+
+    A read failure is a missing preference, not a fatal error: the
+    caller falls back to the Realm prompt or the bootstrap path, and a
+    config file that cannot be read must not become an OpenRouter
+    assumption either.
+    """
+    try:
+        resolved = ConfigManager(
+            agent_name=agent_name, project_dir=cli_project_dir()
+        ).load()
+    except Exception:
+        return None, None
+    model_value = resolved.get("model")
+    realm_value = resolved.get("realm")
+    config_model = (
+        str(model_value.value).strip()
+        if model_value is not None and str(model_value.value).strip()
+        else None
+    )
+    realm_preference = (
+        str(realm_value.value).strip()
+        if realm_value is not None and str(realm_value.value).strip()
+        else None
+    )
+    return config_model, realm_preference
 
 
 async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
@@ -157,7 +210,7 @@ def _maybe_bootstrap_profile(
 async def _run_agent(
     incantation: str | None,
     model_id: str | None,
-    api_key: str,
+    api_key: str | None,
     temperature: float | None,
     max_tokens: int | None,
     contemplation_level: str | None,
@@ -218,7 +271,76 @@ async def _run_agent(
             project_dir=cli_project_dir(),
         )
         resolved = env.config
-        model_id = model_id or str(resolved["model"].value)
+        # Realm-first resolution: env.model_id is already the coerced
+        # model (explicit model, then Realm preference, then empty).
+        # Reading resolved["model"] here would KeyError now that the
+        # config defaults carry no model, and falling back to a global
+        # constant would reintroduce the bug this change removes.
+        model_id = model_id or env.model_id
+        if not model_id:
+            # Bootstrap has already run above when it applies, so an
+            # empty model here is a session with no Realm chosen, not a
+            # session waiting on a key. Put the Realm choice here on a
+            # terminal; otherwise name the choice in the error. Never
+            # fill it with an OpenRouter model.
+            if is_interactive:
+                try:
+                    choice = (
+                        input(
+                            "No model or Realm preference set. Choose a Realm "
+                            f"({', '.join(sorted(REALM_DEFAULT_MODELS))}): "
+                        )
+                        .strip()
+                        .lower()
+                    )
+                except (EOFError, KeyboardInterrupt):
+                    choice = ""
+                if choice in REALM_DEFAULT_MODELS:
+                    model_id = REALM_DEFAULT_MODELS[choice]
+                else:
+                    console.print(
+                        format_error(
+                            "No model or Realm preference set. Set a model "
+                            "with --model, or a Realm with `mvge config set "
+                            "realm <realm>` (openrouter, opencode)."
+                        )
+                    )
+                    return 1
+            else:
+                console.print(
+                    format_error(
+                        "No model or Realm preference set. Set a model "
+                        "with --model, or a Realm with `mvge config set "
+                        "realm <realm>` (openrouter, opencode)."
+                    )
+                )
+                return 1
+        if api_key is None:
+            # Key after bootstrap, for the model that actually runs.
+            # The callback gate runs before bootstrap and cannot know
+            # this model yet; resolving the key here, per Realm, is what
+            # lets a first run bootstrap before it is asked for a key.
+            key_realm = serving_realm_for_model(model_id)
+            api_key = os.environ.get(
+                api_key_env_for_realm(key_realm)
+            ) or load_api_key_for_realm(key_realm)
+            if api_key is None and not model_requires_credential(model_id):
+                api_key = ""
+            if api_key is None:
+                if is_interactive:
+                    prompted_key = prompt_api_key(console, key_realm)
+                    if prompted_key:
+                        save_api_key_to_auth(prompted_key, key_realm)
+                        api_key = prompted_key
+                if api_key is None:
+                    console.print(
+                        format_error(
+                            f"API key required. Set "
+                            f"{api_key_env_for_realm(key_realm)}, "
+                            "run 'mvge setup', or use --api-key"
+                        )
+                    )
+                    return 1
         temperature = (
             temperature
             if temperature is not None
@@ -633,18 +755,67 @@ def _repl_callback(
 
     # Which variable holds the credential depends on the model's Realm, so the
     # model has to be known first. With no --model the Realm is the default
-    # model's. Passing the resolved slug onwards is deliberately *not* done:
-    # an agent's own config may name a different model, and that precedence
-    # belongs to the config layer, not to this lookup.
+    # model's. The callback-resolved model IS passed onwards to _run_agent
+    # (model or key_model): key_model already follows the config layer's
+    # precedence (explicit model, then config model, then Realm
+    # preference), so it cannot disagree with what _run_agent resolves --
+    # except for a Realm the Summoner just chose at the prompt, which is
+    # exactly the choice that must reach the session.
     #
     # The Realm that serves the model, not the slug's prefix. Those differ for a
     # routed slug: `nvidia/nemotron-3-ultra-550b-a55b:free` is served by
     # openrouter, so reading the prefix asked for NVIDIA_API_KEY and for
     # ~/.agents/auth/nvidia.json while the credential `mvge export` writes sits
     # in openrouter.json doing nothing.
-    key_realm = serving_realm_for_model(model or DEFAULT_MODEL)
-    key_model = model or DEFAULT_MODEL
-    if api_key is None:
+    # Realm-first model resolution (ADR-0028). An explicit --model wins,
+    # then a model set in agent config, then the stored Realm preference
+    # through the per-Realm default table. With none of those there is no
+    # model and no Realm to gate on, and this callback must not invent
+    # one: that was the global-default bug, an OpenRouter key prompt for
+    # every Summoner. With --no-bootstrap the choice is put here, as a
+    # Realm prompt on a terminal or a Realm-choice error otherwise.
+    # Otherwise the gate is deferred to _run_agent, which bootstraps
+    # first and then resolves the key for the model that actually runs.
+    config_model, realm_preference = _load_config_preference(agent_name)
+    key_model, key_realm = resolve_cli_model(model, config_model, realm_preference)
+    # Bootstrap can only run for an interactive session with no prompt:
+    # _maybe_bootstrap_profile runs inside _run_agent only in that case,
+    # so a prompt run with no model and no Realm has no bootstrap to
+    # defer to, and deferring it would hand a mocked or keyless run a
+    # session it never chose. Prompt or error here instead.
+    prompts_out = cast("list[str] | None", ctx.meta.get("prompts"))
+    may_bootstrap = (
+        bootstrap is not False
+        and incantation is None
+        and not prompts_out
+        and mode not in ("text", "rpc")
+    )
+    if key_model is None and not may_bootstrap:
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            try:
+                choice = (
+                    input(
+                        "No model or Realm preference set. Choose a Realm "
+                        f"({', '.join(sorted(REALM_DEFAULT_MODELS))}): "
+                    )
+                    .strip()
+                    .lower()
+                )
+            except (EOFError, KeyboardInterrupt):
+                choice = ""
+            if choice in REALM_DEFAULT_MODELS:
+                key_model = REALM_DEFAULT_MODELS[choice]
+                key_realm = choice
+        if key_model is None:
+            console.print(
+                format_error(
+                    "No model or Realm preference set. Set a model with "
+                    "--model, or a Realm with `mvge config set realm "
+                    "<realm>` (openrouter, opencode), then run again."
+                )
+            )
+            raise typer.Exit(1)
+    if key_model is not None and api_key is None:
         # Only the Realm's own variable, then its own credential file. The
         # unconditional OpenRouter fallback this replaced sent an OpenRouter key
         # to whichever Realm the model named, which since `opencode` became the
@@ -652,7 +823,15 @@ def _repl_callback(
         # opencode.ai, authenticating at the wrong host and exposing the
         # Summoner's credential to a host that never asked for it.
         api_key = os.environ.get(api_key_env_for_realm(key_realm))
-    if api_key is None:
+    if api_key is None and key_realm:
+        # Gated on a resolved Realm, not just on a missing key. On the
+        # deferred/bootstrap path key_realm is "" and load_api_key_for_realm
+        # maps an empty Realm to the OpenRouter file, so an ungated lookup
+        # here handed _run_agent an OpenRouter key it never asked for --
+        # and _run_agent then skipped its own per-Realm resolution, so a
+        # model bootstrap resolved to opencode ran with the OpenRouter key
+        # (validate_api_key only checks the sk-or- format). Deferred runs
+        # must reach _run_agent with api_key=None.
         api_key = load_api_key_for_realm(key_realm)
     if api_key is None and not model_requires_credential(key_model):
         # A model this engine will serve without one. Only reached once every
@@ -666,14 +845,14 @@ def _repl_callback(
         # still serves keyed paid models, so demanding a key for those would be
         # as wrong as demanding one for the free tier.
         api_key = ""
-    if api_key is None:
+    if key_model is not None and api_key is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
-            prompted_key = prompt_api_key(console)
+            prompted_key = prompt_api_key(console, key_realm)
             if prompted_key:
                 saved_to = save_api_key_to_auth(prompted_key, key_realm)
                 console.print(f"[green]Saved API key to {saved_to}[/green]")
                 api_key = prompted_key
-        if api_key is None:
+        if key_model is not None and api_key is None:
             console.print(
                 format_error(
                     f"API key required. Set {api_key_env_for_realm(key_realm)}, "
@@ -691,7 +870,13 @@ def _repl_callback(
     code = asyncio.run(
         _run_agent(
             incantation=incantation,
-            model_id=model,
+            # The callback-resolved model, not just --model: key_model
+            # carries a config model, a Realm preference, or the Realm
+            # the Summoner just chose at the prompt. Passing only --model
+            # would discard that choice, so _run_agent would prompt a
+            # second time (REPL) or error (prompt run) after the key for
+            # the chosen Realm had already been gated.
+            model_id=model or key_model,
             api_key=api_key,
             temperature=temperature,
             max_tokens=max_tokens,

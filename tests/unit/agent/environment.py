@@ -26,7 +26,7 @@ from mvge.agent.environment import (
 )
 from mvge.agent.mvge import Mvge
 from mvge.agent.snapshot import RuntimeSnapshot
-from mvge.core.constants import DEFAULT_AGENT_NAME, DEFAULT_MODEL
+from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.events import QueueMode
 from mvge.core.layers import resolve_rune_paths
 from mvge.runes.rune_runner import RuneRunner
@@ -82,9 +82,13 @@ class TestResolvedDataClasses:
 
 
 class TestAgentConfigCoercion:
-    def test_empty_config_yields_defaults(self) -> None:
+    def test_empty_config_yields_no_model(self) -> None:
+        # Realm-first (ADR-0028): an empty config names no Realm and no
+        # model, so it resolves to no model -- never to one Realm's
+        # model for every Summoner.
         cfg = coerce_agent_config({})
-        assert cfg.model_id == DEFAULT_MODEL
+        assert cfg.model_id == ""
+        assert cfg.realm_preference == ""
         assert cfg.temperature == 0.7
         assert cfg.max_tokens == 4096
         assert cfg.contemplation_level == "medium"
@@ -93,6 +97,28 @@ class TestAgentConfigCoercion:
         assert cfg.queue_mode is QueueMode.ONE_AT_A_TIME
         assert cfg.spell_names is None
         assert cfg.runes_paths == resolve_rune_paths(DEFAULT_AGENT_NAME, None)
+
+    def test_opencode_realm_preference_yields_opencode_default(self) -> None:
+        cfg = coerce_agent_config(_cfg(realm="opencode"))
+        assert cfg.model_id == "opencode/space-bunny-free"
+        assert cfg.realm_preference == "opencode"
+
+    def test_openrouter_realm_preference_yields_openrouter_default(
+        self,
+    ) -> None:
+        cfg = coerce_agent_config(_cfg(realm="openrouter"))
+        assert cfg.model_id == "openrouter/free"
+        assert cfg.realm_preference == "openrouter"
+
+    def test_explicit_model_wins_over_realm_preference(self) -> None:
+        cfg = coerce_agent_config(_cfg(model="opencode/glm-5", realm="openrouter"))
+        assert cfg.model_id == "opencode/glm-5"
+
+    def test_unknown_realm_preference_is_an_error_not_a_fallback(
+        self,
+    ) -> None:
+        with pytest.raises(ValueError, match="has no default model"):
+            coerce_agent_config(_cfg(realm="groq"))
 
     def test_agent_config_is_frozen(self) -> None:
         cfg = coerce_agent_config({})
@@ -546,14 +572,14 @@ class TestMvgeEnvironmentResolve:
         )
 
         assert env.agent_name == DEFAULT_AGENT_NAME
-        assert env.model_id == DEFAULT_MODEL
+        assert env.model_id == ""
         assert env.temperature == 0.7
         assert env.max_tokens == 4096
         assert env.contemplation_level == "medium"
         assert env.spell_names == ConfigManager.DEFAULTS["spells_enabled"]
         assert env.resolved_prompt.source == PromptSource.BUILTIN
-        assert "model" in env.config
-        assert env.config["model"].layer == ConfigLayer.DEFAULTS
+        assert env.config["realm"].layer == ConfigLayer.DEFAULTS
+        assert env.config["realm"].value == ""
 
     def test_resolve_with_overrides(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
@@ -672,6 +698,23 @@ class TestMvgeEnvironmentAssemble:
 
 
 class TestMvgeEnvironmentSnapshot:
+    def test_agent_build_snapshot_reports_the_agents_own_model(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An agent's snapshot names its model, not its config file's.
+
+        build_snapshot re-resolves the environment, which reports the
+        config's model; since ADR-0028 the config carries no model for
+        a Summoner who never set one, so an explicitly modelled agent
+        reported an empty model in its own snapshot.
+        """
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path))
+        agent = Mvge(api_key="test-key", model_id="openrouter/free")
+        snap = agent.build_snapshot()
+
+        assert snap.model == "openrouter/free"
+
     def test_mvge_environment_build_snapshot(self, tmp_path: Path) -> None:
         config_dir = tmp_path / "agent_config"
         env = MvgeEnvironment.resolve(
