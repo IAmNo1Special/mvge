@@ -345,6 +345,33 @@
         "top_logprobs",
         "top_p"
       ]
+    ],
+    [
+      "pollinations/openai",
+      "Pollinations: GPT-OSS 20B (openai-fast)",
+      128000,
+      [
+        "frequency_penalty",
+        "include_reasoning",
+        "logprobs",
+        "max_completion_tokens",
+        "max_tokens",
+        "min_p",
+        "presence_penalty",
+        "reasoning",
+        "repetition_penalty",
+        "response_format",
+        "seed",
+        "stop",
+        "structured_outputs",
+        "temperature",
+        "tool_choice",
+        "tools",
+        "top_k",
+        "top_logprobs",
+        "top_p"
+      ],
+      "pollinations"
     ]
   ],
   "paid": [

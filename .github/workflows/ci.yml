@@ -303,6 +303,20 @@ jobs:
           uv lock
 
           NEW_VERSION="$(uv version --short)"
+          # A computed version can already be taken: main's history carries
+          # no reachable tags (post-rename reset), so the bump type is
+          # derived from the whole history, while checkout fetches every
+          # tag ever created -- including orphaned pre-rename ones such as
+          # v0.2.0. Without this loop, `git tag` in the next step fails
+          # with exit 128 on every main push and no release ever lands,
+          # which also means no reachable tag is ever created to break
+          # the cycle. Advance by patch until the version is untagged.
+          while git rev-parse --verify --quiet "refs/tags/v$NEW_VERSION" >/dev/null; do
+            echo "Version $NEW_VERSION already tagged; advancing by patch"
+            uv version --bump patch
+            uv lock
+            NEW_VERSION="$(uv version --short)"
+          done
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "New version: $NEW_VERSION"
 

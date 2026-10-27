@@ -26,7 +26,6 @@ from mvge.core.channel import (
 )
 from mvge.core.constants import (
     DEFAULT_AGENT_NAME,
-    DEFAULT_MODEL,
     GLOBAL_DIR_ENV,
     PROJECT_RUNE_PATH,
     PROJECT_SKILL_PATH,
@@ -132,7 +131,6 @@ __all__ = [
     "ContemplationLevel",
     "ContentType",
     "DEFAULT_AGENT_NAME",
-    "DEFAULT_MODEL",
     "GLOBAL_DIR_ENV",
     "EmitSink",
     "EventBus",

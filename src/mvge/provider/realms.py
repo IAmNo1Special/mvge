@@ -37,6 +37,9 @@ REALM_RUNES: Final[dict[str, str]] = {
 REALM_BASE_URLS: Final[dict[str, str]] = {
     "openrouter": "https://openrouter.ai/api/v1",
     "opencode": "https://opencode.ai/zen/v1",
+    # Gateway host only: the Pollinations Rune resolves the /openai path
+    # itself, as opencode-realm resolves its chat-completions path.
+    "pollinations": "https://text.pollinations.ai",
 }
 
 #: Environment variable each Realm's API key is read from.
@@ -70,27 +73,32 @@ REALMS_WITHOUT_CREDENTIAL: Final[frozenset[str]] = frozenset({"ollama"})
 #: field could not be read at either of them. On a clean machine the Realm this
 #: exempts is not installed yet, so there is nothing there to ask.
 #:
-#: **Empty, and empty is the accurate value.** ``opencode`` was here on the
-#: strength of ADR-0015's measurement that Zen's free tier answers a request
-#: carrying no ``Authorization`` header. On 2026-10-11 that stopped being true:
-#: every free slug on the live Zen catalogue began answering
-#: ``FreeTierError: OpenCode's free tier can only be used from within OpenCode``,
-#: including ``space-bunny-free``, which had answered a real completion hours
-#: earlier the same day. OpenRouter's ``:free`` slugs answer ``401`` and always
-#: have. So there is no Realm left whose free tier is anonymous (ADR 0020).
+#: ``pollinations`` is here on a measurement, not on its free tier existing.
+#: Measured 2026-10-27: a POST to ``https://text.pollinations.ai/openai``
+#: with model ``openai`` and no ``Authorization`` header answered HTTP 200
+#: with ``user_tier: "anonymous"`` and model ``gpt-oss-20b``. That is the
+#: legacy Pollinations lane; the current Pollinations guide documents no
+#: anonymous tier, so this lane can close the way Zen's did (ADR 0020).
+#: It is therefore a bootstrap fallback only, never a foundation: a
+#: Pollinations session is told explicitly, before heavy use, to get a
+#: free OpenRouter key (see ``_run_agent``), and nothing silently falls
+#: back to Pollinations.
 #:
-#: The table is left in place rather than deleted because the exemption is a real
-#: concept and a Realm can offer it again; a Realm added here must be one that
-#: answers a request carrying no ``Authorization`` header, measured, not inferred
-#: from its free tier existing. Re-add it with the measurement that justifies it.
+#: ``opencode`` was here on the strength of ADR-0015's measurement that
+#: Zen's free tier answers a request carrying no ``Authorization`` header.
+#: On 2026-10-11 that stopped being true: every free slug on the live
+#: Zen catalogue began answering ``FreeTierError: OpenCode's free tier
+#: can only be used from within OpenCode``, including ``space-bunny-free``,
+#: which had answered a real completion hours earlier the same day.
+#: OpenRouter's ``:free`` slugs answer ``401`` and always have.
 #:
-#: This is deliberately *not* a Realm-wide exemption when it is non-empty. Zen
-#: also serves keyed paid models, and a Realm-wide one would attempt them
-#: anonymously and fail at the host with a message about the model rather than
-#: about the missing credential.
+#: This is deliberately *not* a Realm-wide exemption when it is non-empty.
+#: A Realm in this set still serves keyed paid models, and a Realm-wide
+#: exemption would attempt them anonymously and fail at the host with a
+#: message about the model rather than about the missing credential.
 #: The pair of them -- this table and the model's own ``is_free`` -- is what
 #: ``mvge.provider.model_registry.model_requires_credential`` combines.
-REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset()
+REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"pollinations"})
 
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
@@ -104,19 +112,60 @@ REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
     "opencode": "-free",
 }
 
-#: The Realm that serves ``mvge.core.constants.DEFAULT_MODEL``.
+#: The default model for each Realm we ship, keyed by Realm.
 #:
-#: Stated rather than derived, because the two are not the same question. For a
-#: routed slug like ``nvidia/nemotron-3-ultra-550b-a55b:free`` the id prefix is
-#: the *provider* and the Realm is ``openrouter``, so reading the Realm off the
-#: slug would open the GUI's cascading selector on a Realm that cannot serve the
-#: model it starts on.
+#: This table replaces the old single global default model. A default belongs
+#: to a Realm, not to the engine: an opencode user with no model set must get
+#: an opencode model, not ``openrouter/free`` with an OpenRouter key prompt
+#: attached. The resolution order is explicit model first, then the stored
+#: Realm preference through this table, then no model at all -- never a
+#: silent fallback to one Realm. See ADR-0028, which supersedes the
+#: default-model part of ADR-0020 (the anonymous-free-tier measurement in
+#: ADR-0020 stands).
 #:
-#: A copy is only safe while a test holds it to the shipped catalog -- see
-#: ``test_default_realm_agrees_with_the_shipped_catalog`` in
-#: ``tests/unit/provider/realms.py``. That test is the point: changing
-#: ``DEFAULT_MODEL`` without this is the drift it exists to catch.
-DEFAULT_REALM: Final[str] = "openrouter"
+#: Every entry must be a free slug in the shipped catalog; the tests in
+#: ``tests/unit/provider/realms.py`` hold that. A Realm added here must be
+#: one whose default actually answers, measured, not inferred from the
+#: catalog -- that is the ADR-0018/0019 lesson.
+#:
+#: Realms can extend the table at runtime through
+#: :func:`register_realm_default_model` (an out-of-tree Realm Rune's path).
+#: The credential gate runs before any Rune is loaded, so the gate itself
+#: reads only this shipped table, never a Rune registration.
+REALM_DEFAULT_MODELS: Final[dict[str, str]] = {
+    "openrouter": "openrouter/free",
+    "opencode": "opencode/space-bunny-free",
+    # Bootstrap fallback only (see the anonymous-free-tier note above):
+    # a single anonymous model, about one request per 15 seconds, on a
+    # legacy lane that can close. Never a global default.
+    "pollinations": "pollinations/openai",
+}
+
+
+def default_model_for_realm(realm: str) -> str | None:
+    """Return the default model for ``realm``, or None if it has none.
+
+    An empty or unknown Realm has no default on purpose: returning a
+    guessed model here would reintroduce the global-default bug through
+    the back door, with the caller's Realm silently replaced by another.
+    """
+    if not realm:
+        return None
+    return REALM_DEFAULT_MODELS.get(realm)
+
+
+def register_realm_default_model(realm: str, model_id: str) -> None:
+    """Register ``model_id`` as the default model for ``realm``.
+
+    Intended for Realm Runes that ship outside this repository. The
+    shipped table above is a plain dict, so registration is an explicit
+    assignment rather than a merge: the last registration wins, and a
+    caller that needs the shipped value reads the table before any Rune
+    runs.
+    """
+    if not realm or not model_id:
+        raise ValueError("realm and model_id must both be non-empty")
+    REALM_DEFAULT_MODELS[realm] = model_id
 
 
 def realm_for_model_id(model_id: str) -> str:
@@ -183,15 +232,17 @@ def free_suffix_for_realm(realm: str) -> str:
 
 
 __all__ = [
-    "DEFAULT_REALM",
     "REALM_API_KEY_ENV",
     "REALM_BASE_URLS",
+    "REALM_DEFAULT_MODELS",
     "REALM_FREE_SUFFIXES",
     "REALM_RUNES",
     "REALMS_WITHOUT_CREDENTIAL",
     "REALMS_WITH_ANONYMOUS_FREE_TIER",
     "api_key_env_for_realm",
+    "default_model_for_realm",
     "free_suffix_for_realm",
     "realm_for_model_id",
+    "register_realm_default_model",
     "rune_for_realm",
 ]

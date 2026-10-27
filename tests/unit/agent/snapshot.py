@@ -24,7 +24,6 @@ from mvge.agent.snapshot import (
     to_snapshot_skill,
     to_snapshot_spell,
 )
-from mvge.core.constants import DEFAULT_MODEL
 from mvge.core.spells import MvgeSpell
 from mvge.runes.types import (
     Diagnostic,
@@ -248,7 +247,7 @@ class TestRuntimeSnapshotSerialisation:
     def _full_snapshot(self) -> RuntimeSnapshot:
         return RuntimeSnapshot(
             agent_name="test-agent",
-            model=DEFAULT_MODEL,
+            model="openrouter/free",
             spells=[
                 SnapshotSpell(
                     name="bash",
@@ -389,7 +388,7 @@ class TestRuntimeSnapshotSerialisation:
     def test_to_json_empty_snapshot(self) -> None:
         snap = RuntimeSnapshot(
             agent_name="empty-agent",
-            model=DEFAULT_MODEL,
+            model="openrouter/free",
         )
         result = json.loads(snap.to_json())
         assert result["agent_name"] == "empty-agent"
@@ -402,7 +401,7 @@ class TestRuntimeSnapshotSerialisation:
     def test_to_dict_returns_dataclass_dict(self) -> None:
         snap = RuntimeSnapshot(
             agent_name="test",
-            model=DEFAULT_MODEL,
+            model="openrouter/free",
             spells=[
                 SnapshotSpell(
                     name="bash",
@@ -504,7 +503,7 @@ class TestAssembleSnapshot:
 
         snap = assemble_snapshot(
             agent_name="empty",
-            model=DEFAULT_MODEL,
+            model="openrouter/free",
             spells=[],
             rune_manifests=[],
             config_values={},

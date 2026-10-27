@@ -30,7 +30,6 @@ from rich.markup import render as render_markup
 from rich.text import Text
 
 from mvge.agent.protocol import AgentFactory, MvgeAgent
-from mvge.cli import DEFAULT_MODEL
 from mvge.cli.agent_factory import create_agent, validate_api_key
 from mvge.cli.commands.dispatcher import CliCommandDispatcher
 from mvge.cli.commands.repl import (
@@ -475,7 +474,7 @@ _create_agent = create_agent
 
 
 async def run_tui(
-    model: str = DEFAULT_MODEL,
+    model: str = "",
     api_key: str | None = None,
     spells: str = "bash,read,write,edit,find,list,grep",
     extension_dir: str | None = None,
@@ -492,7 +491,7 @@ async def run_tui(
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
         console.print(
-            format_error("API key required. Set OPENROUTER_API_KEY or pass --api-key")
+            format_error("API key required for this model. Set the key for its Realm.")
         )
         return
 

@@ -101,7 +101,7 @@ The engine cannot defer any of this to a Rune's manifest: every credential gate
 runs before any Rune is loaded, so a declaration on the Rune could not be read at
 any of them, and on a clean machine the Realm being exempted is not installed yet.
 
-<!-- adr-contract: DEFAULT_MODEL, REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, REALMS_WITHOUT_CREDENTIAL, REALMS_WITH_ANONYMOUS_FREE_TIER, realm_for_model_id, serving_realm_for_model, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, model_requires_credential, no_realm_registered, NoRealmRegisteredError, Model.free -->
+<!-- adr-contract: REALM_RUNES, REALM_BASE_URLS, REALM_API_KEY_ENV, REALM_FREE_SUFFIXES, DEFAULT_REALM, REALMS_WITHOUT_CREDENTIAL, REALMS_WITH_ANONYMOUS_FREE_TIER, realm_for_model_id, serving_realm_for_model, rune_for_realm, api_key_env_for_realm, free_suffix_for_realm, model_requires_credential, no_realm_registered, NoRealmRegisteredError, Model.free -->
 
 ## Consequences
 

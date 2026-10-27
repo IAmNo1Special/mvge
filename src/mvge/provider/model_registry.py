@@ -16,6 +16,7 @@ from mvge.provider.realms import (
     REALM_BASE_URLS,
     REALMS_WITH_ANONYMOUS_FREE_TIER,
     REALMS_WITHOUT_CREDENTIAL,
+    default_model_for_realm,
     realm_for_model_id,
 )
 
@@ -164,8 +165,7 @@ def serving_realm_for_model(model_id: str) -> str:
         where the request is *sent*, which is what a credential lookup, a cost
         guard, and a "which Rune do I install" message all need.
 
-    The shipped catalog already records the answer per entry -- that entry is
-    why ``DEFAULT_REALM`` has to be a copy at all (see ADR-0015) -- so it is
+    The shipped catalog already records the answer per entry, so it is
     consulted first. Falling back to the prefix is not a second answer: a Rune
     may serve a model no catalog carries, which is the feature that makes Runes
     worth having, and refusing to name a Realm there would refuse that model.
@@ -218,6 +218,30 @@ def model_requires_credential(model_id: str | None) -> bool:
         return True
     model = _load_baseline_models().get(model_id)
     return model is None or not model.is_free
+
+
+def resolve_default_model(
+    *,
+    model: str | None = None,
+    realm: str | None = None,
+) -> str | None:
+    """Resolve the model to run when the caller names none explicitly.
+
+    This is the one place a default model is decided, and it is
+    Realm-first: an explicit model wins, then the stored Realm
+    preference through :func:`default_model_for_realm`, then nothing.
+    Returning None for the no-preference case is the point -- a caller
+    that filled that hole with a global default would silently pick one
+    Realm for every Summoner, which is the bug ADR-0028 removes. The
+    caller owns what happens next (bootstrap, a Realm prompt, or an
+    error naming the choice), and it must not be an OpenRouter key
+    prompt.
+    """
+    if model and model.strip():
+        return model.strip()
+    if realm and realm.strip():
+        return default_model_for_realm(realm.strip())
+    return None
 
 
 def _default_cache_path() -> Path:

@@ -456,7 +456,7 @@ async def test_validate_tome_compatibility_helper() -> None:
             spells=["spell_x"],
         )
 
-        agent = Mvge(api_key="test-key", tome_dir=tome_dir)
+        agent = Mvge(api_key="test-key", tome_dir=tome_dir, model_id="test-model")
         agent._provider_registry.resolve = MagicMock(
             return_value=(_mock_model(), MagicMock())
         )  # type: ignore[method-assign]

@@ -40,6 +40,7 @@ class SkillCatalog:
         self,
         loads: list[SkillLoad],
         diagnostics: list[SkillDiagnostic] | None = None,
+        source_rune: str | None = None,
     ) -> None:
         """Load skills from discovery.
 
@@ -48,6 +49,10 @@ class SkillCatalog:
             diagnostics: Optional list of skill diagnostics to retain for
                 the runtime snapshot.
         """
+        if source_rune is not None:
+            for load in loads:
+                if getattr(load, "source_rune", None) is None:
+                    load.source_rune = source_rune
         self._loaded_skills.extend(loads)
         if diagnostics is not None:
             self._skill_diagnostics.extend(diagnostics)
@@ -66,9 +71,25 @@ class SkillCatalog:
         """Get all dynamically registered skill paths."""
         return list(self._registered_skill_paths)
 
-    def register_skill(self, manifest: SkillManifest) -> None:
+    def register_skill(
+        self, manifest: SkillManifest, source_rune: str | None = None
+    ) -> None:
         """Register an in-memory SkillManifest directly."""
-        self.load_skills([SkillLoad(manifest=manifest)])
+        self.load_skills([SkillLoad(manifest=manifest, source_rune=source_rune)])
+
+    def clear_rune(self, rune_name: str) -> None:
+        """Drop every skill that was loaded on behalf of *rune_name*."""
+        removed = {
+            load.manifest.name
+            for load in self._loaded_skills
+            if getattr(load, "source_rune", None) == rune_name
+        }
+        self._loaded_skills = [
+            load
+            for load in self._loaded_skills
+            if getattr(load, "source_rune", None) != rune_name
+        ]
+        self._active_skills -= removed
 
     # -- diagnostics -----------------------------------------------------
 

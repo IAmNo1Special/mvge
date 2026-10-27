@@ -2,6 +2,7 @@
 
 | # | Title | Status | Date |
 | --- | ------- | -------- | ------ |
+| 0028 | [Realm-First Default Models](0028-realm-first-default-models.md) | Accepted | 2026-10-27 |
 | 0027 | [Rune UI Contribution Protocol and Dynamic Presentation Extensibility](0027-rune-ui-contribution-protocol.md) | Accepted (amended 2026-10-25: AppState GUI methods moved to mvge-desktop companion repository) | 2026-10-23 |
 | 0026 | [Adaptive Dual-Purpose Canvas, In-Flight Steering Controls, and Sub-Mvge Summoning Surfaces](0026-adaptive-canvas-mid-flight-steering-and-summoning-surfaces.md) | Accepted (amended 2026-10-25: GUI extracted to companion repository mvge-desktop) | 2026-10-22 |
 | 0025 | [First-Run Marketplace Profiles and Stdio JSONL RPC Mode](0025-first-run-marketplace-profiles-and-stdio-rpc-mode.md) | Accepted | 2026-10-19 |
@@ -9,7 +10,7 @@
 | 0023 | [Workspace Trust, Disposable Rune Scopes, and Universal Spell Gateway Last-Loading](0023-workspace-trust-disposable-rune-scopes-and-gateway-last-loading.md) | Accepted | 2026-10-19 |
 | 0022 | [Sub-Mvge Summoning and Reactive Wakeup Seam](0022-sub-mvge-summoning-and-reactive-wakeup-seam.md) | Accepted | 2026-10-19 |
 | 0021 | [The GenAI Attribute Vocabulary Belongs to the Rune That Uses It](0021-the-genai-attribute-vocabulary-belongs-to-the-rune-that-uses-it.md) | Accepted | 2026-10-12 |
-| 0020 | [No Free Tier Answers a Stranger](0020-no-free-tier-answers-a-stranger.md) | Accepted | 2026-10-11 |
+| 0020 | [No Free Tier Answers a Stranger](0020-no-free-tier-answers-a-stranger.md) | Accepted (default-model part superseded by ADR 0028) | 2026-10-11 |
 | 0019 | [`space-bunny-free` Is the Only Free Zen Endpoint That Answers a Stranger](0019-space-bunny-free-is-the-only-free-zen-endpoint-that-answers.md) | Accepted | 2026-10-10 |
 | 0018 | [The Default Free Endpoint Is `step-5-preview-free`](0018-default-free-endpoint-is-step-5-preview.md) | Superseded by ADR 0019 | 2026-10-10 |
 | 0017 | [Project-Scoped Skills Are a Supported Layer](0017-project-scoped-skills-are-a-supported-layer.md) | Accepted | 2026-10-10 |

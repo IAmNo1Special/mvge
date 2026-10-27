@@ -27,7 +27,6 @@ from rich.markdown import Markdown
 from rich.text import Text
 
 from mvge.agent.protocol import AgentFactory
-from mvge.cli import DEFAULT_MODEL
 from mvge.cli.agent_factory import create_agent, validate_api_key
 from mvge.cli.approval_binding import (
     NO_SLOT_WARNING,
@@ -591,7 +590,7 @@ _create_agent = create_agent
 
 
 async def run_repl(
-    model: str = DEFAULT_MODEL,
+    model: str = "",
     api_key: str | None = None,
     spells: str = "bash,read,write,edit,find,list,grep",
     extension_dir: str | None = None,
@@ -609,7 +608,7 @@ async def run_repl(
         api_key = os.environ.get("OPENROUTER_API_KEY")
     if api_key is None:
         console.print(
-            format_error("API key required. Set OPENROUTER_API_KEY or pass --api-key")
+            format_error("API key required for this model. Set the key for its Realm.")
         )
         return
 

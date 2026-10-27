@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-10-27
+
+
+### Bug Fixes
+
+- **cli:** carry the callback Realm choice into _run_agent, name the key prompt (a7920f0)
+
+- **agent:** snapshot reports the agent's own model, not its config's (d6399a6)
+
+- **cli:** do not load an OpenRouter key on the deferred credential path (d9caed3)
+
+- **ci:** advance bump version past already-taken tags (69248b2)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (5a7e098)
+
+- **release:** v0.2.11 (38b357d)
+
+
+### Features
+
+- **provider:** realm-first default models, remove global default model **BREAKING CHANGE** (9d134bf)
+
+- **provider:** pollinations as the keyless bootstrap fallback (a2c3a02)
+
+
+## [0.1.5] - 2026-10-27
+
+
+### Bug Fixes
+
+- **tome:** reject paths escaping the tome directory in tome_file (1933983)
+
+- **tome:** reject paths escaping the tome directory in tome_file (6182b45)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (c5cc23f)
+
+- **release:** v0.1.5 (9ccbe8a)
+
+
+## [0.1.4] - 2026-10-27
+
+
+### Bug Fixes
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (063a37c)
+
+- **runes:** clear rune-registered skills on reload (v3 port to mvge) (61af1b7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (8f7a958)
+
+- **release:** v0.1.4 (bb8171e)
+
+
+### Documentation
+
+- add PyPI and CI status badges to README (1992998)
+
+
 ## [0.1.3] - 2026-10-25
 
 

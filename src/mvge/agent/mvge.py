@@ -1036,7 +1036,16 @@ class Mvge:
             config_manager=self._config_manager,
             has_config_manager=(self._config_manager is not None),
         )
-        return env.build_snapshot()
+        snap = env.build_snapshot()
+        # The snapshot is of THIS agent, not of its config file: the
+        # re-resolution reports the config's model, but the agent's model
+        # is _model_id (constructor, switch, or config). Since ADR-0028
+        # the config may carry no model at all, so an explicitly modelled
+        # agent would otherwise report an empty model, and a switched
+        # agent would report stale. The config entries themselves keep
+        # their own provenance; only the reported model is corrected.
+        snap.model = self._model_id
+        return snap
 
     def on(
         self,

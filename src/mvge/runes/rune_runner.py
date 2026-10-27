@@ -346,6 +346,7 @@ class RuneRunner:
             if owner != rune_name
         ]
         self._rune_instances.pop(rune_name, None)
+        self._skill_catalog.clear_rune(rune_name)
         self._spell_version += 1
 
     def clear_rune(self, rune_name: str) -> None:

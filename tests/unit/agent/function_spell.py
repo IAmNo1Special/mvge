@@ -300,10 +300,11 @@ class TestMvgeApiKeyAndEnvLoading:
         monkeypatch.delenv("OPENCODE_API_KEY", raising=False)
         monkeypatch.delenv("MVGE_API_KEY", raising=False)
 
-        # The default model is served by the `openrouter` Realm, so that is the
-        # Realm whose variable is read. What is under test is that a `.env`
-        # beside the caller is loaded at all -- an OpenCode key here would
-        # only have been honoured by falling back across Realms.
+        # The model under test is served by the `openrouter` Realm, so
+        # that is the Realm whose variable is read. What is under test
+        # is that a `.env` beside the caller is loaded at all -- an
+        # OpenCode key here would only have been honoured by falling
+        # back across Realms.
         env_file = tmp_path / ".env"
         env_file.write_text(
             "OPENROUTER_API_KEY=sk-openrouter-test-from-env-file\n", encoding="utf-8"
@@ -316,7 +317,7 @@ class TestMvgeApiKeyAndEnvLoading:
             frame_mock = type("Frame", (), {"filename": str(fake_caller_file)})()
             mock_stack.return_value = [None, frame_mock]
 
-            agent = Mvge()
+            agent = Mvge(model_id="openrouter/free")
             assert agent._api_key == "sk-openrouter-test-from-env-file"
 
 

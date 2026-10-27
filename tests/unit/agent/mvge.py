@@ -15,7 +15,6 @@ from mvge.agent.mvge import (
     _validate_spell_name,
 )
 from mvge.core.abort import AbortSignal
-from mvge.core.constants import DEFAULT_MODEL
 from mvge.core.events import QueueMode
 from mvge.core.spells import ExecutionMode
 from mvge.provider.base import Realm
@@ -639,12 +638,13 @@ async def test_initialize_records_project_dir_as_tome_cwd(
         project_dir=project_dir,
         config_dir=config_dir,
         caller_dir=tmp_path,
+        overrides={"model": "openrouter/free"},
     )
     registry = RealmRegistry()
     # Registered under the default model's Realm prefix, so this test does not
     # have to change every time the default model does.
     registry.register_realm_factory(
-        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: MagicMock(spec=Realm)
+        realm_for_model_id("openrouter/free"), lambda **kwargs: MagicMock(spec=Realm)
     )
     agent = Mvge(
         api_key="k",
@@ -699,10 +699,11 @@ async def test_mvge_workspace_untrusted_emits_sigil_and_steers(tmp_path: Path) -
         project_dir=project_dir,
         config_dir=tmp_path / "cfg",
         caller_dir=tmp_path,
+        overrides={"model": "openrouter/free"},
     )
     registry = RealmRegistry()
     registry.register_realm_factory(
-        realm_for_model_id(DEFAULT_MODEL), lambda **kwargs: MagicMock(spec=Realm)
+        realm_for_model_id("openrouter/free"), lambda **kwargs: MagicMock(spec=Realm)
     )
 
     untrusted_events: list[dict[str, Any]] = []
