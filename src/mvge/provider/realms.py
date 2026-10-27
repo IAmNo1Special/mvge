@@ -37,6 +37,9 @@ REALM_RUNES: Final[dict[str, str]] = {
 REALM_BASE_URLS: Final[dict[str, str]] = {
     "openrouter": "https://openrouter.ai/api/v1",
     "opencode": "https://opencode.ai/zen/v1",
+    # Gateway host only: the Pollinations Rune resolves the /openai path
+    # itself, as opencode-realm resolves its chat-completions path.
+    "pollinations": "https://text.pollinations.ai",
 }
 
 #: Environment variable each Realm's API key is read from.
@@ -70,27 +73,32 @@ REALMS_WITHOUT_CREDENTIAL: Final[frozenset[str]] = frozenset({"ollama"})
 #: field could not be read at either of them. On a clean machine the Realm this
 #: exempts is not installed yet, so there is nothing there to ask.
 #:
-#: **Empty, and empty is the accurate value.** ``opencode`` was here on the
-#: strength of ADR-0015's measurement that Zen's free tier answers a request
-#: carrying no ``Authorization`` header. On 2026-10-11 that stopped being true:
-#: every free slug on the live Zen catalogue began answering
-#: ``FreeTierError: OpenCode's free tier can only be used from within OpenCode``,
-#: including ``space-bunny-free``, which had answered a real completion hours
-#: earlier the same day. OpenRouter's ``:free`` slugs answer ``401`` and always
-#: have. So there is no Realm left whose free tier is anonymous (ADR 0020).
+#: ``pollinations`` is here on a measurement, not on its free tier existing.
+#: Measured 2026-10-27: a POST to ``https://text.pollinations.ai/openai``
+#: with model ``openai`` and no ``Authorization`` header answered HTTP 200
+#: with ``user_tier: "anonymous"`` and model ``gpt-oss-20b``. That is the
+#: legacy Pollinations lane; the current Pollinations guide documents no
+#: anonymous tier, so this lane can close the way Zen's did (ADR 0020).
+#: It is therefore a bootstrap fallback only, never a foundation: a
+#: Pollinations session is told explicitly, before heavy use, to get a
+#: free OpenRouter key (see ``_run_agent``), and nothing silently falls
+#: back to Pollinations.
 #:
-#: The table is left in place rather than deleted because the exemption is a real
-#: concept and a Realm can offer it again; a Realm added here must be one that
-#: answers a request carrying no ``Authorization`` header, measured, not inferred
-#: from its free tier existing. Re-add it with the measurement that justifies it.
+#: ``opencode`` was here on the strength of ADR-0015's measurement that
+#: Zen's free tier answers a request carrying no ``Authorization`` header.
+#: On 2026-10-11 that stopped being true: every free slug on the live
+#: Zen catalogue began answering ``FreeTierError: OpenCode's free tier
+#: can only be used from within OpenCode``, including ``space-bunny-free``,
+#: which had answered a real completion hours earlier the same day.
+#: OpenRouter's ``:free`` slugs answer ``401`` and always have.
 #:
-#: This is deliberately *not* a Realm-wide exemption when it is non-empty. Zen
-#: also serves keyed paid models, and a Realm-wide one would attempt them
-#: anonymously and fail at the host with a message about the model rather than
-#: about the missing credential.
+#: This is deliberately *not* a Realm-wide exemption when it is non-empty.
+#: A Realm in this set still serves keyed paid models, and a Realm-wide
+#: exemption would attempt them anonymously and fail at the host with a
+#: message about the model rather than about the missing credential.
 #: The pair of them -- this table and the model's own ``is_free`` -- is what
 #: ``mvge.provider.model_registry.model_requires_credential`` combines.
-REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset()
+REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"pollinations"})
 
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
@@ -127,6 +135,10 @@ REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
 REALM_DEFAULT_MODELS: Final[dict[str, str]] = {
     "openrouter": "openrouter/free",
     "opencode": "opencode/space-bunny-free",
+    # Bootstrap fallback only (see the anonymous-free-tier note above):
+    # a single anonymous model, about one request per 15 seconds, on a
+    # legacy lane that can close. Never a global default.
+    "pollinations": "pollinations/openai",
 }
 
 

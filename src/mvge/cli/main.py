@@ -315,6 +315,35 @@ async def _run_agent(
                     )
                 )
                 return 1
+        if serving_realm_for_model(model_id) == "pollinations":
+            # Explicit bootstrap-fallback notice, never a silent fallback.
+            # Pollinations is one anonymous model on a legacy lane, about
+            # one request per 15 seconds, and that lane can close. A
+            # Summoner running on it without an OpenRouter key is told,
+            # before heavy use, how to get the free key that replaces it:
+            # sign up at openrouter.ai with email, GitHub, or Google (no
+            # card), then set OPENROUTER_API_KEY or run with
+            # --model openrouter/free. Free OpenRouter models allow 50
+            # requests a day, 1,000 a day after $10 in credits.
+            try:
+                has_openrouter_key = bool(
+                    os.environ.get("OPENROUTER_API_KEY")
+                    or load_api_key_for_realm("openrouter")
+                )
+            except Exception:
+                has_openrouter_key = False
+            if not has_openrouter_key:
+                console.print(
+                    "[yellow]Running on Pollinations, the keyless bootstrap "
+                    "fallback: one anonymous model, about one request per "
+                    "15 seconds, on a legacy lane that can close. For heavy "
+                    "use, get a free OpenRouter key: sign up at "
+                    "openrouter.ai with email, GitHub, or Google (no card), "
+                    "then set OPENROUTER_API_KEY or run with "
+                    "--model openrouter/free. Free OpenRouter models allow "
+                    "50 requests a day, 1,000 a day after $10 in "
+                    "credits.[/yellow]"
+                )
         if api_key is None:
             # Key after bootstrap, for the model that actually runs.
             # The callback gate runs before bootstrap and cannot know
