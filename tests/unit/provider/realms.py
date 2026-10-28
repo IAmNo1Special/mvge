@@ -183,6 +183,7 @@ def test_each_realms_key_comes_from_its_own_environment_variable() -> None:
     Summoner is sent looking in the wrong place entirely.
     """
     assert api_key_env_for_realm("opencode") == "OPENCODE_API_KEY"
+    assert api_key_env_for_realm("opencode-go") == "OPENCODE_API_KEY"
     assert api_key_env_for_realm("openrouter") == "OPENROUTER_API_KEY"
 
 
@@ -192,8 +193,41 @@ def test_an_unmapped_realm_key_follows_the_ecosystem_shape() -> None:
 
 
 def test_the_key_environments_are_distinct() -> None:
-    """Two Realms sharing a variable name means one silently overwrites the other."""
-    assert len(set(REALM_API_KEY_ENV.values())) == len(REALM_API_KEY_ENV)
+    """Two Realms sharing a variable name means one silently overwrites the other.
+
+    The one intentional exception is Zen and Go: they are two provider
+    entries for two billing products behind the one OpenCode credential,
+    so sharing ``OPENCODE_API_KEY`` is the design, not an overwrite -- the
+    value is the same either way, and a second variable would send a
+    Summoner to set a key the product never reads.
+    """
+    values = list(REALM_API_KEY_ENV.values())
+    duplicates = {v for v in values if values.count(v) > 1}
+    assert duplicates == {"OPENCODE_API_KEY"}
+    assert REALM_API_KEY_ENV["opencode"] == REALM_API_KEY_ENV["opencode-go"]
+
+
+def test_opencode_go_names_the_opencode_realm_rune_and_its_base() -> None:
+    """Go must resolve to the one Rune that provides it, and to Go's base.
+
+    Without the explicit table entries, the convention fallback would name
+    ``opencode-go-realm`` (which does not exist) and invent
+    ``OPENCODE-GO_API_KEY`` (which nobody sets).
+    """
+    assert rune_for_realm("opencode-go") == "opencode-realm"
+    assert REALM_BASE_URLS["opencode-go"] == "https://opencode.ai/zen/go/v1"
+    assert REALM_RUNES["opencode-go"] == "opencode-realm"
+
+
+def test_opencode_go_has_no_default_model() -> None:
+    """Go is a paid subscription, so it must not gain a free default.
+
+    Every per-Realm default in this table is a free slug a first-time
+    Summoner runs; giving Go one would either name a paid model as a
+    first run or invent a free Go model that does not exist.
+    """
+    assert default_model_for_realm("opencode-go") is None
+    assert "opencode-go" not in REALM_DEFAULT_MODELS
 
 
 def test_a_realm_not_in_either_table_still_requires_a_credential() -> None:
