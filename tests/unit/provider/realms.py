@@ -547,6 +547,7 @@ def test_free_suffix_is_per_realm_not_global() -> None:
     the Realm that actually uses it.
     """
     assert free_suffix_for_realm("opencode") == "-free"
+    assert free_suffix_for_realm("opencode-go") == "-free"
     assert free_suffix_for_realm("openrouter") == ":free"
     assert free_suffix_for_realm("ollama") == ""
 

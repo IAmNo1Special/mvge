@@ -120,13 +120,14 @@ REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"pollination
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
 #:
-#: OpenRouter writes ``:free``; OpenCode Zen writes ``-free``. Both are read,
+#: OpenRouter writes ``:free``; OpenCode Zen and Go write ``-free``. Both are read,
 #: because a cost guard that calls a free model paid is worse than one that
 #: calls a paid model free, and because a Summoner who picked a free model
 #: expects it to be listed as free.
 REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
     "openrouter": ":free",
     "opencode": "-free",
+    "opencode-go": "-free",
 }
 
 #: The default model for each Realm we ship, keyed by Realm.
