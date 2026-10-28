@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2026-10-28
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (fe89d31)
+
+- **release:** v0.2.13 (bba509b)
+
+
+### Features
+
+- **cli:** auto-bootstrap coding profile on interactive first run (74373d9)
+
+
 ## [0.2.12] - 2026-10-27
 
 
