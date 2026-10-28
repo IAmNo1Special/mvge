@@ -121,6 +121,11 @@ async def test_stream_fn_config_carries_the_tome_session_id() -> None:
     Realms that need a per-conversation routing header (opencode) read it
     from config meta_data; without it they fall back to a per-instance
     value that does not survive a realm rebuild across turns.
+
+    The test drives ``_make_stream_fn`` directly because no public
+    turn-level seam exposes the built config without a full turn; the
+    assertion itself is on the observable config passed to
+    ``realm.stream``, not on a private attribute.
     """
     mock_state = MagicMock(spec=MvgeState)
     mock_state.spells = []

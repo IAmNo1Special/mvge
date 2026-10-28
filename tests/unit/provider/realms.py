@@ -224,8 +224,11 @@ def test_opencode_go_has_no_default_model() -> None:
     """Go is a paid subscription, so it must not gain a free default.
 
     Every per-Realm default in this table is a free slug a first-time
-    Summoner runs; giving Go one would either name a paid model as a
-    first run or invent a free Go model that does not exist.
+    Summoner runs. Go does have free models (``beam-free``,
+    ``iceman-contributor-free``), but they are explicit picks for a
+    subscriber, not a first-run default: a first-time Summoner without a
+    Go key would fail on a Go default, and a paid model must not be
+    named as a first run.
     """
     assert default_model_for_realm("opencode-go") is None
     assert "opencode-go" not in REALM_DEFAULT_MODELS
