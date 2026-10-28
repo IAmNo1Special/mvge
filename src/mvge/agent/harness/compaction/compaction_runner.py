@@ -314,6 +314,15 @@ class CompactionRunner:
         """Ask the Realm for a summary. Spells are deliberately not offered."""
         config = ChannelConfig(
             model=self._model,
+            # Same per-conversation session id as a turn's config: the
+            # summary is part of the conversation, so a realm that routes
+            # per conversation must send the tome id here too, not a
+            # different value. CompactionRunner._session_name already
+            # derives this from the bound tome; the direct form here
+            # keeps the no-tome case an empty meta_data, not a blank id.
+            meta_data=(
+                {"session_id": self._tome.tome_id} if self._tome is not None else {}
+            ),
             temperature=0.3,
             max_tokens=self._model.max_tokens,
         )

@@ -115,6 +115,35 @@ async def test_harness_set_model_and_realm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_fn_config_carries_the_tome_session_id() -> None:
+    """A turn's config must carry the tome id as session_id.
+
+    Realms that need a per-conversation routing header (opencode) read it
+    from config meta_data; without it they fall back to a per-instance
+    value that does not survive a realm rebuild across turns.
+    """
+    mock_state = MagicMock(spec=MvgeState)
+    mock_state.spells = []
+    mock_state.system_prompt = "system"
+    mock_state.temperature = 0.5
+    mock_state.max_tokens = 1000
+    mock_state.contemplation_budget = None
+    mock_state.exclude_contemplation = False
+    mock_tome = MagicMock()
+    mock_tome.tome_id = "tome-123"
+    mock_realm = MagicMock()
+
+    harness = MvgeHarness(state=mock_state, tome=mock_tome)
+    harness.set_model_and_realm(_crowded_model(), mock_realm)
+
+    stream_fn = harness._make_stream_fn()
+    stream_fn([])
+
+    config = mock_realm.stream.call_args.kwargs["config"]
+    assert config.meta_data["session_id"] == "tome-123"
+
+
+@pytest.mark.asyncio
 async def test_harness_run_with_prompt_appends_invocation() -> None:
     mock_state = MagicMock(spec=MvgeState)
     mock_state.invocations = []

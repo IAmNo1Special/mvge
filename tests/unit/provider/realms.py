@@ -215,7 +215,8 @@ def test_opencode_go_names_the_opencode_realm_rune_and_its_base() -> None:
     ``OPENCODE-GO_API_KEY`` (which nobody sets).
     """
     assert rune_for_realm("opencode-go") == "opencode-realm"
-    assert REALM_BASE_URLS["opencode-go"] == "https://opencode.ai/zen/go/v1"
+    assert REALM_BASE_URLS["opencode-go"] == "https://opencode.ai/inference/go/v1"
+    assert REALM_BASE_URLS["opencode"] == "https://opencode.ai/inference/openai/v1"
     assert REALM_RUNES["opencode-go"] == "opencode-realm"
 
 

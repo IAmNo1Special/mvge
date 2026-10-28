@@ -42,8 +42,13 @@ REALM_RUNES: Final[dict[str, str]] = {
 #: ``compose_model`` overlays it -- this is the floor, not the authority.
 REALM_BASE_URLS: Final[dict[str, str]] = {
     "openrouter": "https://openrouter.ai/api/v1",
-    "opencode": "https://opencode.ai/zen/v1",
-    "opencode-go": "https://opencode.ai/zen/go/v1",
+    # Current OpenCode Inference API bases. These are Chat Completions
+    # bases: the realm appends /chat/completions. They are not the models
+    # list base (/inference/v1/models), and the old /zen/* bases are not
+    # claimed dead -- /zen/* and /inference/* have been documented as
+    # aliases for Go, and a per-model base_url override still reaches them.
+    "opencode": "https://opencode.ai/inference/openai/v1",
+    "opencode-go": "https://opencode.ai/inference/go/v1",
     # Gateway host only: the Pollinations Rune resolves the /openai path
     # itself, as opencode-realm resolves its chat-completions path.
     "pollinations": "https://text.pollinations.ai",

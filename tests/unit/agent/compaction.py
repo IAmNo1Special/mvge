@@ -497,6 +497,30 @@ class TestCompactionRuns:
         config = realm.complete.await_args.args[2]
         assert not config.tools
 
+    @pytest.mark.asyncio
+    async def test_summary_config_carries_the_tome_session_id(self) -> None:
+        """A compaction summary is a turn of the same conversation.
+
+        Its config must carry the tome id as session_id, so a realm that
+        needs a per-conversation routing header (opencode) sends the same
+        id for the summary as for the turns it summarizes.
+        """
+        realm = _realm()
+        tome = MagicMock()
+        tome.tome_id = "tome-123"
+        runner = CompactionRunner(
+            realm=realm,
+            model=_model(),
+            emit=Recorder(),
+            tome=tome,
+            settings=CompactionSettings(reserve_mana=200, keep_recent_mana=200),
+        )
+
+        await runner.maybe_compact(_long_transcript())
+
+        config = realm.complete.await_args.args[2]
+        assert config.meta_data["session_id"] == "tome-123"
+
 
 class TestCompactionFailure:
     @pytest.mark.asyncio
