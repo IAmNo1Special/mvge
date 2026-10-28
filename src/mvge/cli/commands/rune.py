@@ -4,6 +4,7 @@ import typer
 from rich.table import Table
 
 from mvge.cli.console import format_error, get_console
+from mvge.core.layers import extensions_dir
 from mvge.runes.installer import install_rune, list_installed_runes, uninstall_rune
 
 console = get_console()
@@ -47,7 +48,7 @@ def rune_list() -> None:
         installed = list_installed_runes()
         if not installed:
             console.print(
-                "[yellow]No extension runes installed in ~/.agents/extensions[/yellow]"
+                f"[yellow]No extension runes installed in {extensions_dir()}[/yellow]"
             )
             return
 
