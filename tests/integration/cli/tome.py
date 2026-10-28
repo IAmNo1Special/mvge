@@ -786,6 +786,26 @@ def test_render_tome_export_atif_no_factory() -> None:
     assert len(parsed["steps"]) == 1
 
 
+def test_render_tome_export_md_matches_markdown() -> None:
+    """``md`` is an alias for ``markdown``: same output, no new format."""
+    from mvge.cli.commands.tome import _render_tome_export
+
+    meta = _make_meta("tome_md", "/workspace")
+    e1 = TomeEntry(
+        id="m1",
+        parent_id=None,
+        type=TomeEntryType.MESSAGE,
+        timestamp=1000.0,
+        payload={"role": "user", "content": "hi"},
+    )
+    assert _render_tome_export(meta, [e1], "md", factory=None) == _render_tome_export(
+        meta, [e1], "markdown", factory=None
+    )
+    assert _render_tome_export(meta, [e1], "md", factory=None).startswith(
+        "# Tome: tome_md"
+    )
+
+
 class TestTomeExplicitForeignPaths:
     """Regression tests: operating on session files by explicit path.
 
