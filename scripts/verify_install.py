@@ -151,6 +151,8 @@ REALMS_REQUIRING_CREDENTIAL = frozenset({"opencode", "openrouter"})
 API_KEY_ENV_BY_REALM = {
     "openrouter": "OPENROUTER_API_KEY",
     "opencode": "OPENCODE_API_KEY",
+    # Zen and Go deliberately share the key, as in the engine table.
+    "opencode-go": "OPENCODE_API_KEY",
 }
 
 # OpenRouter rejects a request whose declared ``max_tokens`` exceeds what the
