@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import runpy
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -147,6 +147,56 @@ async def test_run_agent_rpc_mode() -> None:
         assert code == 0
         mock_create.assert_called_once()
         mock_rpc.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_run_agent_off_terminal_self_heals_missing_realm() -> None:
+    """Off-terminal, a missing Realm installs on the prompt's default
+    answer instead of failing the run: the documented first run would
+    otherwise be a dead end (the NoRealmRegisteredError handler's
+    comment records this intent). This locks the F1 behavior the
+    end-user test flagged: the profile rule (non-terminal installs no
+    profile) is separate from the single Realm rune needed to serve
+    the model the user explicitly requested."""
+    from mvge.provider.base import NoRealmRegisteredError
+
+    mock_agent = MagicMock()
+    mock_agent.runner = None
+    mock_agent.close = AsyncMock()
+    err = NoRealmRegisteredError(
+        "no realm", realm="pollinations", rune_name="pollinations-realm"
+    )
+    with (
+        patch("mvge.cli.main._create_agent", new_callable=AsyncMock) as mock_create,
+        patch("mvge.cli.main.validate_api_key"),
+        patch("sys.stdin.isatty", return_value=False),
+        patch("sys.stdout.isatty", return_value=False),
+        patch("mvge.cli.main.install_rune") as mock_install,
+        patch(
+            "mvge.cli.main._run_print_mode",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as mock_print,
+    ):
+        mock_create.side_effect = [err, mock_agent]
+        code = await _run_agent(
+            incantation="say hi",
+            model_id="pollinations/openai",
+            api_key=None,
+            temperature=None,
+            max_tokens=None,
+            contemplation_level=None,
+            spells_enabled=None,
+            extension_dir=None,
+            resume=None,
+            provider_name=None,
+            tome_dir=None,
+            tui=False,
+            approval_mode=None,
+        )
+    assert code == 0
+    mock_install.assert_called_once_with("pollinations-realm")
+    mock_print.assert_called_once()
 
 
 @pytest.mark.asyncio
