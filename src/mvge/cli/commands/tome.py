@@ -200,7 +200,7 @@ def _render_tome_export(
             ],
         }
         return json.dumps(data, indent=2)
-    elif format == "markdown":
+    elif format in ("markdown", "md"):
         lines = [
             f"# Tome: {meta.id[:8]}",
             f"Created: {meta.created_at}",
@@ -237,7 +237,10 @@ def _open_tome_or_exit(factory: TomeHandleFactory, tome_id: str) -> TomeMetadata
 def tome_show(
     tome_id: str = typer.Argument(..., help="Tome ID to show"),
     format: str | None = typer.Option(
-        None, "--format", "-f", help="Output format (json, markdown)"
+        None,
+        "--format",
+        "-f",
+        help="Output format (json, markdown, md, atif, trajectory)",
     ),
 ) -> None:
     """Show tome details."""
@@ -279,7 +282,10 @@ def tome_show(
 def tome_export(
     tome_id: str = typer.Argument(..., help="Tome ID to export"),
     format: str = typer.Option(
-        "json", "--format", "-f", help="Export format (json, markdown, atif)"
+        "json",
+        "--format",
+        "-f",
+        help="Export format (json, markdown, md, atif, trajectory)",
     ),
     output: str | None = typer.Option(None, "--output", "-o", help="Output file"),
 ) -> None:
