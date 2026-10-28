@@ -180,8 +180,27 @@ class TestConfigManagerAgentScope:
         mgr = _make_mgr(tmp_path)
         mgr.set("model", "custom-model")
         mgr.reset()
-        data = json.loads(mgr.agent_config_path.read_text(encoding="utf-8"))
-        assert data == ConfigManager.DEFAULTS
+        assert not mgr.agent_config_path.exists()
+        merged = mgr.load()
+        assert "model" not in merged
+        for key in ConfigManager.DEFAULTS:
+            assert merged[key].value == ConfigManager.DEFAULTS[key]
+            assert merged[key].layer == ConfigLayer.DEFAULTS
+
+    def test_reset_without_agent_file_is_a_noop(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.reset()
+        assert not mgr.agent_config_path.exists()
+        assert mgr.load()["temperature"].layer == ConfigLayer.DEFAULTS
+
+    def test_reset_leaves_project_scope_untouched(self, tmp_path: Path) -> None:
+        mgr = _make_mgr(tmp_path)
+        mgr.set("temperature", 0.5)
+        mgr.set_project("temperature", 0.2)
+        mgr.reset()
+        val = mgr.get("temperature")
+        assert val.value == 0.2
+        assert val.layer == ConfigLayer.PROJECT
 
     def test_get_single_value_with_provenance(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)
@@ -428,6 +447,7 @@ class TestConfigManagerOperations:
 
         mgr.reset()
         assert mgr.get("temperature").value == ConfigManager.DEFAULTS["temperature"]
+        assert mgr.get("temperature").layer == ConfigLayer.DEFAULTS
 
     def test_set_and_save_project(self, tmp_path: Path) -> None:
         mgr = _make_mgr(tmp_path)

@@ -309,11 +309,16 @@ class ConfigManager:
         return self._load_json(self.project_config_path)
 
     def reset(self) -> None:
-        """Reset agent-scope config to defaults."""
-        self.agent_config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.agent_config_path.write_text(
-            json.dumps(self._defaults, indent=2), encoding="utf-8"
-        )
+        """Clear the agent-scope config file.
+
+        Values then resolve from the defaults layer (or the project
+        layer, which reset does not touch), so ``load()`` reports layer
+        ``defaults`` instead of ``agent`` for reset keys. Resolved values
+        are unchanged by this: the previous implementation wrote a copy
+        of the defaults into the agent file, which merged to the same
+        values with the wrong provenance.
+        """
+        self.agent_config_path.unlink(missing_ok=True)
 
     def ensure_agent_config(self) -> Path:
         """Create agent-scope config with seeded defaults if absent.
