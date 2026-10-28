@@ -121,6 +121,21 @@ def test_free_recognises_the_dash_suffix_on_the_realm_that_uses_it() -> None:
     assert _model("opencode/space-bunny-free", realm="opencode").free is True
 
 
+def test_free_recognises_the_dash_suffix_on_opencode_go() -> None:
+    """OpenCode Go spells its free tier ``-free`` too.
+
+    The official Go page lists ``beam-free`` and
+    ``iceman-contributor-free`` as Free with unlimited monthly allowance
+    (limited time). Before this, both were reported as paid, so a
+    free-first listing hid them and a cost guard priced them as paid.
+    """
+    assert _model("opencode-go/beam-free", realm="opencode-go").free is True
+    assert (
+        _model("opencode-go/iceman-contributor-free", realm="opencode-go").free is True
+    )
+    assert _model("opencode-go/glm-5.3-flash", realm="opencode-go").free is False
+
+
 def test_the_dash_suffix_does_not_apply_to_other_realms() -> None:
     """A name must not be able to call a paid model free.
 

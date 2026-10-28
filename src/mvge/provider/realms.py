@@ -23,9 +23,15 @@ from __future__ import annotations
 from typing import Final
 
 #: The marketplace Rune that provides each Realm we ship.
+#:
+#: ``opencode`` and ``opencode-go`` are two entries provided by the one
+#: ``opencode-realm`` Rune, so they deliberately map to the same Rune. The
+#: convention fallback would name a second Rune, ``opencode-go-realm``,
+#: which does not exist -- which is why Go needs an explicit entry here.
 REALM_RUNES: Final[dict[str, str]] = {
     "openrouter": "openrouter-realm",
     "opencode": "opencode-realm",
+    "opencode-go": "opencode-realm",
 }
 
 #: Where each Realm's API lives.
@@ -36,7 +42,13 @@ REALM_RUNES: Final[dict[str, str]] = {
 #: ``compose_model`` overlays it -- this is the floor, not the authority.
 REALM_BASE_URLS: Final[dict[str, str]] = {
     "openrouter": "https://openrouter.ai/api/v1",
-    "opencode": "https://opencode.ai/zen/v1",
+    # Current OpenCode Inference API bases. These are Chat Completions
+    # bases: the realm appends /chat/completions. They are not the models
+    # list base (/inference/v1/models), and the old /zen/* bases are not
+    # claimed dead -- /zen/* and /inference/* have been documented as
+    # aliases for Go, and a per-model base_url override still reaches them.
+    "opencode": "https://opencode.ai/inference/openai/v1",
+    "opencode-go": "https://opencode.ai/inference/go/v1",
     # Gateway host only: the Pollinations Rune resolves the /openai path
     # itself, as opencode-realm resolves its chat-completions path.
     "pollinations": "https://text.pollinations.ai",
@@ -48,9 +60,14 @@ REALM_BASE_URLS: Final[dict[str, str]] = {
 #: openrouter fallback so a Realm never receives another Realm's key -- which
 #: authenticates at the wrong host and then fails every call with a message that
 #: names the model rather than the credential.
+#: ``opencode`` and ``opencode-go`` deliberately share ``OPENCODE_API_KEY``:
+#: one credential serves both OpenCode products, and the provider name, not
+#: the key, chooses the billing lane. The fallback would invent
+#: ``OPENCODE-GO_API_KEY``, which is not a variable anyone sets.
 REALM_API_KEY_ENV: Final[dict[str, str]] = {
     "openrouter": "OPENROUTER_API_KEY",
     "opencode": "OPENCODE_API_KEY",
+    "opencode-go": "OPENCODE_API_KEY",
 }
 
 #: Realms that have no credential at all, for any of their models.
@@ -103,13 +120,14 @@ REALMS_WITH_ANONYMOUS_FREE_TIER: Final[frozenset[str]] = frozenset({"pollination
 #: Realms that spell their free tier with a ``-free`` suffix rather than the
 #: ``:free`` suffix OpenRouter uses.
 #:
-#: OpenRouter writes ``:free``; OpenCode Zen writes ``-free``. Both are read,
+#: OpenRouter writes ``:free``; OpenCode Zen and Go write ``-free``. Both are read,
 #: because a cost guard that calls a free model paid is worse than one that
 #: calls a paid model free, and because a Summoner who picked a free model
 #: expects it to be listed as free.
 REALM_FREE_SUFFIXES: Final[dict[str, str]] = {
     "openrouter": ":free",
     "opencode": "-free",
+    "opencode-go": "-free",
 }
 
 #: The default model for each Realm we ship, keyed by Realm.

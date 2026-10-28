@@ -10,7 +10,10 @@ from typing import Any
 #: This lives beside ``Model.free`` rather than in the provider layer's shared
 #: Realm table, because it is the one Realm fact core needs and core sits below
 #: provider in the dependency graph.
-_FREE_SUFFIX_REALMS = frozenset({"opencode"})
+#: Both OpenCode products use it: Zen's ``space-bunny-free`` and Go's
+#: ``beam-free`` / ``iceman-contributor-free``, which the official Go page
+#: lists as Free with unlimited monthly allowance (limited time).
+_FREE_SUFFIX_REALMS = frozenset({"opencode", "opencode-go"})
 
 
 class StopReason(StrEnum):

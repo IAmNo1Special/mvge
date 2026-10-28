@@ -948,6 +948,16 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
                 invocations=invocations,
                 config=ChannelConfig(
                     model=model,
+                    # The tome id is the stable per-conversation session
+                    # id. Realms that route per conversation (opencode
+                    # sends x-opencode-session) read it from meta_data;
+                    # without it they fall back to a per-instance value
+                    # that does not survive a realm rebuild across turns.
+                    meta_data=(
+                        {"session_id": self._tome.tome_id}
+                        if self._tome is not None
+                        else {}
+                    ),
                     temperature=(
                         state.temperature if state.temperature is not None else 0.7
                     ),
