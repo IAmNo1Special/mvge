@@ -48,6 +48,18 @@ def _metadata(tome_id: str = "a" * 32, cwd: str = "/test") -> TomeMetadata:
     return TomeMetadata(id=tome_id, created_at="now", cwd=cwd)
 
 
+def test_runner_session_name_persists_to_tome() -> None:
+    """set_session_name must reach the tome header, not just memory."""
+    with tempfile.TemporaryDirectory() as tmp:
+        factory = TomeHandleFactory(Path(tmp))
+        write = factory.create_tome("/tmp")
+        read = factory.open_read(write.tome_id)
+        runner = RuneRunner()
+        MvgeTome(factory, write, read, runner)
+        runner.set_session_name("Persisted Title")
+        assert factory.open_read(write.tome_id).get_metadata().name == "Persisted Title"
+
+
 def _mock_runner() -> MagicMock:
     runner = MagicMock(spec=RuneRunner)
     runner.emit_async = AsyncMock()

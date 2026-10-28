@@ -787,6 +787,27 @@ class TestPlanAppendHandle:
         assert json.loads(lines[2]) == {"w": 3}
 
 
+class TestSetName:
+    def test_set_name_persists_and_preserves_entries(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        write = factory.create_tome("/tmp", tome_id="t1")
+        write.append(_message("m1", "user", "hello"))
+        write.set_name("Coffee Chat")
+
+        read = factory.open_read("t1")
+        assert read.get_metadata().name == "Coffee Chat"
+        assert [e.id for e in read.get_entries()] == ["m1"]
+        header_line = (tmp_path / "t1.jsonl").read_text().splitlines()[0]
+        assert json.loads(header_line)["name"] == "Coffee Chat"
+
+    def test_set_name_on_read_handle_raises(self, tmp_path: Path) -> None:
+        factory = TomeHandleFactory(tmp_path)
+        factory.create_tome("/tmp", tome_id="t1")
+        read = factory.open_read("t1")
+        with pytest.raises(RuntimeError):
+            read.set_name("Nope")
+
+
 class TestAppendTipLinesHandle:
     def test_tip_lines_append_without_rewrite(self, tmp_path: Path) -> None:
         class TipCodec(TomeV1Codec):

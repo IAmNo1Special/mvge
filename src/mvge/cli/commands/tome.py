@@ -108,13 +108,16 @@ def _render_tome_list(metas: list[TomeMetadata], ascii_only: bool = False) -> st
     render_console = Console(file=out, width=150, record=True, force_terminal=False)
     table = Table(title="Mvge Tomes", box=box_style)
     table.add_column("ID", style="cyan", width=10)
+    table.add_column("Name", style="white", width=24)
     table.add_column("Created", style="green", width=21)
     table.add_column("CWD", style="yellow", width=CWD_MAX_WIDTH)
     table.add_column("Active Leaf", style="magenta", width=15)
 
     for meta in metas:
+        name = meta.name if isinstance(meta.name, str) else "-"
         table.add_row(
             meta.id[:8],
+            name,
             meta.created_at[:19],
             clip_text(meta.cwd, CWD_MAX_WIDTH - 2, ascii_only),
             meta.active_leaf_id or "-",
@@ -184,6 +187,7 @@ def _render_tome_export(
                 "id": meta.id,
                 "created_at": meta.created_at,
                 "cwd": meta.cwd,
+                "name": meta.name if isinstance(meta.name, str) else None,
                 "parent_tome_id": meta.parent_tome_id,
                 "active_leaf_id": meta.active_leaf_id,
                 "schema_version": meta.schema_version,
@@ -205,8 +209,10 @@ def _render_tome_export(
             f"# Tome: {meta.id[:8]}",
             f"Created: {meta.created_at}",
             f"CWD: {meta.cwd}",
-            "",
         ]
+        if isinstance(meta.name, str):
+            lines.append(f"Title: {meta.name}")
+        lines.append("")
         for entry in entries:
             entry_type = (
                 entry.type.value if hasattr(entry.type, "value") else str(entry.type)
@@ -264,6 +270,8 @@ def tome_show(
             raise typer.Exit(1) from None
 
     console.print(f"[bold]Tome:[/bold] {meta.id[:8]}")
+    if isinstance(meta.name, str):
+        console.print(f"[bold]Name:[/bold] {meta.name}")
     console.print(f"[bold]Created:[/bold] {meta.created_at}")
     console.print(f"[bold]CWD:[/bold] {meta.cwd}")
     console.print(f"[bold]Active Leaf:[/bold] {meta.active_leaf_id or '-'}")

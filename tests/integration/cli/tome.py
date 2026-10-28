@@ -643,6 +643,30 @@ def test_render_tome_list_ascii_long_cwd_uses_ascii_ellipsis() -> None:
     assert all(ord(ch) < 128 for ch in output)
 
 
+def test_render_tome_list_shows_name() -> None:
+    meta = _make_meta("tome_abc123", "/short/cwd")
+    meta.name = "Coffee Chat"
+    output = _render_tome_list([meta], ascii_only=False)
+    assert "Coffee Chat" in output
+
+
+def test_render_tome_list_without_name_shows_dash() -> None:
+    meta = _make_meta("tome_abc123", "/short/cwd")
+    output = _render_tome_list([meta], ascii_only=False)
+    assert "Coffee Chat" not in output
+
+
+def test_render_tome_export_includes_name() -> None:
+    from mvge.cli.commands.tome import _render_tome_export
+
+    meta = _make_meta("tome_named", "/workspace")
+    meta.name = "Coffee Chat"
+    out_json = _render_tome_export(meta, [], "json")
+    assert json.loads(out_json)["metadata"]["name"] == "Coffee Chat"
+    out_md = _render_tome_export(meta, [], "md")
+    assert "Coffee Chat" in out_md
+
+
 def test_tome_verify_help() -> None:
     result = runner.invoke(tome_app, ["verify", "--help"])
     assert result.exit_code == 0

@@ -104,6 +104,19 @@ class TestRuneRunnerSpells:
         assert runner.get_active_spells() == ["tool_search"]
 
 
+class TestRuneRunnerSessionName:
+    def test_set_session_name_notifies_listeners(self) -> None:
+        runner = RuneRunner()
+        seen: list[str] = []
+        runner.on_session_name(seen.append)
+        runner.set_session_name("Coffee Chat")
+        assert seen == ["Coffee Chat"]
+        assert runner.session_name == "Coffee Chat"
+
+    def test_session_name_defaults_to_none(self) -> None:
+        assert RuneRunner().session_name is None
+
+
 class TestRuneRunnerActiveSpellsComposition:
     """The active set is the union of each rune's own contribution.
 

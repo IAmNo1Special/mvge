@@ -154,6 +154,7 @@ class RuneRunner:
         self._context = RuneContext()
         self._message_queue: list[str] = []
         self._session_name: str | None = None
+        self._session_name_listeners: list[Callable[[str], None]] = []
         self._event_handlers: dict[str, list[Any]] = {}
         # The sandbox is supplied by the embedding layer (the agent package
         # injects MvgeSandbox); runes depends only on the Sandbox protocol.
@@ -914,8 +915,26 @@ class RuneRunner:
     def send_message(self, content: str) -> None:
         self._message_queue.append(content)
 
+    @property
+    def session_name(self) -> str | None:
+        """The current session title, if a rune has set one."""
+        return self._session_name
+
+    def on_session_name(self, listener: Callable[[str], None]) -> None:
+        """Register a listener notified whenever a rune sets the title.
+
+        The session layer uses this to persist titles into the tome
+        header the moment they are set, rather than only at shutdown.
+        """
+        self._session_name_listeners.append(listener)
+
     def set_session_name(self, name: str) -> None:
         self._session_name = name
+        for listener in list(self._session_name_listeners):
+            try:
+                listener(name)
+            except Exception:
+                logger.warning("Session-name listener failed", exc_info=True)
 
     def create_api(
         self, rune_name: str | None = None, override: bool = False

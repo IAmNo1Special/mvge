@@ -365,6 +365,25 @@ class TomeHandle:
         """Asynchronously append a single entry via background thread."""
         await asyncio.to_thread(self.append, entry)
 
+    def set_name(self, name: str) -> None:
+        """Persist a session title into the header, preserving entries.
+
+        Titles arrive mid-session (a rune sets one after the first
+        turns), long after the header was written at creation, so the
+        header line is rewritten atomically under the lease. Old headers
+        without a name keep working: the field is simply absent until
+        the first title is set.
+        """
+        if self._mode != "w":
+            raise RuntimeError("Read handle cannot set name")
+        with self._acquire():
+            self._load_snapshot()
+            if self._entries_cache is None:
+                raise RuntimeError("Failed to load tome snapshot before set_name")
+            header = dict(self._header or {})
+            header["name"] = name
+            self._replace_locked(header, list(self._entries_cache))
+
     def append_leaf(self, target_id: str) -> TomeEntry:
         """Point the session's Leaf at an entry.
 
