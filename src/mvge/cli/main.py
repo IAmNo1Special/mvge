@@ -71,6 +71,7 @@ from mvge.provider.realms import (
     rune_for_realm,
 )
 from mvge.runes.installer import install_rune
+from mvge.runes.trust import WorkspaceTrustStatus
 
 console = get_console()
 
@@ -137,6 +138,23 @@ def _load_config_preference(
     return config_model, realm_preference
 
 
+def _warn_untrusted_workspace(agent: MvgeAgent) -> None:
+    """Warn the user when the workspace is untrusted.
+
+    Pi-proven shape: trust is enforced at load and warned to the user,
+    never steered into the model. Print mode lost that user-visible
+    half when the steered turn was removed, so restore it here, after
+    the run -- the status is only known once initialize has run.
+    """
+    status = getattr(agent, "workspace_trust_status", None)
+    if status is not None and status != WorkspaceTrustStatus.TRUSTED:
+        console.print(
+            "[yellow]Warning: workspace is "
+            f"{status.value}; project-level runes and spells were skipped."
+            "[/yellow]"
+        )
+
+
 async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
     turn_start = 0
     try:
@@ -144,6 +162,7 @@ async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
             turn_start = transcript_length(agent)
             result = await agent.run(prompt)
             _display_response(result)
+        _warn_untrusted_workspace(agent)
         return 0
     except Exception as exc:
         console.print(format_error(exc))

@@ -200,6 +200,38 @@ async def test_run_agent_off_terminal_self_heals_missing_realm() -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_print_mode_warns_on_untrusted_workspace() -> None:
+    """Print mode restores the user-visible half of the trust check:
+    the status is warned to the user after the run, never steered into
+    the model as a turn (Pi's shape for the same problem)."""
+    from io import StringIO
+
+    from rich.console import Console
+
+    from mvge.cli.main import _run_print_mode
+    from mvge.runes.trust import WorkspaceTrustStatus
+
+    mock_agent = MagicMock()
+    mock_agent.run = AsyncMock(return_value=MagicMock())
+    mock_agent.workspace_trust_status = WorkspaceTrustStatus.DECLINED
+    out = StringIO()
+    with patch("mvge.cli.main.console", Console(file=out, force_terminal=False)):
+        code = await _run_print_mode(mock_agent, ["say hi"])
+    assert code == 0
+    assert "declined" in out.getvalue()
+    assert "project-level runes" in out.getvalue()
+
+    mock_agent.workspace_trust_status = WorkspaceTrustStatus.TRUSTED
+    out_trusted = StringIO()
+    with patch(
+        "mvge.cli.main.console", Console(file=out_trusted, force_terminal=False)
+    ):
+        code = await _run_print_mode(mock_agent, ["say hi"])
+    assert code == 0
+    assert "project-level runes" not in out_trusted.getvalue()
+
+
+@pytest.mark.asyncio
 async def test_run_agent_tui_mode() -> None:
     with patch("mvge.cli.main.run_tui", new_callable=AsyncMock) as mock_tui:
         mock_tui.return_value = None
