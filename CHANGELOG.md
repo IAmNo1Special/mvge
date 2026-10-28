@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14] - 2026-10-28
+
+
+### Bug Fixes
+
+- **scripts:** sync verify_install key table with opencode-go (7f03827)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (caeca9a)
+
+- **release:** v0.2.14 (266f155)
+
+
+### Features
+
+- **provider:** register opencode-go realm tables (ea0c261)
+
+- **provider:** move opencode bases to inference endpoints and carry tome session id (00ef789)
+
+- **provider:** mark opencode-go -free models as free (d0c58fb)
+
+
+### Tests
+
+- **provider:** clarify Go-no-default and harness seam comments (29c26c4)
+
+
 ## [0.2.13] - 2026-10-28
 
 
