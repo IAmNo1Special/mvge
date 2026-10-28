@@ -34,9 +34,27 @@ def _agent_scope(base: Path, *names: str) -> Path:
 
 def test_installed_agent_names_lists_directories_only(tmp_path: Path) -> None:
     scope = _agent_scope(tmp_path, "beta", "alpha")
+    (scope / "alpha" / "manifest.json").write_text("{}", encoding="utf-8")
+    (scope / "beta" / "spells").mkdir()
     (scope / "stray.txt").write_text("not a Mvge", encoding="utf-8")
 
     assert installed_agent_names(agent_config_base=scope) == ["alpha", "beta"]
+
+
+def test_installed_agent_names_ignores_bare_config_dirs(tmp_path: Path) -> None:
+    """A config.json side effect (``config set`` before any install) is
+    not an installation: counting it silently disables the starter
+    bootstrap on a first interactive run."""
+    scope = _agent_scope(tmp_path, "default-mvge")
+    (scope / "default-mvge" / "config.json").write_text("{}", encoding="utf-8")
+
+    assert installed_agent_names(agent_config_base=scope) == []
+
+
+def test_installed_agent_names_ignores_empty_dirs(tmp_path: Path) -> None:
+    scope = _agent_scope(tmp_path, "empty")
+
+    assert installed_agent_names(agent_config_base=scope) == []
 
 
 def test_installed_agent_names_on_an_absent_scope(tmp_path: Path) -> None:
@@ -60,6 +78,9 @@ def test_the_default_adopts_the_single_installed_agent(tmp_path: Path) -> None:
     engine carries no artifact slug here.
     """
     scope = _agent_scope(tmp_path, "whatever_it_is_called")
+    (scope / "whatever_it_is_called" / "manifest.json").write_text(
+        "{}", encoding="utf-8"
+    )
 
     assert resolve_active_agent_name(agent_config_base=scope) == "whatever_it_is_called"
 
