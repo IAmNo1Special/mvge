@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 
 from mvge.agent import PEP723ScriptSpell
+from mvge.agent.function_spell import _uv_path_setup
 from mvge.core.spells import SpellResult, SpellStatus
+
+#: These tests execute a real script through a real uv. When uv is not
+#: installed anywhere the resolver looks, there is nothing to execute, so
+#: they skip rather than fail on the environment.
+pytestmark = pytest.mark.skipif(not _uv_path_setup()[0], reason="uv is not installed")
 
 
 @pytest.mark.asyncio

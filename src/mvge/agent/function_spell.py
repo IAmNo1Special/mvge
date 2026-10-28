@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import re
+import shutil
 import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -87,6 +88,24 @@ def parse_pep723_metadata(source: str) -> PEP723Metadata | None:
         requires_python=str(requires_python) if requires_python else None,
         raw_toml=data,
     )
+
+
+def _uv_path_setup() -> tuple[bool, str | None]:
+    """Whether ``uv run`` can execute, and a PATH dir to prepend if needed.
+
+    Returns ``(True, None)`` when uv is already on PATH, ``(True, dir)``
+    when it is only found in the standard per-user install location
+    (``~/.local/bin``, which is not on PATH in every shell), and
+    ``(False, None)`` when uv is not installed anywhere we look. The
+    command itself stays a bare ``uv`` either way; only the subprocess
+    environment gains the directory.
+    """
+    if shutil.which("uv") is not None:
+        return True, None
+    candidate = Path("~/.local/bin/uv").expanduser()
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return True, str(candidate.parent)
+    return False, None
 
 
 class PEP723ScriptSpell(MvgeSpell):
@@ -181,6 +200,19 @@ class PEP723ScriptSpell(MvgeSpell):
         env = os.environ.copy()
         env["MVGE_PARAMS"] = args_payload
         env["PYTHONUNBUFFERED"] = "1"
+
+        uv_ok, uv_path_dir = _uv_path_setup()
+        if not uv_ok:
+            return SpellResult(
+                spell_name=self.name,
+                status=SpellStatus.ERROR,
+                error_message=(
+                    "uv executable not found: install uv or put it on PATH "
+                    "so PEP 723 scripts can run"
+                ),
+            )
+        if uv_path_dir is not None:
+            env["PATH"] = uv_path_dir + os.pathsep + env.get("PATH", "")
 
         cmd = ["uv", "run", "--script", str(self.script_path)]
         proc = await asyncio.create_subprocess_exec(

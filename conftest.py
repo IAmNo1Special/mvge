@@ -92,3 +92,44 @@ def _isolate_global_agents_dir(
             os.environ.pop("MVGE_GLOBAL_DIR", None)
         else:
             os.environ["MVGE_GLOBAL_DIR"] = previous
+
+
+def _strip_bracketed_no_proxy_entries(value: str) -> str:
+    """Drop bracketed IPv6 literals from a no-proxy list.
+
+    httpx parses ``NO_PROXY``/``no_proxy`` when constructing a client and
+    raises ``InvalidURL`` on bracketed entries such as ``[::1]`` (it reads
+    the ``:1]`` as a port). Sandboxes commonly export exactly that form,
+    so any test that builds an httpx client fails for environmental
+    reasons. Bracketed entries are the only tokens removed; plain hosts,
+    CIDRs, and unbracketed IPv6 literals pass through untouched.
+    """
+    kept = [
+        token.strip()
+        for token in value.split(",")
+        if token.strip() and "[" not in token and "]" not in token
+    ]
+    return ",".join(kept)
+
+
+@pytest.fixture(autouse=True)
+def _sanitize_no_proxy_env() -> Iterator[None]:
+    """Keep a bracketed ``NO_PROXY`` from breaking httpx clients in tests.
+
+    Same family as the credential and global-dir fixtures: the value a
+    developer's shell exports must not decide whether the suite passes.
+    Tests that assert proxy behaviour itself set the variables explicitly
+    and are unaffected, because this only strips the bracketed tokens.
+    """
+    previous = {name: os.environ.get(name) for name in ("NO_PROXY", "no_proxy")}
+    for name, value in previous.items():
+        if value is not None:
+            os.environ[name] = _strip_bracketed_no_proxy_entries(value)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
