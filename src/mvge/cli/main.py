@@ -161,7 +161,13 @@ def _maybe_bootstrap_profile(
     bootstrap: bool | None = None,
     is_interactive: bool = False,
 ) -> bool:
-    """Prompt or bootstrap the default 'coding' profile when no agents are installed."""
+    """Bootstrap the default 'coding' profile when no agents are installed.
+
+    Interactive first run installs it automatically: the Y/n prompt was the
+    step a fresh install could silently skip, leaving the empty default
+    agent with no spells. ``--no-bootstrap`` (``bootstrap is False``) still
+    opts out, and a non-terminal session never installs on its own.
+    """
     from mvge.agent.agent_name import installed_agent_names
     from mvge.agent.installer import install_profile
 
@@ -175,20 +181,9 @@ def _maybe_bootstrap_profile(
     if bootstrap is True:
         should_install = True
     elif is_interactive:
-        at_a_terminal = sys.stdin.isatty() and sys.stdout.isatty()
-        if at_a_terminal:
-            try:
-                answer = (
-                    input(
-                        "No agent (Mvge) installed. Would you like to bootstrap "
-                        "the 'coding' profile from the marketplace now? [Y/n]: "
-                    )
-                    .strip()
-                    .lower()
-                )
-                should_install = answer in ("", "y", "yes")
-            except (EOFError, KeyboardInterrupt):
-                should_install = False
+        # At a terminal means a person is present to see the install and
+        # its failure; a piped session gets no silent network side effect.
+        should_install = sys.stdin.isatty() and sys.stdout.isatty()
 
     if should_install:
         console.print("[dim]Bootstrapping 'coding' profile from marketplace...[/dim]")
@@ -203,6 +198,10 @@ def _maybe_bootstrap_profile(
             return True
         except Exception as exc:
             console.print(format_error(f"Failed to bootstrap profile: {exc}"))
+            console.print(
+                "[yellow]No agent installed. Retry with 'mvge --bootstrap' "
+                "or install the profile with 'mvge setup profile coding'.[/yellow]"
+            )
             return False
     return False
 
@@ -771,7 +770,11 @@ def _repl_callback(
     bootstrap: bool | None = typer.Option(
         None,
         "--bootstrap/--no-bootstrap",
-        help="Bootstrap the default 'coding' profile when no agents are installed",
+        help=(
+            "Bootstrap the default 'coding' profile when no agents are "
+            "installed (automatic on interactive first run; "
+            "--no-bootstrap skips it)"
+        ),
     ),
 ) -> None:
     """Launch the Mvge interactive REPL, or run a single prompt."""

@@ -73,13 +73,13 @@ def test_maybe_bootstrap_profile_explicit_true() -> None:
         mock_install.assert_called_once_with("coding")
 
 
-def test_maybe_bootstrap_profile_interactive_accepted() -> None:
+def test_maybe_bootstrap_profile_interactive_auto_installs() -> None:
+    """Interactive first run installs without a prompt to skip."""
     mock_res = ProfileInstallResult("coding", ["coding_mvge"], ["seeker"], [], [])
     with (
         patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
         patch("sys.stdin.isatty", return_value=True),
         patch("sys.stdout.isatty", return_value=True),
-        patch("builtins.input", return_value="y"),
         patch(
             "mvge.agent.installer.install_profile", return_value=mock_res
         ) as mock_install,
@@ -88,16 +88,38 @@ def test_maybe_bootstrap_profile_interactive_accepted() -> None:
         mock_install.assert_called_once_with("coding")
 
 
-def test_maybe_bootstrap_profile_interactive_rejected() -> None:
+def test_maybe_bootstrap_profile_non_terminal_installs_nothing() -> None:
     with (
         patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
-        patch("sys.stdin.isatty", return_value=True),
+        patch("sys.stdin.isatty", return_value=False),
         patch("sys.stdout.isatty", return_value=True),
-        patch("builtins.input", return_value="n"),
         patch("mvge.agent.installer.install_profile") as mock_install,
     ):
         assert _maybe_bootstrap_profile(bootstrap=None, is_interactive=True) is False
         mock_install.assert_not_called()
+
+
+def test_maybe_bootstrap_profile_non_interactive_installs_nothing() -> None:
+    with (
+        patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
+        patch("mvge.agent.installer.install_profile") as mock_install,
+    ):
+        assert _maybe_bootstrap_profile(bootstrap=None, is_interactive=False) is False
+        mock_install.assert_not_called()
+
+
+def test_maybe_bootstrap_profile_failure_returns_false() -> None:
+    with (
+        patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
+        patch("sys.stdin.isatty", return_value=True),
+        patch("sys.stdout.isatty", return_value=True),
+        patch(
+            "mvge.agent.installer.install_profile",
+            side_effect=RuntimeError("marketplace unreachable"),
+        ) as mock_install,
+    ):
+        assert _maybe_bootstrap_profile(bootstrap=None, is_interactive=True) is False
+        mock_install.assert_called_once_with("coding")
 
 
 @pytest.mark.asyncio
