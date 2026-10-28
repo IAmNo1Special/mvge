@@ -320,3 +320,29 @@ def test_pep723_script_spell_nonexistent_file() -> None:
     spell = PEP723ScriptSpell(Path("/nonexistent/fake_script.py"))
     assert spell.name == "fake_script"
     assert "Execute standalone script fake_script via uv run." in spell.description
+
+
+@pytest.mark.asyncio
+async def test_pep723_script_spell_missing_uv_returns_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No uv anywhere means an ERROR result, not a FileNotFoundError.
+
+    uv installed per-user lives in ``~/.local/bin``, which is not on PATH
+    in every shell. Pointing HOME at an empty directory (and hiding any
+    PATH uv) must still produce the spell's normal error shape.
+    """
+    script = tmp_path / "needs_uv.py"
+    script.write_text(
+        "# /// script\\n# dependencies = []\\n# ///\\nprint('hi')\\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(tmp_path))
+    spell = PEP723ScriptSpell(script)
+
+    with patch("mvge.agent.function_spell.shutil.which", return_value=None):
+        result = await spell.execute("cast_no_uv", {})
+
+    assert isinstance(result, SpellResult)
+    assert result.status == SpellStatus.ERROR
+    assert "uv" in (result.error_message or "")
