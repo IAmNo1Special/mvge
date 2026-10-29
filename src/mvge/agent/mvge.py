@@ -604,8 +604,9 @@ class Mvge:
         if self._plan_mode:
             return [s.name for s in self._build_spells()]
         names: list[str] = [coerce_spell(s).name for s in self._spells]
-        if self._runner is not None:
-            names.extend([s.name for s in self._runner.get_all_registered_spells()])
+        live_runner = self._live_runner()
+        if live_runner is not None:
+            names.extend([s.name for s in live_runner.get_all_registered_spells()])
         return list(dict.fromkeys(names))
 
     def set_plan_mode(self, enabled: bool) -> None:
@@ -692,7 +693,7 @@ class Mvge:
         #    instances stay untouched until the swap, so a later failure
         #    still preserves last-known-good rune state.
         candidate_lifecycle: RuneLifecycle | None = None
-        candidate_runner: RuneRunner | None = self._runner
+        candidate_runner: RuneRunner | None = self._live_runner()
         rune_diagnostics: list[Diagnostic | SkillDiagnostic] = []
         if self._rune_lifecycle is not None:
             candidate_lifecycle = RuneLifecycle(
@@ -720,8 +721,9 @@ class Mvge:
                 # drop semantics, so last-known-good is preserved. A rune
                 # deleted from disk (no diagnostic) is a legitimate
                 # removal and proceeds.
-                if self._runner is not None:
-                    live_names = {m.name for m in self._runner.loaded_manifests}
+                live_runner = self._live_runner()
+                if live_runner is not None:
+                    live_names = {m.name for m in live_runner.loaded_manifests}
                     candidate_names = {
                         m.name for m in candidate_runner.loaded_manifests
                     }
@@ -743,9 +745,10 @@ class Mvge:
         # behind. Ephemeral widenings are re-discoverable after reload.
         gateway_rune = self._gateway_engaged_rune
         if candidate_runner is not None and candidate_lifecycle is not None:
+            live_runner = self._live_runner()
             live_allowlist = (
-                self._runner.get_global_spell_allowlist()
-                if self._runner is not None
+                live_runner.get_global_spell_allowlist()
+                if live_runner is not None
                 else None
             )
             if live_allowlist is not None and self._gateway_engaged_rune is None:
@@ -822,28 +825,41 @@ class Mvge:
             return self._harness.reload_pending
         return False
 
+    def _live_runner(self) -> RuneRunner | None:
+        """The runner whose registrations are live right now.
+
+        Before the harness exists this is the construction-time runner.
+        After a reload swaps in a candidate runner, the harness state
+        holds the live one while ``_runner`` still points at the
+        retired runner; every public runner accessor must read through
+        here or it serves disposed, stale state after a reload.
+        """
+        if self._harness is not None:
+            state_runner = self._harness.state.rune_runner
+            if state_runner is not None:
+                return state_runner
+        return self._runner
+
     @property
     def registered_commands(self) -> list[str]:
-        runner = None
-        if self._harness is not None:
-            runner = self._harness.state.rune_runner
-        elif self._runner is not None:
-            runner = self._runner
+        runner = self._live_runner()
         if runner is None:
             return []
         return [c.name for c in runner.get_commands()]
 
     def get_registered_commands(self) -> list[RegisteredCommand]:
         """Return all RegisteredCommand objects from the runner."""
-        if self._runner is None:
+        runner = self._live_runner()
+        if runner is None:
             return []
-        return self._runner.get_commands()
+        return runner.get_commands()
 
     @property
     def registered_shortcuts(self) -> list[RuneShortcut]:
-        if self._runner is None:
+        runner = self._live_runner()
+        if runner is None:
             return []
-        return self._runner.get_shortcuts()
+        return runner.get_shortcuts()
 
     @property
     def registered_providers(self) -> list[str]:
@@ -887,7 +903,7 @@ class Mvge:
         The runner itself stays engine-owned; ``set_runner`` remains the
         injection point.
         """
-        return self._runner
+        return self._live_runner()
 
     @property
     def harness(self) -> MvgeHarness | None:
@@ -1508,9 +1524,10 @@ class Mvge:
 
     def get_skills_catalog(self) -> list[dict[str, str]]:
         """List registered skills with metadata."""
-        if self._runner is None:
+        runner = self._live_runner()
+        if runner is None:
             return []
-        skills = self._runner.skill_catalog.get_skills()
+        skills = runner.skill_catalog.get_skills()
         return [
             {
                 "name": s.name,
@@ -1523,9 +1540,10 @@ class Mvge:
 
     async def activate_skill(self, name: str) -> str:
         """Activate a registered skill by name and return its activation content."""
-        if self._runner is None:
+        runner = self._live_runner()
+        if runner is None:
             raise ValueError("No runner available to activate skills.")
-        spell = self._runner.get_spell("activate_skill")
+        spell = runner.get_spell("activate_skill")
         if spell is None:
             raise ValueError(
                 "No activate_skill spell registered. "

@@ -536,6 +536,7 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             if audit_error is not None:
                 message += f" ({audit_error})"
             return ReloadResult(ok=False, message=message)
+        old_runner = self._state.rune_runner
         old_lifecycle = self._apply_reload_candidate(candidate)
         # Watcher handover: the candidate lifecycle (already swapped in)
         # starts its watchers. The retired lifecycle's watchers stop
@@ -567,6 +568,25 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
                         )
                     else:
                         await asyncio.sleep(_RETIRED_SHUTDOWN_BACKOFF_SECONDS)
+        # Retired-rune disposal: the swap replaced the live runner, so
+        # the old runner's rune instances are retired, not merely
+        # unreferenced. Unloading them fires their on_dispose callbacks
+        # exactly as unload_rune does for an explicit unload; without
+        # this, a replaced rune's cleanup never runs. The identity
+        # guard matters: when no candidate lifecycle swapped (or the
+        # build produced no new runner), the live runner is still the
+        # old one and must never be disposed. Dispose failures are
+        # logged, never fatal: the new state is already live, and
+        # unload_rune already swallows per-callback errors.
+        if old_runner is not None and old_runner is not self._state.rune_runner:
+            for manifest in old_runner.loaded_manifests:
+                try:
+                    await old_runner.unload_rune(manifest.name)
+                except Exception:
+                    logger.exception(
+                        "Retired rune %s did not dispose cleanly after reload",
+                        manifest.name,
+                    )
         if watcher_error is not None:
             # The swap succeeded — the new state IS live — but the
             # post-swap watcher handover failed. Per the §4.6 audit

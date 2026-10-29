@@ -830,6 +830,35 @@ async def test_reload_transfers_explicit_allowlist(
 
 
 @pytest.mark.asyncio
+async def test_second_reload_keeps_rune_spell_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An allowlist naming a rune spell survives a second reload.
+
+    The first reload disposes the retired runner, which strips its own
+    spells from its own allowlist. The second reload's candidate build
+    must therefore read the live allowlist from the live runner, not
+    the retired one, or the entry silently vanishes on reload two.
+    """
+    _write_probe_rune(tmp_path)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert agent.runner is not None
+        agent.runner.set_global_spell_allowlist(["probe_spell"])
+        first = await agent.reload()
+        assert first.ok
+        assert agent.runner is not None
+        assert agent.runner.get_global_spell_allowlist() == ["probe_spell"]
+        second = await agent.reload()
+        assert second.ok
+        assert agent.runner is not None
+        assert agent.runner.get_global_spell_allowlist() == ["probe_spell"]
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_broken_rune_manifest_preserves_last_known_good(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -873,6 +902,150 @@ async def test_removed_rune_unloads_cleanly(
         assert "probe-cmd" not in agent.registered_commands
         assert "probe_spell" not in agent.enabled_spells
         assert "[RUNE_MARKER]" not in agent.system_prompt
+    finally:
+        await agent.close()
+
+
+_DISPOSE_RUNE_PY = """\
+import os
+from pathlib import Path
+
+from mvge.runes.types import SpellDefinition
+
+
+class ProbeSpell(SpellDefinition):
+    async def execute(self, spell_cast_id, params, signal=None, on_update=None):
+        return {"status": "ok"}
+
+
+def rune_factory(api):
+    api.register_spell(ProbeSpell(name="probe_spell", description="Probe spell"))
+
+    def _dispose():
+        Path(os.environ["RELOAD_PROOF_DISPOSE_PATH"]).open(
+            "a", encoding="utf-8"
+        ).write("disposed\\n")
+
+    api.on_dispose(_dispose)
+"""
+
+
+@pytest.mark.asyncio
+async def test_reload_disposes_retired_rune_instances(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A surviving rune's old instance is disposed when reload swaps it.
+
+    Reload replaces the live runner with a candidate runner; discarding
+    the old runner must not silently drop its on_dispose callbacks, or
+    a rune's cleanup (background work, connections, temp state) leaks
+    on every reload while unload_rune disposes it correctly.
+    """
+    dispose_path = tmp_path / "disposed.txt"
+    monkeypatch.setenv("RELOAD_PROOF_DISPOSE_PATH", str(dispose_path))
+    _write_probe_rune(tmp_path, body=_DISPOSE_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe_spell" in agent.enabled_spells
+        assert not dispose_path.exists()
+        result = await agent.reload()
+        assert result.ok
+        assert dispose_path.read_text(encoding="utf-8") == "disposed\n"
+        # The new instance is live: its spell survives the swap.
+        assert "probe_spell" in agent.enabled_spells
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_reload_does_not_dispose_live_rune(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed reload preserves last-known-good rune state, undisposed."""
+    dispose_path = tmp_path / "disposed.txt"
+    monkeypatch.setenv("RELOAD_PROOF_DISPOSE_PATH", str(dispose_path))
+    _write_probe_rune(tmp_path, body=_DISPOSE_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe_spell" in agent.enabled_spells
+        (tmp_path / "runes" / "probe-rune" / "manifest.json").write_text(
+            "{not json", encoding="utf-8"
+        )
+        result = await agent.reload()
+        assert not result.ok
+        assert not dispose_path.exists()
+        assert "probe_spell" in agent.enabled_spells
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_disposes_removed_rune(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rune deleted from disk is disposed, not just unregistered."""
+    dispose_path = tmp_path / "disposed.txt"
+    monkeypatch.setenv("RELOAD_PROOF_DISPOSE_PATH", str(dispose_path))
+    _write_probe_rune(tmp_path, body=_DISPOSE_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe_spell" in agent.enabled_spells
+        shutil.rmtree(tmp_path / "runes" / "probe-rune")
+        result = await agent.reload()
+        assert result.ok
+        assert dispose_path.read_text(encoding="utf-8") == "disposed\n"
+        assert "probe_spell" not in agent.enabled_spells
+    finally:
+        await agent.close()
+
+
+_GEN_CMD_RUNE_PY = """\
+import os
+from pathlib import Path
+
+
+def rune_factory(api):
+    counter = Path(os.environ["RELOAD_PROOF_GEN_PATH"])
+    try:
+        n = int(counter.read_text(encoding="utf-8").strip()) + 1
+    except Exception:
+        n = 1
+    counter.write_text(str(n), encoding="utf-8")
+
+    def _handler(args=""):
+        return f"gen{n}"
+
+    api.register_command("gen-cmd", "Generation command", handler=_handler)
+"""
+
+
+@pytest.mark.asyncio
+async def test_reload_serves_new_rune_commands_not_stale_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After reload, rune commands come from the candidate runner.
+
+    The dispatcher resolves commands through get_registered_commands,
+    so a runner reference that still points at the retired runner
+    either serves the disposed old handler or, once retired runes are
+    disposed, serves nothing at all. Either way the REPL loses the
+    command it just reloaded.
+    """
+    gen_path = tmp_path / "gen.txt"
+    monkeypatch.setenv("RELOAD_PROOF_GEN_PATH", str(gen_path))
+    _write_probe_rune(tmp_path, body=_GEN_CMD_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        before = {c.name: c for c in agent.get_registered_commands()}
+        assert before["gen-cmd"].handler("") == "gen1"
+        result = await agent.reload()
+        assert result.ok
+        after = {c.name: c for c in agent.get_registered_commands()}
+        assert after["gen-cmd"].handler("") == "gen2"
     finally:
         await agent.close()
 
