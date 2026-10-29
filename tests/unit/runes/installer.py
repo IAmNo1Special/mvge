@@ -35,6 +35,20 @@ def _create_mock_rune_dir(
     return path
 
 
+def test_list_installed_runes_ignores_hidden_dirs(tmp_path: Path) -> None:
+    """The shared deps ``.venv`` sits at the extensions dir; listing
+    must not present it as an installed rune."""
+    _create_mock_rune_dir(tmp_path / "real_rune", "real_rune")
+    venv_dir = tmp_path / ".venv"
+    venv_dir.mkdir()
+    (venv_dir / "pyproject.toml").write_text(
+        '[project]\nname = "mvge-extensions"\n', encoding="utf-8"
+    )
+
+    installed = list_installed_runes(target_dir=tmp_path)
+    assert [r["name"] for r in installed] == ["real_rune"]
+
+
 def test_install_rune_empty_source(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Rune source cannot be empty"):
         install_rune("", target_dir=tmp_path)
