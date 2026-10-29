@@ -342,6 +342,36 @@ class TestTuiApp:
             footer = app._footer_text()
             assert any("nvidia" in text for _, text in footer)
 
+    def test_input_control_ctrl_c_resolves_to_interrupt(self) -> None:
+        """The focused input control's bindings outrank the
+        Application's, and prompt-toolkit's defaults bind c-c to a
+        no-op ignore -- so without a real c-c binding on the input
+        control itself, Ctrl-C is swallowed and the app never exits.
+        The last c-c match must be the interrupt handler: idle it
+        exits, busy it cancels the turn instead."""
+        from prompt_toolkit.output import DummyOutput
+
+        from mvge.cli.commands.tui import TuiApp
+
+        app = TuiApp(
+            MagicMock(), TuiSink(), MagicMock(), MagicMock(), output=DummyOutput()
+        )
+        bindings = app._input_key_bindings.get_bindings_for_keys(("c-c",))
+        assert bindings, "no c-c binding on the input control"
+        handler = bindings[-1].handler
+
+        event = MagicMock()
+        handler(event)
+        event.app.exit.assert_called_once()
+
+        event_busy = MagicMock()
+        task = MagicMock()
+        task.done.return_value = False
+        app._task = task
+        handler(event_busy)
+        task.cancel.assert_called_once()
+        event_busy.app.exit.assert_not_called()
+
     def test_footer_shows_working_while_busy(self) -> None:
         app = self._app(FakeAgent())
         assert not any("working" in t for _, t in app._footer_text())

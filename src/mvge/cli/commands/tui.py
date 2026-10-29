@@ -311,6 +311,20 @@ class TuiApp:
             if not event.app.current_buffer.text.strip():
                 event.app.exit()
 
+        @input_kb.add("c-c")
+        def _interrupt_input(event: Any) -> None:
+            # The focused control's bindings outrank the
+            # Application's, and prompt-toolkit's defaults bind c-c
+            # to a no-op ignore -- so without a real c-c binding on
+            # the input control itself, Ctrl-C is swallowed while the
+            # input box is focused (which is always) and the
+            # app-level interrupt never fires. Same semantics as
+            # the app binding: cancel a running turn, else exit.
+            # (Pi's shape transposed: the focused component owns
+            # the decision, in binding order, rather than relying
+            # on framework priority.)
+            self._handle_interrupt(event)
+
         self._buffer = Buffer(
             completer=SlashCompleter(),
             multiline=False,
@@ -318,6 +332,7 @@ class TuiApp:
             accept_handler=self._on_accept,
         )
         input_bindings = merge_key_bindings([load_key_bindings(), input_kb])
+        self._input_key_bindings = input_bindings
         input_window = Window(
             BufferControl(
                 buffer=self._buffer,
@@ -370,15 +385,20 @@ class TuiApp:
         if hasattr(self, "dispatcher"):
             self.dispatcher.registry = value
 
+    def _handle_interrupt(self, event: Any) -> None:
+        """Ctrl-C semantics, shared by the app-level and input-control
+        bindings: cancel a running turn or slash command, else exit."""
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        elif self._slash_task is not None and not self._slash_task.done():
+            self._slash_task.cancel()
+        else:
+            event.app.exit()
+
     def _bind_app_keys(self, kb: KeyBindings) -> None:
         @kb.add("c-c")
         def _interrupt(event: Any) -> None:
-            if self._task is not None and not self._task.done():
-                self._task.cancel()
-            elif self._slash_task is not None and not self._slash_task.done():
-                self._slash_task.cancel()
-            else:
-                event.app.exit()
+            self._handle_interrupt(event)
 
         @kb.add("s-pageup")
         def _page_up(event: Any) -> None:
