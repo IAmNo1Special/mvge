@@ -964,6 +964,7 @@ class Mvge:
         if self._rune_lifecycle is None:
             self._rune_lifecycle = RuneLifecycle(
                 agent_name=self._name,
+                model_id=self._model_id,
                 api_key=self._api_key,
                 rune_layers=self._rune_layers,
                 environment=self._environment,
@@ -1444,6 +1445,12 @@ class Mvge:
             if self._harness._model is not None:
                 self._model = self._harness._model
         self._model_id = model_id
+        if self._runner is not None:
+            # Keep the runner context's model in step, or runes
+            # reading inherit-model keep summoning with the old one.
+            self._runner.bind_context(
+                dataclasses.replace(self._runner.context, model_id=model_id)
+            )
 
     async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
         """Switch the contemplation level in-flight."""
