@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -698,3 +699,47 @@ async def test_fallback_realm_runtime_failover() -> None:
     async for chunk in composite.stream(model, [], cfg):
         chunks.append(chunk)
     assert chunks == ["chunk-from-fallback"]
+
+
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+async def test_get_shared_client_sanitizes_bracketed_no_proxy(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Direct/library use builds the shared client without CLI startup.
+
+    A bracketed NO_PROXY entry must not fail client construction for a
+    caller that never ran ``mvge.cli.main.main``.
+    """
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    reg = RealmRegistry()
+    try:
+        client = reg.get_shared_client()
+        assert not client.is_closed
+        assert os.environ[name] == "localhost"
+    finally:
+        await reg.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+async def test_prewarm_client_sanitizes_bracketed_no_proxy(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Pre-warming in a thread must not fail on a bracketed NO_PROXY."""
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    reg = RealmRegistry()
+    try:
+        client = await reg.prewarm_client()
+        assert not client.is_closed
+        assert os.environ[name] == "localhost"
+    finally:
+        await reg.close()

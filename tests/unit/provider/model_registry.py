@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -550,3 +551,41 @@ def test_model_registry_providers_and_models(tmp_path: Path) -> None:
 
     levels_unknown = reg.get_supported_contemplation_levels("unknown/model")
     assert levels_unknown == []
+
+
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+async def test_refresh_sanitizes_bracketed_no_proxy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """A catalog refresh from library use must not carry a bracketed entry
+    into client construction."""
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    reg = ModelRegistry(cache_path=tmp_path / "c.json")
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [
+            {
+                "id": "a/b",
+                "name": "A B",
+                "pricing": {"prompt": "0", "completion": "0"},
+            },
+        ]
+    }
+    mock_client = MagicMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = AsyncMock(return_value=mock_response)
+    with patch(
+        "mvge.provider.model_registry.httpx.AsyncClient", return_value=mock_client
+    ):
+        count = await reg.refresh()
+    assert count == 1
+    assert os.environ[name] == "localhost"

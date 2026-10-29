@@ -5,7 +5,11 @@ raises ``InvalidURL`` on bracketed IPv6 literals such as ``[::1]``
 (it reads the ``:1]`` as a port). Sandboxes commonly export exactly
 that form, so any realm that builds an httpx client fails for purely
 environmental reasons before the run starts. The test suites sanitize
-the same way per test; runtime sanitizes once at CLI startup.
+the same way per test; runtime sanitizes once at CLI startup, and
+every httpx construction site in the engine sanitizes again just
+before building its client, so direct/library use that never runs
+CLI startup is safe too. The CLI-startup call stays: it is the first
+line of defense, and this per-site call is the second.
 
 Only bracketed tokens are removed; plain hosts, CIDRs, and
 unbracketed IPv6 literals pass through untouched.
