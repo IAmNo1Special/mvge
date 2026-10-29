@@ -169,6 +169,20 @@ class CliCommandDispatcher:
             output(f"[green]Resumed tome: {outcome.data.get('tome_id')}[/green]")
             return
 
+        if outcome.action == CommandAction.RELOADED:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.RELOAD_QUEUED:
+            output(f"[dim]{outcome.message}[/dim]")
+            return
+
+        if outcome.action == CommandAction.RUNE_COMMAND:
+            # The message is the rune command's own output, not a status
+            # line, so it prints verbatim rather than dimmed or green.
+            output(outcome.message)
+            return
+
         if outcome.action == CommandAction.ERROR:
             msg_lines = outcome.message.split("\n", 1)
             output(format_error(msg_lines[0]))

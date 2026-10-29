@@ -4,11 +4,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from mvge.agent.protocol import MvgeAgent
+from mvge.agent.protocol import MvgeAgent, ReloadResult
 from mvge.cli.commands.dispatcher import CliCommandDispatcher
 from mvge.core.channel import Model
 from mvge.core.events import QueueMode
 from mvge.provider.model_registry import ModelRegistry
+from mvge.runes import RegisteredCommand
 
 
 @pytest.fixture
@@ -209,6 +210,61 @@ async def test_model_switch_displays_contemplation_levels(
     await dispatcher.dispatch("/model nvidia/nemotron")
     assert any("Supported contemplation levels" in line for line in output)
     assert any("x-high" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_reload_command_renders_reloaded_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.reload = AsyncMock(
+        return_value=ReloadResult(
+            ok=True,
+            message="Reload complete: prompt unchanged, 2 spell(s) (unchanged)",
+        )
+    )
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/reload")
+    assert should_exit is False
+    mock_agent.reload.assert_awaited_once()
+    assert any("Reload complete" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_reload_command_queued_renders_queued_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.reload = AsyncMock(
+        return_value=ReloadResult(ok=True, queued=True, message="Reload queued")
+    )
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/reload")
+    assert should_exit is False
+    assert any("Reload queued" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_rune_command_renders_handler_output(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.get_registered_commands = MagicMock(
+        return_value=[
+            RegisteredCommand(
+                name="renderprobe",
+                description="Probe rune command",
+                handler=lambda args: f"render-probe says: {args}",
+            )
+        ]
+    )
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/renderprobe hello")
+    assert should_exit is False
+    assert any("render-probe says: hello" in line for line in output)
 
 
 @pytest.mark.asyncio
