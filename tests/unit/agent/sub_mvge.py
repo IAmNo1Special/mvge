@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -77,9 +78,17 @@ class MockChildMvgeContext:
                 self._agent_tome = fake_tome
 
         async def mocked_run(
-            self: Mvge, prompt: str | list[dict[str, object]]
+            self: Mvge,
+            prompt: str | list[dict[str, object]],
+            *,
+            signal: object = None,
         ) -> MvgeResponse:
             if custom_r is not None:
+                params = inspect.signature(custom_r).parameters
+                if "signal" in params or any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+                ):
+                    return await custom_r(prompt, signal=signal)  # type: ignore[misc]
                 return await custom_r(prompt)  # type: ignore[misc]
             return MvgeResponse(
                 role="assistant",
@@ -202,7 +211,11 @@ async def test_post_rune_allowed_spells_enforcement(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_parent_abort_signal_propagation(tmp_path: Path) -> None:
+async def test_parent_abort_stops_running_child_turn(tmp_path: Path) -> None:
+    """Aborting the parent must stop a running child turn, not just flip
+    a controller nobody reads. Observable outcome: the background child
+    finishes promptly and its record lands in CANCELING, never COMPLETED.
+    """
     subsessions_dir = tmp_path / "sessions" / "subsessions"
     subsessions_dir.mkdir(parents=True, exist_ok=True)
 
@@ -212,32 +225,133 @@ async def test_parent_abort_signal_propagation(tmp_path: Path) -> None:
         subsessions_dir=subsessions_dir,
     )
 
-    child_aborted = asyncio.Event()
+    started = asyncio.Event()
 
-    async def long_running_run(prompt: str) -> MvgeResponse:
-        ctrl = manager._controllers[list(manager._controllers.keys())[0]]
-        ctrl.signal.on_abort(child_aborted.set)
-        try:
+    async def abortable_run(prompt: str, *, signal: object = None) -> MvgeResponse:
+        started.set()
+        if signal is not None:
+            await signal.wait()  # type: ignore[attr-defined]
+        else:
             await asyncio.sleep(10.0)
-        except asyncio.CancelledError:
-            child_aborted.set()
-            raise
         return MvgeResponse(
             role="assistant",
             content=[{"type": "text", "text": "Done"}],
         )
 
-    with MockChildMvgeContext(custom_run=long_running_run):
+    with MockChildMvgeContext(custom_run=abortable_run):
         records = await manager.summon(
             [SubMvgeSpec(role="worker", prompt="Sleep", wait=False)],
             parent_signal=parent_controller.signal,
         )
         assert len(records) == 1
+        sub_id = records[0].sub_mvge_id
+        await asyncio.wait_for(started.wait(), timeout=5.0)
 
         parent_controller.abort()
-        await asyncio.sleep(0.05)
 
-        assert child_aborted.is_set()
+        async def _await_canceling() -> SubMvgeRecord:
+            while True:
+                rec = manager.list_active()[0]
+                if rec.state == SubMvgeState.CANCELING:
+                    return rec
+                await asyncio.sleep(0.01)
+
+        rec = await asyncio.wait_for(_await_canceling(), timeout=5.0)
+        assert rec.sub_mvge_id == sub_id
+        assert rec.state == SubMvgeState.CANCELING
+        assert rec.summary != "Done"
+
+
+@pytest.mark.asyncio
+async def test_parent_abort_stops_waiting_child_turn(tmp_path: Path) -> None:
+    """Same cascade for wait=True: the summon itself must return promptly
+    with the child record in CANCELING instead of hanging on the child."""
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    parent_controller = AbortController()
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    started = asyncio.Event()
+
+    async def abortable_run(prompt: str, *, signal: object = None) -> MvgeResponse:
+        started.set()
+        if signal is not None:
+            await signal.wait()  # type: ignore[attr-defined]
+        else:
+            await asyncio.sleep(10.0)
+        return MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Done"}],
+        )
+
+    with MockChildMvgeContext(custom_run=abortable_run):
+        summon_task = asyncio.create_task(
+            manager.summon(
+                [SubMvgeSpec(role="worker", prompt="Sleep", wait=True)],
+                parent_signal=parent_controller.signal,
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=5.0)
+        parent_controller.abort()
+        records = await asyncio.wait_for(summon_task, timeout=5.0)
+
+    assert len(records) == 1
+    assert records[0].state == SubMvgeState.CANCELING
+
+
+@pytest.mark.asyncio
+async def test_follow_up_after_abort_runs_again(tmp_path: Path) -> None:
+    """A child cancelled by a parent abort is not poisoned forever: a
+    later follow-up turn runs with a fresh, unaborted signal."""
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    parent_controller = AbortController()
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    started = asyncio.Event()
+
+    async def abortable_run(prompt: str, *, signal: object = None) -> MvgeResponse:
+        if prompt == "Sleep":
+            started.set()
+            if signal is not None:
+                await signal.wait()  # type: ignore[attr-defined]
+            else:
+                await asyncio.sleep(10.0)
+            return MvgeResponse(
+                role="assistant",
+                content=[{"type": "text", "text": "Done"}],
+            )
+        return MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": f"Follow-up: {prompt}"}],
+        )
+
+    with MockChildMvgeContext(custom_run=abortable_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="Sleep", wait=False)],
+            parent_signal=parent_controller.signal,
+        )
+        sub_id = records[0].sub_mvge_id
+        await asyncio.wait_for(started.wait(), timeout=5.0)
+        parent_controller.abort()
+
+        async def _await_canceling() -> None:
+            while manager.list_active()[0].state != SubMvgeState.CANCELING:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(_await_canceling(), timeout=5.0)
+
+        rec = await manager.send_message(sub_id, "Try again")
+        assert rec.state == SubMvgeState.COMPLETED
+        assert rec.summary == "Follow-up: Try again"
 
 
 @pytest.mark.asyncio

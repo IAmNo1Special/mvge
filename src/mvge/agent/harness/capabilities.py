@@ -14,6 +14,7 @@ from typing import Protocol, runtime_checkable
 
 from mvge.agent.agent_session import MvgeTome
 from mvge.agent.protocol import ReloadResult
+from mvge.core.abort import AbortSignal
 from mvge.core.channel import Model
 from mvge.core.events import ContemplationLevel, ExecutionSnapshot, QueueMode
 from mvge.core.invocations import MvgeInvocation, SummonerRequest
@@ -24,7 +25,9 @@ from mvge.provider.base import Realm
 class TurnDriver(Protocol):
     """Owns the hot path: exactly one turn at a time."""
 
-    async def run_turn(self, invocation: SummonerRequest) -> MvgeInvocation: ...
+    async def run_turn(
+        self, invocation: SummonerRequest, *, signal: AbortSignal | None = None
+    ) -> MvgeInvocation: ...
     def steer(self, text: str) -> None: ...  # enqueue-and-drain, sync
     def follow_up(self, text: str) -> None: ...  # enqueue-and-drain, sync
     def abort(self) -> None: ...  # idempotent, sync
