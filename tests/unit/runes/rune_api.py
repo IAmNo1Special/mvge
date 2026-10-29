@@ -1,9 +1,11 @@
 """Unit tests for RuneAPI.audit: the engine-stamped rune-op audit event."""
 
 import json
+import os
 import re
 from pathlib import Path
 
+import httpx
 import pytest
 
 from mvge.runes.rune_api import RuneAPI
@@ -94,6 +96,52 @@ def test_audit_propagates_audit_error_loudly(tmp_path: Path) -> None:
 
     with pytest.raises(AuditError):
         api.audit("scaffold_rune", outcome="ok", code="ok", message="m")
+
+
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+def test_sanitize_no_proxy_env_rewrites_bracketed_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    api, _ = make_api(tmp_path)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    assert api.sanitize_no_proxy_env() is True
+    assert os.environ[name] == "localhost"
+
+
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+def test_sanitize_no_proxy_env_leaves_clean_env_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    api, _ = make_api(tmp_path)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "localhost")
+    assert api.sanitize_no_proxy_env() is False
+    assert os.environ[name] == "localhost"
+
+
+def test_sanitize_no_proxy_env_lets_rune_build_its_own_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rune position, library use: the factory holds only ``api``.
+
+    Calling the helper before building the client is the whole fix for
+    a rune the engine never sees a client from. No request is made, so
+    the test stays hermetic: construction alone parses NO_PROXY.
+    """
+    api, _ = make_api(tmp_path)
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("NO_PROXY", "[::1],localhost")
+    assert api.sanitize_no_proxy_env() is True
+    with httpx.Client() as client:
+        assert not client.is_closed
 
 
 def test_audit_default_log_lands_in_user_scope_dir(

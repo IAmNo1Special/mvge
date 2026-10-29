@@ -12,6 +12,7 @@ from mvge.core.approval import (
     ApprovalRequest,
     SpellGateHandler,
 )
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
 from mvge.runes.rune_audit import (
     AuditError,
@@ -92,6 +93,19 @@ class RuneAPI:
     @property
     def context(self) -> RuneContext:
         return self._runner.context
+
+    def sanitize_no_proxy_env(self) -> bool:
+        """Strip bracketed IPv6 tokens from NO_PROXY before building a client.
+
+        A rune that builds its own httpx client bypasses every engine
+        construction site, so the engine cannot protect that client.
+        Call this first, in the factory, before any ``httpx.Client`` or
+        ``httpx.AsyncClient`` is constructed -- sanitizing after a
+        client failed to build cannot repair it. Returns True when
+        anything changed; idempotent, and a no-op on a clean
+        environment. Only bracketed tokens are removed.
+        """
+        return sanitize_no_proxy_env()
 
     def on(self, hook: SigilHook, handler: Any) -> None:
         self._disposable_scope.sigil_handlers.append((hook, handler))
