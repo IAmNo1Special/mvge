@@ -231,6 +231,21 @@ async def test_run_print_mode_warns_on_untrusted_workspace() -> None:
     assert "project-level runes" not in out_trusted.getvalue()
 
 
+def test_main_sanitizes_bracketed_no_proxy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI startup strips bracketed NO_PROXY tokens before any realm
+    builds an httpx client (the runtime half of the test-suite
+    sanitizer)."""
+    import os
+
+    monkeypatch.setenv("NO_PROXY", "[::1],localhost")
+    with patch("mvge.cli.main.app") as mock_app:
+        main()
+    mock_app.assert_called_once_with()
+    assert os.environ["NO_PROXY"] == "localhost"
+
+
 @pytest.mark.asyncio
 async def test_run_agent_tui_mode() -> None:
     with patch("mvge.cli.main.run_tui", new_callable=AsyncMock) as mock_tui:

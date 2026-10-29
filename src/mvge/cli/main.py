@@ -59,6 +59,7 @@ from mvge.cli.formatting import (
 )
 from mvge.cli.rpc import run_rpc
 from mvge.core.constants import DEFAULT_AGENT_NAME
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.provider import NoRealmRegisteredError, get_default_realm_registry
 from mvge.provider.model_registry import (
     model_requires_credential,
@@ -961,6 +962,11 @@ app.add_typer(setup_app, name="setup", cls=DefaultCheckGroup)
 
 
 def main() -> None:
+    # Before anything builds an httpx client: a bracketed NO_PROXY
+    # entry fails client construction for purely environmental
+    # reasons. The test suites sanitize per test; runtime sanitizes
+    # once here, at startup.
+    sanitize_no_proxy_env()
     configure_streams()
     app()
 
