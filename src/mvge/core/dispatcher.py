@@ -507,6 +507,11 @@ class SpellDispatcher:
         if spell is None:
             # Unknown spells never reach the approval gate: there is nothing
             # to approve. Lookup-before-gate ordering keeps them out.
+            # But the cast must not vanish: with no result message the
+            # loop ends the turn on the spell-calling response itself and
+            # the user sees nothing at all. Surface the failure to the
+            # model as an error result, so it can retry with a real
+            # spell name -- the same rule as any other spell failure.
             err: MvgeError = SpellNotFoundError(spell_name)
             await emit(
                 MvgeEvent(
@@ -518,7 +523,13 @@ class SpellDispatcher:
                     },
                 )
             )
-            return None
+            return SpellResultMessage(
+                spell_cast_id=spell_cast_id,
+                spell_name=spell_name,
+                content=[{"type": "text", "text": str(err)}],
+                is_error=True,
+                terminate=False,
+            )
 
         # Lookup and validation happen before the critical gate: unknown or
         # invalid casts fail here and never prompt. The gate approves a frozen
@@ -605,6 +616,20 @@ class SpellDispatcher:
                 is_error = raw_result.status == "error"
                 terminate = raw_result.terminate
                 result_details = dict(raw_result.details)
+                if is_error and raw_result.error_message:
+                    # The model reads the result text, not is_error: an
+                    # error with empty content arrives as an empty
+                    # result and is read as success, so a blocked
+                    # action gets reported as completed. Surface the
+                    # error in the text itself, and keep it in details
+                    # for structured consumers.
+                    if result_content:
+                        result_content = (
+                            f"{result_content}\nError: {raw_result.error_message}"
+                        )
+                    else:
+                        result_content = f"Error: {raw_result.error_message}"
+                    result_details.setdefault("error_message", raw_result.error_message)
 
             if callbacks.after_spell_result is not None:
                 chained = await callbacks.after_spell_result(

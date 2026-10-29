@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -33,6 +34,19 @@ from mvge.provider.retry import (
     retry_budget_for,
     transient_retry_budget,
 )
+
+# Providers leak framing tokens into streamed tool-call names: a gpt-oss
+# stream, for example, emits a Harmony channel marker right after the
+# function name, so the name arrives as "manage_mvges<|channel|>commentary".
+# Spell names never contain `<|...|>` sequences, so anything shaped like
+# one -- plus the channel word that follows a `<|channel|>` marker -- is
+# provider framing, not part of the name. Left in place, the name matches
+# no spell and the cast is dropped without a trace.
+_SPECIAL_TOKEN_RE = re.compile(r"<\|channel\|>[A-Za-z_]*|<\|[^|]*\|>")
+
+
+def _sanitize_tool_name(name: str) -> str:
+    return _SPECIAL_TOKEN_RE.sub("", name)
 
 
 @dataclass
@@ -705,7 +719,7 @@ class SSEStreamingRealm(Realm, ABC):
                     "type": "spell_cast",
                     "spell_cast": {
                         "id": acc["id"],
-                        "name": acc["name"],
+                        "name": _sanitize_tool_name(acc["name"]),
                         "arguments": arguments,
                     },
                 }

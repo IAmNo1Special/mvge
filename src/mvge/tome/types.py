@@ -48,6 +48,7 @@ class TomeMetadata:
     id: str
     created_at: str
     cwd: str
+    name: str | None = None
     parent_tome_id: str | None = None
     active_leaf_id: str | None = None
     schema_version: str = "1.0"

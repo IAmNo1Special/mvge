@@ -292,6 +292,33 @@ async def test_stream_accumulates_tool_calls() -> None:
 
 
 @pytest.mark.asyncio
+async def test_stream_strips_special_tokens_from_tool_call_names() -> None:
+    """A provider may leak Harmony-style special tokens into a streamed
+    tool-call name (observed: 'manage_mvges<|channel|>commentary' from a
+    gpt-oss stream). The spell name must arrive clean: an unclean name
+    matches no spell, the cast is dropped, and the turn ends silent."""
+    lines = [
+        (
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+            b'"type":"function","function":{"name":"manage_mvges<|channel|>commentary",'
+            b'"arguments":"{\\"action\\":\\"list\\"}"}}]}}]}\n\n'
+        ),
+        b'data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+    realm = DummySSERealm(client=_make_client(lines))
+    model = _test_model()
+    config = ChannelConfig(model=model)
+
+    responses = await _collect(realm.stream(model, [], config))
+
+    assert len(responses) == 1
+    spell_cast = responses[0].invocation.content[0]["spell_cast"]
+    assert spell_cast["name"] == "manage_mvges"
+    assert spell_cast["arguments"] == {"action": "list"}
+
+
+@pytest.mark.asyncio
 async def test_stream_mana_usage_breakdown() -> None:
     lines = [
         b'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',

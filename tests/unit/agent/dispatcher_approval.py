@@ -149,9 +149,12 @@ async def test_unknown_spell_never_reaches_gate() -> None:
         emit,
     )
     assert seen == []
-    # Unknown spells short-circuit before the gate: no result message for the
-    # model, no approval event, END-only with the lookup error.
-    assert result.messages == []
+    # Unknown spells short-circuit before the gate: no approval event,
+    # END-only with the lookup error -- but the model still gets an error
+    # result message, never a silently discarded cast.
+    assert len(result.messages) == 1
+    assert result.messages[0].is_error is True
+    assert "Spell not found: nope" in str(result.messages[0].content)
     kinds = [e.type for e in events]
     assert kinds == [MvgeEventType.SPELL_CASTING_END]
     end_data = events[0].data

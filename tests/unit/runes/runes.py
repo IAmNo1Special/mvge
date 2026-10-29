@@ -162,6 +162,31 @@ def test_load_manifests_with_shortcuts() -> None:
         assert manifests[0].shortcuts[0].key == "ctrl+s"
 
 
+def test_load_manifests_ignores_hidden_dirs() -> None:
+    """The shared python-deps environment lives at the extensions dir,
+    so ``uv add`` creates a top-level ``.venv`` there. Discovery must
+    not mistake it (or any hidden dir) for a rune and warn about it."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        ext_dir = Path(tmpdir)
+        rune_dir = ext_dir / "real_rune"
+        rune_dir.mkdir()
+        (rune_dir / "manifest.json").write_text(
+            '{"name": "real_rune", "version": "1.0.0", '
+            '"description": "Real", "hooks": []}',
+            encoding="utf-8",
+        )
+        venv_dir = ext_dir / ".venv"
+        venv_dir.mkdir()
+        (venv_dir / "pyproject.toml").write_text(
+            '[project]\nname = "mvge-extensions"\n', encoding="utf-8"
+        )
+
+        diagnostics: list = []
+        manifests = load_manifests(ext_dir, diagnostics=diagnostics)
+        assert [m.name for m in manifests] == ["real_rune"]
+        assert diagnostics == []
+
+
 def test_rune_loader_load_all() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         extensions_dir = Path(tmpdir)

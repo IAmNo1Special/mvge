@@ -20,6 +20,7 @@ from mvge.core.spells import (
     MvgeSpell,
     SpellExecutionMode,
     SpellResult,
+    SpellStatus,
 )
 
 
@@ -423,8 +424,13 @@ async def test_dispatch_missing_spell() -> None:
         emit=emit,
     )
 
-    # Missing spell returns no SpellResultMessage and emits error event
-    assert len(res.messages) == 0
+    # Missing spell surfaces an error result to the model (it must not
+    # vanish: with no result message the turn ends silent) and still
+    # emits the error event.
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    assert res.messages[0].terminate is False
+    assert "Spell not found: spell_non_existent" in str(res.messages[0].content)
     end_events = [e for e in events if e.type == MvgeEventType.SPELL_CASTING_END]
     assert len(end_events) == 1
     assert end_events[0].data["spellCastId"] == "call_missing"
@@ -730,3 +736,103 @@ async def test_dispatch_aborted_signals() -> None:
             callbacks,
             emit,
         )
+
+
+class ErrorResultSpell(MvgeSpell):
+    """A spell that fails with an empty content and an error message,
+    exactly like codeact's forbidden-import rejection."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            name="execute_python",
+            description="execute_python",
+            parameters={},
+            execution_mode=SpellExecutionMode.PARALLEL,
+        )
+
+    async def execute(self, *args: Any, **kwargs: Any) -> Any:
+        return SpellResult(
+            spell_name=self.name,
+            status=SpellStatus.ERROR,
+            content="",
+            error_message="Validation error: Forbidden AST node: import os",
+        )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_surfaces_error_message_to_model() -> None:
+    """An error result with empty content must not reach the model as
+    an empty result: the model reads the text, not is_error, so an
+    empty text is read as success and a blocked action is reported
+    as completed."""
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[ErrorResultSpell()])
+    callbacks = LoopCallbacks()
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {
+                    "id": "call_1",
+                    "name": "execute_python",
+                    "arguments": {"code": "import os"},
+                },
+            },
+        ],
+    )
+    res: BatchResult = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=callbacks,
+        emit=emit,
+    )
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    text = str(res.messages[0].content)
+    assert "Forbidden AST node: import os" in text
+
+
+@pytest.mark.asyncio
+async def test_dispatch_unknown_spell_surfaces_error_to_model() -> None:
+    """An unknown spell must not be silently discarded: with no result
+    message the loop ends the turn on the spell-calling response itself,
+    and print mode shows nothing at all. The model must get an error
+    result it can act on, naming the spell it tried."""
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[ErrorResultSpell()])
+    callbacks = LoopCallbacks()
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {
+                    "id": "call_1",
+                    "name": "no_such_spell",
+                    "arguments": {},
+                },
+            },
+        ],
+    )
+    res: BatchResult = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=callbacks,
+        emit=emit,
+    )
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    assert res.messages[0].terminate is False
+    text = str(res.messages[0].content)
+    assert "Spell not found: no_such_spell" in text

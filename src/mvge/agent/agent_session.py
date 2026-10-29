@@ -247,6 +247,13 @@ class MvgeTome:
         self._read_handle = read_handle
         self._tome_id = write_handle.tome_id
         self._rune_runner = rune_runner
+        if rune_runner is not None:
+            # Titles set by runes during the session must reach the tome
+            # header immediately, not live only in runner memory. A title
+            # already set before this tome was created is persisted now.
+            rune_runner.on_session_name(self._persist_session_name)
+            if rune_runner.session_name is not None:
+                self._persist_session_name(rune_runner.session_name)
         self._started = False
         self._async_lock: asyncio.Lock | None = None
         self.last_compatibility_report: SessionCompatibilityReport | None = None
@@ -285,6 +292,22 @@ class MvgeTome:
         if meta is None:
             raise TomeResumeError(self._tome_id)
         return meta
+
+    def _persist_session_name(self, name: str) -> None:
+        """Write a runner-set title into the tome header.
+
+        Best-effort by design: a title must never break a turn. If the
+        write handle is gone, the title stays in runner memory and a
+        warning is logged.
+        """
+        try:
+            self._write_handle.set_name(name)
+        except Exception:
+            logger.warning(
+                "Failed to persist session title for tome %s",
+                self._tome_id,
+                exc_info=True,
+            )
 
     @property
     def compatibility_report(self) -> SessionCompatibilityReport | None:

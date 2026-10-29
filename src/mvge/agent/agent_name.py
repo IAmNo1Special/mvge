@@ -30,16 +30,34 @@ ENGINE_DEFAULT_AGENT = DEFAULT_AGENT_NAME
 
 
 def installed_agent_names(*, agent_config_base: Path | None = None) -> list[str]:
-    """Agent names with an agent-scope directory, sorted.
+    """Agent names with an installed agent-scope directory, sorted.
 
     The agent scope is ``<global>/agents/<name>/``. Only directories count:
     a file at that depth is not an agent, and `sys.path` receives the agent
     root, so a stray file here is a latent import collision rather than a Mvge.
+
+    A directory holding only ``config.json`` is not an installation: that
+    file is a side effect of configuring an agent (``config set`` creates
+    the directory), and counting it would make configuring anything
+    before a first run silently disable the starter bootstrap.
     """
     base = agent_config_base if agent_config_base is not None else agents_dir()
     if not base.is_dir():
         return []
-    return sorted(child.name for child in base.iterdir() if child.is_dir())
+    return sorted(
+        child.name
+        for child in base.iterdir()
+        if child.is_dir() and _has_agent_content(child)
+    )
+
+
+def _has_agent_content(directory: Path) -> bool:
+    """True when the directory holds anything beyond a bare config file."""
+    try:
+        entries = list(directory.iterdir())
+    except OSError:
+        return False
+    return any(entry.name != "config.json" for entry in entries)
 
 
 def is_known_agent(

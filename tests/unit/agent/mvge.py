@@ -21,6 +21,7 @@ from mvge.provider.base import Realm
 from mvge.provider.realms import realm_for_model_id
 from mvge.provider.registry import RealmRegistry
 from mvge.runes.rune_runner import RuneRunner
+from mvge.runes.trust import WorkspaceTrustStatus
 from mvge.runes.types import RuneLoad, RuneManifest, SpellDefinition
 from mvge.tome.handle import TomeHandleFactory
 
@@ -28,6 +29,35 @@ from mvge.tome.handle import TomeHandleFactory
 def dummy_built_in(command: str) -> str:
     """Built-in command."""
     return command
+
+
+class _UntrustedStore:
+    def check_trust(self, path: Any) -> WorkspaceTrustStatus:
+        return WorkspaceTrustStatus.DECLINED
+
+
+class _TrustedStore:
+    def check_trust(self, path: Any) -> WorkspaceTrustStatus:
+        return WorkspaceTrustStatus.TRUSTED
+
+
+class TestWorkspaceTrust:
+    @pytest.mark.asyncio
+    async def test_untrusted_workspace_does_not_steer(self) -> None:
+        """Trust status must never become a model-answered turn: print
+        mode displays the last invocation of a run, so a steering turn
+        queued before the user's prompt displaces the user's answer."""
+        agent = Mvge(api_key="test", spells=[], trust_store=_UntrustedStore())
+        agent._harness = MagicMock()
+        await agent._check_workspace_trust()
+        agent._harness.steer.assert_not_called()
+        assert agent.workspace_trust_status == WorkspaceTrustStatus.DECLINED
+
+    @pytest.mark.asyncio
+    async def test_trusted_workspace_reports_trusted(self) -> None:
+        agent = Mvge(api_key="test", spells=[], trust_store=_TrustedStore())
+        await agent._check_workspace_trust()
+        assert agent.workspace_trust_status == WorkspaceTrustStatus.TRUSTED
 
 
 class ValidRuneSpell(SpellDefinition):
@@ -684,7 +714,9 @@ def test_api_key_resolution_never_crosses_realms(
 
 
 @pytest.mark.asyncio
-async def test_mvge_workspace_untrusted_emits_sigil_and_steers(tmp_path: Path) -> None:
+async def test_mvge_workspace_untrusted_emits_sigil_without_steering(
+    tmp_path: Path,
+) -> None:
     from mvge.runes.trust import WorkspaceTrustStatus, WorkspaceTrustStore
     from mvge.runes.types import SigilHook
 
@@ -727,7 +759,10 @@ async def test_mvge_workspace_untrusted_emits_sigil_and_steers(tmp_path: Path) -
         assert len(untrusted_events) == 1
         assert untrusted_events[0].workspace_root == str(project_dir)
         assert untrusted_events[0].status == "declined"
-        assert len(agent.harness.state.steer_queue) >= 1
-        assert "untrusted" in agent.harness.state.steer_queue[0].content.lower()
+        # The status must not become a model-answered turn: a steered
+        # turn queued before the user's prompt would displace the
+        # user's answer in print mode.
+        assert agent.harness.state.steer_queue == []
+        assert agent.workspace_trust_status == WorkspaceTrustStatus.DECLINED
     finally:
         await agent.close()

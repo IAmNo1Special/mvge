@@ -319,6 +319,7 @@ class Mvge:
         trust_store: Any | None = None,
     ) -> None:
         self._trust_store = trust_store
+        self._workspace_trust_status: WorkspaceTrustStatus | None = None
         resolved_caller_dir: Path | None = (
             caller_dir.resolve() if caller_dir is not None else None
         )
@@ -894,6 +895,16 @@ class Mvge:
         return self._harness
 
     @property
+    def workspace_trust_status(self) -> WorkspaceTrustStatus | None:
+        """Trust status of the active workspace, once checked at initialize.
+
+        None before the check has run. Surfaces (CLI, TUI, GUI) can warn
+        the user from this instead of the model answering a steering
+        turn about it.
+        """
+        return self._workspace_trust_status
+
+    @property
     def diagnostics(self) -> list[Diagnostic | SkillDiagnostic]:
         diags: list[Diagnostic | SkillDiagnostic] = list(self._resume_diagnostics)
         if self._harness is not None:
@@ -953,6 +964,7 @@ class Mvge:
         if self._rune_lifecycle is None:
             self._rune_lifecycle = RuneLifecycle(
                 agent_name=self._name,
+                model_id=self._model_id,
                 api_key=self._api_key,
                 rune_layers=self._rune_layers,
                 environment=self._environment,
@@ -1304,10 +1316,21 @@ class Mvge:
         await self._check_workspace_trust()
 
     async def _check_workspace_trust(self) -> None:
-        """Verify workspace trust status, emitting WORKSPACE_UNTRUSTED and steering."""
+        """Verify workspace trust status, emitting WORKSPACE_UNTRUSTED.
+
+        The status is recorded on the agent and notified to runes via
+        the sigil; it is deliberately NOT steered into the model as a
+        user-role message. Enforcement already happens at load time
+        (untrusted project runes and spells are skipped), and a steered
+        turn queued before the user's first prompt becomes the last
+        invocation of that turn -- which is what print mode displays --
+        displacing the user's actual answer with the model's reply to
+        the steering notice.
+        """
         store = self._trust_store or WorkspaceTrustStore()
         effective_dir = Path(self._effective_cwd()).resolve()
         status = store.check_trust(effective_dir)
+        self._workspace_trust_status = status
         if status != WorkspaceTrustStatus.TRUSTED:
             if self._runner is not None:
                 payload = payload_for(
@@ -1319,9 +1342,10 @@ class Mvge:
                     SigilHook.WORKSPACE_UNTRUSTED,
                     payload,
                 )
-            self.steer(
-                f"[Security Steering] Active workspace {effective_dir} is "
-                f"{status.value}. Project-level runes and spells are untrusted."
+            logger.warning(
+                "Workspace %s is %s; project-level runes and spells are untrusted.",
+                effective_dir,
+                status.value,
             )
 
     def _rebind_runner_context(self) -> None:
@@ -1421,6 +1445,12 @@ class Mvge:
             if self._harness._model is not None:
                 self._model = self._harness._model
         self._model_id = model_id
+        if self._runner is not None:
+            # Keep the runner context's model in step, or runes
+            # reading inherit-model keep summoning with the old one.
+            self._runner.bind_context(
+                dataclasses.replace(self._runner.context, model_id=model_id)
+            )
 
     async def set_contemplation_level(self, level: ContemplationLevel | str) -> None:
         """Switch the contemplation level in-flight."""

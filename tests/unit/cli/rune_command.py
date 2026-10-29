@@ -55,6 +55,22 @@ def test_rune_list_empty() -> None:
         assert "No extension runes installed" in result.stdout
 
 
+def test_rune_list_empty_names_resolved_dir(tmp_path: Path) -> None:
+    """The empty message must name the directory actually searched, not
+    a hardcoded ~/.agents/extensions, or a relocated global dir
+    misleads the user about where runes would be found."""
+    relocated = tmp_path / "relocated" / "extensions"
+    with (
+        patch("mvge.cli.commands.rune.list_installed_runes", return_value=[]),
+        patch("mvge.cli.commands.rune.extensions_dir", return_value=relocated),
+    ):
+        result = runner.invoke(rune_app, ["list"])
+    assert result.exit_code == 0
+    # Rich wraps long paths in the narrow test console; unwrap first.
+    assert str(relocated) in result.stdout.replace("\n", "")
+    assert "~/.agents/extensions" not in result.stdout
+
+
 def test_rune_list_with_items() -> None:
     mock_items = [
         {

@@ -52,6 +52,7 @@ class RuneLifecycle:
         self,
         *,
         agent_name: str,
+        model_id: str | None = None,
         api_key: str = "",
         rune_layers: Sequence[ResolvedLayer] = (),
         environment: MvgeEnvironment | None = None,
@@ -63,6 +64,7 @@ class RuneLifecycle:
         extra_watch_dirs: Sequence[str | Path] = (),
     ) -> None:
         self._agent_name = agent_name
+        self._model_id = model_id or ""
         self._api_key = api_key
         self._rune_layers: list[ResolvedLayer] = list(rune_layers)
         self._environment = environment
@@ -217,6 +219,11 @@ class RuneLifecycle:
                     mode=self._mode,
                     agent_name=self._agent_name,
                     api_key=self._api_key,
+                    # The agent's resolved model, including a runtime
+                    # --model override: runes read inherit-model from
+                    # here, and without it a submvge summon with
+                    # model="inherit" falls back to an empty model.
+                    model_id=self._model_id,
                 )
             )
         return self._runner

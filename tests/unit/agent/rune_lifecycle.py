@@ -165,6 +165,27 @@ class TestLoad:
         )
 
     @pytest.mark.asyncio
+    async def test_load_binds_model_id_into_runner_context(self) -> None:
+        """The parent's model reaches runes through the runner
+        context: a runtime --model override lives only on the agent,
+        so without this the submvge bridge inherits an empty model
+        and the child summon fails."""
+        lifecycle = RuneLifecycle(
+            agent_name="tester",
+            cwd="/proj",
+            mode="cli",
+            model_id="pollinations/openai",
+        )
+
+        with patch(
+            "mvge.agent.rune_lifecycle.load_runes_from_paths",
+            return_value=([], []),
+        ):
+            runner = await lifecycle.load()
+
+        assert runner.context.model_id == "pollinations/openai"
+
+    @pytest.mark.asyncio
     async def test_load_reuses_existing_runner(self) -> None:
         existing = RuneRunner()
         lifecycle = RuneLifecycle(agent_name="tester", runner=existing)

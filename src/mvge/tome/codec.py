@@ -229,6 +229,7 @@ class TomeV1Codec(SessionCodec):
             id=header["id"],
             created_at=header["timestamp"],
             cwd=header["cwd"],
+            name=header.get("name"),
             parent_tome_id=header.get("parentSession"),
             active_leaf_id=header.get("activeLeafId"),
             schema_version=header.get("schema_version", "1.0"),

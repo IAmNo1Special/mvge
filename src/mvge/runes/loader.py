@@ -334,6 +334,13 @@ def load_manifests(
     for entry in sorted(extensions_dir.iterdir(), key=lambda e: e.name):
         if not entry.is_dir():
             continue
+        if entry.name.startswith("."):
+            # Hidden directories are tooling, not runes: the shared
+            # python-deps environment lives here as ``.venv``, and
+            # scanning it produced a bogus "could not parse manifest"
+            # warning on every load after a --confirm-python-deps
+            # install.
+            continue
         manifest = load_manifest(entry)
         if manifest is None:
             if diagnostics is not None:

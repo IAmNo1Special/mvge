@@ -103,6 +103,13 @@ class TestTomeV1CodecHeader:
         assert meta.spells == ["a"]
         assert meta.version == 1
 
+    def test_parse_header_reads_name(self):
+        meta = TomeV1Codec().parse_header(_header(name="Coffee Chat"))
+        assert meta.name == "Coffee Chat"
+
+    def test_parse_header_name_defaults_to_none(self):
+        assert TomeV1Codec().parse_header(_header()).name is None
+
     def test_parse_header_rejects_wrong_version(self):
         with pytest.raises(TomeVersionError):
             TomeV1Codec().parse_header(_header(version=2))
