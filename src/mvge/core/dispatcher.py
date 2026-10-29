@@ -605,6 +605,20 @@ class SpellDispatcher:
                 is_error = raw_result.status == "error"
                 terminate = raw_result.terminate
                 result_details = dict(raw_result.details)
+                if is_error and raw_result.error_message:
+                    # The model reads the result text, not is_error: an
+                    # error with empty content arrives as an empty
+                    # result and is read as success, so a blocked
+                    # action gets reported as completed. Surface the
+                    # error in the text itself, and keep it in details
+                    # for structured consumers.
+                    if result_content:
+                        result_content = (
+                            f"{result_content}\nError: {raw_result.error_message}"
+                        )
+                    else:
+                        result_content = f"Error: {raw_result.error_message}"
+                    result_details.setdefault("error_message", raw_result.error_message)
 
             if callbacks.after_spell_result is not None:
                 chained = await callbacks.after_spell_result(
