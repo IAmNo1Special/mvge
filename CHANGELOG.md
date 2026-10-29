@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.18] - 2026-10-29
+
+
+### Bug Fixes
+
+- **tome:** persist session titles into the tome header (b34df9f)
+
+- **agent:** stop trust check from hijacking print-mode output (0f13aae)
+
+- **agent:** bare config dirs are not installed agents (48bee9e)
+
+- **cli:** rune list empty message names the resolved extensions dir (28e927f)
+
+- **cli:** warn the user about untrusted workspaces in print mode (36bd655)
+
+- **core:** surface spell error_message in the model-facing result (bd1be25)
+
+- **runes:** ignore hidden dirs when discovering extension manifests (5dc5266)
+
+- **cli:** sanitize bracketed NO_PROXY at runtime startup (613ad0e)
+
+- **agent:** bind the resolved model into the runner context (5a46ec2)
+
+- **tui:** give the input control its own Ctrl-C interrupt binding (5f8eed3)
+
+- **cli:** render terminating spell results in print mode (e134823)
+
+- **provider,core:** stop silently dropping casts with corrupted or unknown spell names (c224dd7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (782eb10)
+
+- **release:** v0.2.18 (335015b)
+
+
+### Tests
+
+- **agent:** update trust tests to the no-steering contract (7edf30e)
+
+- **cli:** lock off-terminal realm self-heal as intended (8577226)
+
+- **core:** make NO_PROXY sanitizer tests Windows-safe (828fa7f)
+
+
 ## [0.2.17] - 2026-10-28
 
 
