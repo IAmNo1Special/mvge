@@ -21,21 +21,28 @@ def test_strip_removes_only_bracketed_tokens() -> None:
     assert strip_bracketed_no_proxy_entries("") == ""
 
 
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
 def test_sanitize_rewrites_bracketed_env(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
-    monkeypatch.setenv("NO_PROXY", "[::1],localhost")
-    monkeypatch.setenv("no_proxy", "[fd8b:4f84:7d32:99::1]")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
     changed = sanitize_no_proxy_env()
     assert changed is True
-    assert os.environ["NO_PROXY"] == "localhost"
-    assert os.environ["no_proxy"] == ""
+    assert os.environ[name] == "localhost"
 
 
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
 def test_sanitize_leaves_clean_env_alone(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
-    monkeypatch.setenv("NO_PROXY", "localhost")
+    monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "localhost")
     assert sanitize_no_proxy_env() is False
-    assert os.environ["NO_PROXY"] == "localhost"
+    assert os.environ[name] == "localhost"
