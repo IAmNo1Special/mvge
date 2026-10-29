@@ -286,6 +286,12 @@ class MvgeSpell:
     parameters: dict[str, Any]
     execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL
     read_only: bool = False
+    # Dispatcher timeout override in milliseconds. None inherits the loop's
+    # spell_timeout_ms; 0 disables the dispatcher timeout for this spell.
+    # Only spells whose duration is bounded by the work itself (a child
+    # agent turn, bounded by max_turns and provider timeouts) may use 0:
+    # the parent turn's abort still cancels the cast.
+    timeout_ms: int | None = None
     _schema_model: type[BaseModel] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:

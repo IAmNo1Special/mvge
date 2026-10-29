@@ -836,3 +836,122 @@ async def test_dispatch_unknown_spell_surfaces_error_to_model() -> None:
     assert res.messages[0].terminate is False
     text = str(res.messages[0].content)
     assert "Spell not found: no_such_spell" in text
+
+
+class SlowTimeoutSpell(MvgeSpell):
+    """A slow spell with a per-spell dispatcher timeout override."""
+
+    def __init__(
+        self, name: str, delay_s: float, timeout_ms: int | None = None
+    ) -> None:
+        super().__init__(
+            name=name,
+            description=f"Mock spell {name}",
+            parameters={},
+            execution_mode=SpellExecutionMode.PARALLEL,
+            timeout_ms=timeout_ms,
+        )
+        self.delay_s = delay_s
+
+    async def execute(
+        self,
+        spell_cast_id: str,
+        params: dict[str, Any],
+        signal: Any | None = None,
+        on_update: Any | None = None,
+        ctx: Any | None = None,
+    ) -> str:
+        await asyncio.sleep(self.delay_s)
+        return f"output_{self.name}"
+
+
+async def _dispatch_one(spell: MvgeSpell, *, global_timeout_ms: int) -> BatchResult:
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[spell], spell_timeout_ms=global_timeout_ms)
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {
+                    "id": "call_1",
+                    "name": spell.name,
+                    "arguments": {},
+                },
+            },
+        ],
+    )
+    return await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=LoopCallbacks(),
+        emit=emit,
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_spell_timeout_override_beats_global_timeout() -> None:
+    """A spell with its own timeout outlives the shorter global timeout."""
+    spell = SlowTimeoutSpell("slow_override", delay_s=0.25, timeout_ms=500)
+    res = await _dispatch_one(spell, global_timeout_ms=100)
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is False
+    assert "output_slow_override" in str(res.messages[0].content)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_spell_timeout_zero_disables_dispatcher_timeout() -> None:
+    """A spell with timeout_ms=0 is not cut off by the global timeout.
+
+    This is the wait:true summon case: a child agent turn takes far
+    longer than any wall-clock spell budget, so the spell opts out of
+    the dispatcher timeout entirely instead of being killed mid-turn.
+    """
+    spell = SlowTimeoutSpell("slow_unbounded", delay_s=0.25, timeout_ms=0)
+    res = await _dispatch_one(spell, global_timeout_ms=100)
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is False
+    assert "output_slow_unbounded" in str(res.messages[0].content)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_spell_without_override_uses_global_timeout() -> None:
+    """A spell with no override keeps the global timeout behavior."""
+    spell = SlowTimeoutSpell("slow_default", delay_s=10.0, timeout_ms=None)
+    res = await _dispatch_one(spell, global_timeout_ms=100)
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    assert "timed out" in str(res.messages[0].content)
+    assert "slow_default" in str(res.messages[0].content)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_rune_spell_wrapper_forwards_timeout_override() -> None:
+    """A rune-registered spell's timeout override must survive wrapping.
+
+    Rune spells reach the dispatcher as RuneSpellWrapper, so an override
+    declared on the SpellDefinition only helps if the wrapper forwards it.
+    """
+    from mvge.agent.function_spell import RuneSpellWrapper
+    from mvge.runes.types import SpellDefinition
+
+    async def slow_handler(params: dict[str, Any], **kwargs: Any) -> dict[str, Any]:
+        await asyncio.sleep(0.25)
+        return {"success": True}
+
+    definition = SpellDefinition(
+        name="slow_rune_spell",
+        description="Slow rune spell",
+        parameters={},
+        handler=slow_handler,
+        timeout_ms=0,
+    )
+    wrapped = RuneSpellWrapper(definition, runner_origin=True)
+    res = await _dispatch_one(wrapped, global_timeout_ms=100)
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is False
