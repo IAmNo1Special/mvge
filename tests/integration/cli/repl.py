@@ -375,6 +375,33 @@ class TestReplHelpers:
         )
         _display_response(response)
 
+    def test_display_response_renders_terminating_spell_result(self) -> None:
+        """Print mode's turn result is the last invocation, and a
+        final_answer turn ends on a SpellResultMessage, not an
+        MvgeResponse. Silently dropping it leaves the user with no
+        output at all for the whole turn."""
+        from io import StringIO
+        from unittest.mock import patch
+
+        from rich.console import Console
+
+        from mvge.cli.commands import repl as repl_module
+        from mvge.cli.commands.repl import _display_response
+        from mvge.core.spells import SpellResultMessage
+
+        out = StringIO()
+        with patch.object(
+            repl_module, "console", Console(file=out, force_terminal=False)
+        ):
+            _display_response(
+                SpellResultMessage(
+                    spell_name="execute_python",
+                    content=[{"type": "text", "text": "12.0"}],
+                    terminate=True,
+                )
+            )
+        assert "12.0" in out.getvalue()
+
     @pytest.mark.asyncio
     async def test_handle_command_steer(self) -> None:
         from unittest.mock import MagicMock

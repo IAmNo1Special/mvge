@@ -50,6 +50,7 @@ from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.errors import RateLimitError
 from mvge.core.events import MvgeEvent
 from mvge.core.layers import history_file
+from mvge.core.spells import SpellResultMessage
 from mvge.provider.model_registry import ModelRegistry
 
 
@@ -147,6 +148,16 @@ def _display_response(result: Any) -> None:
         if result.stop_reason:
             reason = getattr(result.stop_reason, "value", result.stop_reason)
             console.print(f"[dim]Stop reason: {reason}[/dim]")
+    elif isinstance(result, SpellResultMessage):
+        # Print mode's turn result is the last invocation, and a turn
+        # that ends on a terminating spell -- codeact's final_answer
+        # -- ends on a SpellResultMessage, not an MvgeResponse.
+        # Dropping it leaves the user with no output at all for the
+        # whole turn, even though the turn concluded with a value.
+        for item in result.content:
+            if item.get("type") == "text":
+                md = Markdown(str(item.get("text", "")))
+                console.print(md)
 
 
 async def _read_initial_prompt(
