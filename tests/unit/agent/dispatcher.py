@@ -424,8 +424,13 @@ async def test_dispatch_missing_spell() -> None:
         emit=emit,
     )
 
-    # Missing spell returns no SpellResultMessage and emits error event
-    assert len(res.messages) == 0
+    # Missing spell surfaces an error result to the model (it must not
+    # vanish: with no result message the turn ends silent) and still
+    # emits the error event.
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    assert res.messages[0].terminate is False
+    assert "Spell not found: spell_non_existent" in str(res.messages[0].content)
     end_events = [e for e in events if e.type == MvgeEventType.SPELL_CASTING_END]
     assert len(end_events) == 1
     assert end_events[0].data["spellCastId"] == "call_missing"
@@ -791,3 +796,43 @@ async def test_dispatch_surfaces_error_message_to_model() -> None:
     assert res.messages[0].is_error is True
     text = str(res.messages[0].content)
     assert "Forbidden AST node: import os" in text
+
+
+@pytest.mark.asyncio
+async def test_dispatch_unknown_spell_surfaces_error_to_model() -> None:
+    """An unknown spell must not be silently discarded: with no result
+    message the loop ends the turn on the spell-calling response itself,
+    and print mode shows nothing at all. The model must get an error
+    result it can act on, naming the spell it tried."""
+    events: list[MvgeEvent] = []
+
+    async def emit(event: MvgeEvent) -> None:
+        events.append(event)
+
+    dispatcher = SpellDispatcher()
+    context = LoopContext(spells=[ErrorResultSpell()])
+    callbacks = LoopCallbacks()
+    inv = MvgeResponse(
+        stop_reason=StopReason.SPELL_USE,
+        content=[
+            {
+                "type": "spell_cast",
+                "spell_cast": {
+                    "id": "call_1",
+                    "name": "no_such_spell",
+                    "arguments": {},
+                },
+            },
+        ],
+    )
+    res: BatchResult = await dispatcher.dispatch_batch(
+        inv=inv,
+        context=context,
+        callbacks=callbacks,
+        emit=emit,
+    )
+    assert len(res.messages) == 1
+    assert res.messages[0].is_error is True
+    assert res.messages[0].terminate is False
+    text = str(res.messages[0].content)
+    assert "Spell not found: no_such_spell" in text

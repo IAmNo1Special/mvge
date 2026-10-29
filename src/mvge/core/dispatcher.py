@@ -507,6 +507,11 @@ class SpellDispatcher:
         if spell is None:
             # Unknown spells never reach the approval gate: there is nothing
             # to approve. Lookup-before-gate ordering keeps them out.
+            # But the cast must not vanish: with no result message the
+            # loop ends the turn on the spell-calling response itself and
+            # the user sees nothing at all. Surface the failure to the
+            # model as an error result, so it can retry with a real
+            # spell name -- the same rule as any other spell failure.
             err: MvgeError = SpellNotFoundError(spell_name)
             await emit(
                 MvgeEvent(
@@ -518,7 +523,13 @@ class SpellDispatcher:
                     },
                 )
             )
-            return None
+            return SpellResultMessage(
+                spell_cast_id=spell_cast_id,
+                spell_name=spell_name,
+                content=[{"type": "text", "text": str(err)}],
+                is_error=True,
+                terminate=False,
+            )
 
         # Lookup and validation happen before the critical gate: unknown or
         # invalid casts fail here and never prompt. The gate approves a frozen
