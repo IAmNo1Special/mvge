@@ -11,7 +11,7 @@ from mvge.cli.commands.repl import (
     _StreamFilter,
     run_repl,
 )
-from mvge.core.events import MvgeEvent
+from mvge.core.events import MvgeEvent, MvgeEventType
 
 
 class TestChannelTagStripping:
@@ -369,6 +369,42 @@ class TestNoConsoleBufferFallback:
         await run_repl(api_key="sk-or-test-key")
 
         mock_agent.close.assert_awaited_once()
+
+
+class TestStreamRendererFinishError:
+    def _renderer_with_contemplation(self) -> tuple[MagicMock, StreamRenderer]:
+        sink = MagicMock()
+        sink.line_dirty = False
+        renderer = StreamRenderer(sink=sink)
+        renderer.on_message_update(
+            MvgeEvent(
+                type=MvgeEventType.MESSAGE_UPDATE,
+                data={"kind": "contemplation", "text": "Thinking probe"},
+            )
+        )
+        return sink, renderer
+
+    def test_finish_error_finalizes_narration(self) -> None:
+        sink, renderer = self._renderer_with_contemplation()
+        renderer.finish(error=True)
+        assert sink.finalize_narration.call_count == 1
+
+    def test_finish_error_streams_nothing_new(self) -> None:
+        sink, renderer = self._renderer_with_contemplation()
+        streamed = sink.stream_narration.call_count
+        renderer.finish(error=True)
+        assert sink.stream_narration.call_count == streamed
+
+    def test_finish_error_then_reset_finalizes_once(self) -> None:
+        sink, renderer = self._renderer_with_contemplation()
+        renderer.finish(error=True)
+        renderer.reset()
+        assert sink.finalize_narration.call_count == 1
+
+    def test_finish_success_still_finalizes(self) -> None:
+        sink, renderer = self._renderer_with_contemplation()
+        renderer.finish()
+        assert sink.finalize_narration.call_count == 1
 
 
 class TestStreamRendererSpellMethods:

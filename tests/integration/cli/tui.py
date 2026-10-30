@@ -444,6 +444,59 @@ class TestTuiApp:
         assert "Interrupted" in plain
 
     @pytest.mark.asyncio
+    async def test_run_turn_cancelled_finalizes_thinking_entry_once(self) -> None:
+        """Cancelled turn finalizes its Thinking entry at cancel time,
+        and the next turn adds no second copy. The run wrapper is
+        one-shot: only the first turn cancels; the second turn
+        delegates to the normal FakeAgent.run, so it is genuinely
+        normal rather than a second cancelled turn."""
+        agent = FakeAgent()
+        sink = TuiSink()
+        app = self._app(agent, sink)
+        original_run = agent.run
+        cancelled: list[str] = []
+
+        async def run_once(text: str) -> None:
+            if not cancelled:
+                cancelled.append(text)
+                agent.run_calls.append(text)
+                app.renderer.on_message_update(
+                    MvgeEvent(
+                        type=MvgeEventType.MESSAGE_UPDATE,
+                        data={"kind": "contemplation", "text": "Thinking probe"},
+                    )
+                )
+                raise asyncio.CancelledError
+            await original_run(text)
+
+        agent.run = run_once  # type: ignore[method-assign]
+        app._buffer.text = "hi"
+        app._on_accept(app._buffer)
+        assert app._task is not None
+        await app._task
+        plain = "\n".join(
+            e.text.plain if e.text is not None else "" for e in sink._entries
+        )
+        assert "Interrupted" in plain
+        md_entries = [
+            e
+            for e in sink._entries
+            if e.kind == "md" and "Thinking probe" in (e.md or "")
+        ]
+        assert len(md_entries) == 1
+
+        app._buffer.text = "hi again"
+        app._on_accept(app._buffer)
+        assert app._task is not None
+        await app._task
+        md_entries = [
+            e
+            for e in sink._entries
+            if e.kind == "md" and "Thinking probe" in (e.md or "")
+        ]
+        assert len(md_entries) == 1
+
+    @pytest.mark.asyncio
     async def test_slash_new_session(self) -> None:
         agent = FakeAgent()
         app = self._app(agent)
