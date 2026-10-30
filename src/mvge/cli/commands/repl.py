@@ -139,11 +139,19 @@ def _trim_history_file(history_path: Path, max_entries: int = 100) -> None:
         pass
 
 
-def _display_response(result: Any) -> None:
+def _display_response(result: Any) -> str:
+    """Render a turn's final result, returning the text it displayed.
+
+    Callers use the returned text to decide whether a failure the turn
+    already carried still needs reporting, without re-reading the render.
+    """
+    displayed: list[str] = []
     if isinstance(result, MvgeResponse):
         for item in result.content:
             if item.get("type") == "text":
-                md = Markdown(str(item.get("text", "")))
+                text = str(item.get("text", ""))
+                displayed.append(text)
+                md = Markdown(text)
                 console.print(md)
         if result.stop_reason:
             reason = getattr(result.stop_reason, "value", result.stop_reason)
@@ -156,8 +164,11 @@ def _display_response(result: Any) -> None:
         # whole turn, even though the turn concluded with a value.
         for item in result.content:
             if item.get("type") == "text":
-                md = Markdown(str(item.get("text", "")))
+                text = str(item.get("text", ""))
+                displayed.append(text)
+                md = Markdown(text)
                 console.print(md)
+    return "\n".join(displayed)
 
 
 async def _read_initial_prompt(

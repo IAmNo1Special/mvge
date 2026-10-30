@@ -11,6 +11,7 @@ from rich.console import Console
 
 from mvge.agent.protocol import MvgeAgent
 from mvge.core.errors import AuthenticationError, RateLimitError
+from mvge.core.spells import SpellResultMessage
 from mvge.core.worklog import LandedWork, landed_work
 
 _console = Console()
@@ -145,6 +146,49 @@ def landed_work_of(agent: MvgeAgent, since: int = 0) -> LandedWork | None:
         invocations[since:],
         spells if isinstance(spells, list) else [],
     )
+
+
+def turn_error_reports(
+    agent: MvgeAgent, since: int = 0, final_text: str = ""
+) -> list[str]:
+    """Text of this turn's unrecovered spell errors, minus quoted ones.
+
+    The transcript slice from ``since`` onward holds the turn's invocations.
+    An error counts as unrecovered when no successful spell result follows it
+    in the slice: a later success means the turn recovered and the error is
+    history, not the outcome. An error the final message already quotes is
+    skipped, so print mode never prints the same failure twice.
+
+    Returns [] when the agent exposes no readable transcript. A custom
+    ``agent_factory`` may return an agent without the engine's accessors, and
+    that is a missing slot to skip, not a crash on the display path.
+    """
+    state = getattr(agent, "_state", None)
+    invocations = getattr(state, "invocations", None)
+    if not isinstance(invocations, list):
+        return []
+    turn = invocations[since:]
+    reports: list[str] = []
+    seen: set[str] = set()
+    for index, invocation in enumerate(turn):
+        if not isinstance(invocation, SpellResultMessage):
+            continue
+        if not invocation.is_error:
+            continue
+        if any(
+            isinstance(later, SpellResultMessage) and not later.is_error
+            for later in turn[index + 1 :]
+        ):
+            continue
+        for item in invocation.content or []:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = str(item.get("text", ""))
+            if not text or text in seen or text in final_text:
+                continue
+            seen.add(text)
+            reports.append(text)
+    return reports
 
 
 def format_cwd() -> str:

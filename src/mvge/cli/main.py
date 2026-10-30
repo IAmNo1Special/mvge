@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import typer
 import typer._click as _click
+from rich.markdown import Markdown
 from typer._click.parser import _split_opt
 from typer.core import TyperGroup
 
@@ -56,6 +57,7 @@ from mvge.cli.formatting import (
     format_partial_work,
     landed_work_of,
     transcript_length,
+    turn_error_reports,
 )
 from mvge.cli.rpc import run_rpc
 from mvge.core.constants import DEFAULT_AGENT_NAME
@@ -162,7 +164,15 @@ async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
         for prompt in prompts:
             turn_start = transcript_length(agent)
             result = await agent.run(prompt)
-            _display_response(result)
+            displayed = _display_response(result)
+            # A blocked turn's failure lives in an error spell result,
+            # not in the model's final message. Rendering the report
+            # here makes it deterministic: the user sees the failure
+            # whether the model quoted it, refused bare, or retried
+            # malformed. It supplements the model's answer, never
+            # displaces it, and recovered turns report nothing.
+            for report in turn_error_reports(agent, turn_start, displayed):
+                console.print(Markdown(report))
         _warn_untrusted_workspace(agent)
         return 0
     except Exception as exc:
