@@ -1332,3 +1332,74 @@ class TestAgentSessionCoverageExtensions:
             assert "user" in roles
             assert "assistant" in roles
             assert "spellResult" in roles
+
+
+class TestSessionStartExistingName:
+    """SESSION_START carries the persisted tome title on resume (B1).
+
+    A resumed run used to overwrite the persisted title with a fresh one
+    because the payload carried only the tome ID. The payload now also
+    carries the title already in the tome header, so the session-title
+    rune can adopt it instead of generating a fresh fallback.
+    """
+
+    @pytest.mark.asyncio
+    async def test_resumed_session_carries_persisted_name(self) -> None:
+        """The payload carries the persisted name on a resumed session."""
+        runner = _mock_runner()
+        write, read = _mock_handles()
+        read.get_metadata.return_value = TomeMetadata(
+            id="a" * 32, created_at="now", cwd="/test", name="Persisted Title"
+        )
+        tome = MvgeTome(MagicMock(), write, read, runner)
+        await tome.start()
+        starts = await _emitted(runner, SigilHook.SESSION_START)
+        assert len(starts) == 1
+        assert isinstance(starts[0], SessionStartData)
+        assert starts[0].session_name == "a" * 32
+        assert starts[0].existing_session_name == "Persisted Title"
+
+    @pytest.mark.asyncio
+    async def test_fresh_session_has_no_existing_name(self) -> None:
+        """A fresh session (metadata name None) behaves exactly as before."""
+        runner = _mock_runner()
+        write, read = _mock_handles()
+        read.get_metadata.return_value = TomeMetadata(
+            id="a" * 32, created_at="now", cwd="/test", name=None
+        )
+        tome = MvgeTome(MagicMock(), write, read, runner)
+        await tome.start()
+        starts = await _emitted(runner, SigilHook.SESSION_START)
+        assert len(starts) == 1
+        assert starts[0].session_name == "a" * 32
+        assert starts[0].existing_session_name is None
+
+    @pytest.mark.asyncio
+    async def test_title_problem_never_breaks_session_start(self) -> None:
+        """A metadata read failure degrades to None, never aborts start."""
+        runner = _mock_runner()
+        write, read = _mock_handles()
+        read.get_metadata.side_effect = RuntimeError("disk error")
+        tome = MvgeTome(MagicMock(), write, read, runner)
+        await tome.start()
+        assert tome._started is True
+        starts = await _emitted(runner, SigilHook.SESSION_START)
+        assert len(starts) == 1
+        assert starts[0].existing_session_name is None
+
+    @pytest.mark.asyncio
+    async def test_non_string_header_name_degrades_to_none(self) -> None:
+        """A corrupt header name is not a title; it degrades to None."""
+        runner = _mock_runner()
+        write, read = _mock_handles()
+        read.get_metadata.return_value = TomeMetadata(
+            id="a" * 32,
+            created_at="now",
+            cwd="/test",
+            name=123,  # type: ignore[arg-type]
+        )
+        tome = MvgeTome(MagicMock(), write, read, runner)
+        await tome.start()
+        starts = await _emitted(runner, SigilHook.SESSION_START)
+        assert len(starts) == 1
+        assert starts[0].existing_session_name is None

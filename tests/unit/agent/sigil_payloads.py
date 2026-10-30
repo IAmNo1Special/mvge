@@ -25,6 +25,7 @@ from mvge.runes.types import (
     SIGIL_HOOK_DATA_CLASSES,
     AfterProviderResponseData,
     PrepareNextTurnData,
+    SessionStartData,
     SigilHook,
 )
 
@@ -107,6 +108,25 @@ def test_payload_tables_are_total_over_hooks() -> None:
     """Neither the field table nor the declaration may silently drop a hook."""
     assert set(PAYLOAD_FIELDS) == set(SigilHook)
     assert set(SIGIL_HOOK_DATA_CLASSES) == set(SigilHook)
+
+
+def test_session_start_defaults_existing_name_to_none() -> None:
+    """Old SESSION_START call sites keep working; the new field is None."""
+    payload = payload_for(SigilHook.SESSION_START, session_name="tome-1")
+    assert isinstance(payload, SessionStartData)
+    assert payload.session_name == "tome-1"
+    assert payload.existing_session_name is None
+
+
+def test_session_start_accepts_existing_name() -> None:
+    """The optional resumed-title field flows through payload_for."""
+    payload = payload_for(
+        SigilHook.SESSION_START,
+        session_name="tome-1",
+        existing_session_name="Persisted Title",
+    )
+    assert isinstance(payload, SessionStartData)
+    assert payload.existing_session_name == "Persisted Title"
 
 
 def test_payload_for_fails_loud_on_missing_fields() -> None:

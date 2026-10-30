@@ -309,6 +309,32 @@ class MvgeTome:
                 exc_info=True,
             )
 
+    def _existing_session_name(self) -> str | None:
+        """Best-effort read of the title already in the tome header.
+
+        The mirror of :meth:`_persist_session_name`: a title problem must
+        never break session start. On any read failure, or when the
+        header carries no title, the result is None and the session
+        starts exactly as before.
+        """
+        try:
+            meta = self._read_handle.get_metadata()
+        except Exception:
+            logger.warning(
+                "Failed to read session title for tome %s",
+                self._tome_id,
+                exc_info=True,
+            )
+            return None
+        if meta is None:
+            return None
+        # The header parser passes "name" through unvalidated, so a
+        # corrupt header could carry a non-string. Only a real string is
+        # a title; anything else degrades to None, as for a fresh session.
+        if not isinstance(meta.name, str):
+            return None
+        return meta.name
+
     @property
     def compatibility_report(self) -> SessionCompatibilityReport | None:
         return self.last_compatibility_report
@@ -444,7 +470,11 @@ class MvgeTome:
         self._started = True
         await self._safe_emit(
             SigilHook.SESSION_START,
-            payload_for(SigilHook.SESSION_START, session_name=self._tome_id),
+            payload_for(
+                SigilHook.SESSION_START,
+                session_name=self._tome_id,
+                existing_session_name=self._existing_session_name(),
+            ),
         )
 
     async def shutdown(

@@ -135,9 +135,16 @@ class TurnEndData:
 
 @dataclass
 class SessionStartData:
-    """Data passed to SESSION_START sigil hook."""
+    """Data passed to SESSION_START sigil hook.
+
+    ``session_name`` stays the tome ID. ``existing_session_name`` carries
+    the title already persisted in the tome header on a resumed session
+    (None on a fresh session), so a rune can adopt it instead of
+    generating a fresh title that would overwrite it.
+    """
 
     session_name: str
+    existing_session_name: str | None = None
 
 
 @dataclass
