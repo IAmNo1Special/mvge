@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -238,3 +239,23 @@ def test_the_local_probe_stays_inside_the_checkout_for_a_traversal_subpath(
     # probe is a last resort for a developer, not an install path.
     assert local_catalog_candidate("../../etc") is None
     assert local_catalog_candidate("/etc/passwd") is None
+
+
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+def test_fetch_catalog_sanitizes_bracketed_no_proxy(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """A catalog fetch from library use must not carry a bracketed entry
+    into the one-shot ``httpx.get`` client it builds internally."""
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    good = _response({"runes": {"x": {"name": "x"}}})
+    with patch("httpx.get", return_value=good):
+        catalog = fetch_catalog()
+    assert catalog == {"runes": {"x": {"name": "x"}}}
+    assert os.environ[name] == "localhost"

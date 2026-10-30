@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -1387,5 +1388,30 @@ async def test_a_keyed_realm_still_sends_its_bearer_header() -> None:
     realm = _concrete_realm(api_key="secret-key")
     try:
         assert realm._client.headers["Authorization"] == "Bearer secret-key"
+    finally:
+        await realm.close()
+
+
+# NOTE: Windows environment variables are case-insensitive, so
+# NO_PROXY and no_proxy are the SAME slot there. These tests must never
+# assume two distinct slots: each case sets exactly one name, after
+# clearing both (clearing is a no-op for the second name on Windows).
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+async def test_sse_realm_constructs_owned_client_under_bracketed_no_proxy(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Direct/library use of an SSE realm builds its owned client.
+
+    A Realm constructed in-process, with no CLI startup beforehand,
+    must not fail client construction on a bracketed NO_PROXY entry.
+    """
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    realm = _concrete_realm(api_key="")
+    try:
+        assert not realm._client.is_closed
+        assert os.environ[name] == "localhost"
     finally:
         await realm.close()

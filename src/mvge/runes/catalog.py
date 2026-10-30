@@ -24,6 +24,8 @@ from typing import Any
 
 import httpx
 
+from mvge.core.proxy import sanitize_no_proxy_env
+
 logger = logging.getLogger(__name__)
 
 #: The published catalog. A copy of this lives nowhere: it was previously
@@ -79,6 +81,10 @@ def fetch_catalog(
     A caller that wants the failure rather than an empty index should use
     :func:`resolve_artifact`, which raises.
     """
+    # Direct/library use never ran CLI startup, and httpx.get builds a
+    # client internally that parses NO_PROXY: sanitize once, before the
+    # first tier, so no tier can fail on a bracketed entry.
+    sanitize_no_proxy_env()
     first_error: Exception | None = None
     for url, is_contents_api in _catalog_urls(marketplace_url):
         try:

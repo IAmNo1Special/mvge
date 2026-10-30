@@ -22,6 +22,7 @@ from mvge.core.channel import (
     RealmResponse,
     StopReason,
 )
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.provider.base import Realm
 from mvge.provider.retry import (
     RetryBudget,
@@ -376,12 +377,20 @@ class SSEStreamingRealm(Realm, ABC):
         # malformed value, so no hermetic test would ever have caught it.
         if api_key:
             client_headers["Authorization"] = f"Bearer {api_key}"
-        self._client = client or httpx.AsyncClient(
-            base_url=self._base_url,
-            headers=client_headers,
-            timeout=httpx.Timeout(60.0),
-            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        )
+        if client is None:
+            # Direct/library use never ran CLI startup: sanitize here,
+            # immediately before the owned client that parses NO_PROXY
+            # is built. A caller-supplied client was already built by
+            # its owner, so it is left exactly as passed.
+            sanitize_no_proxy_env()
+            self._client = httpx.AsyncClient(
+                base_url=self._base_url,
+                headers=client_headers,
+                timeout=httpx.Timeout(60.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
+            )
+        else:
+            self._client = client
 
     @abstractmethod
     def _prepare_request(

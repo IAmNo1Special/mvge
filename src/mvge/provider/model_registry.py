@@ -12,6 +12,7 @@ import httpx
 
 from mvge.core.channel import Model
 from mvge.core.layers import models_file
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.provider.realms import (
     REALM_BASE_URLS,
     REALMS_WITH_ANONYMOUS_FREE_TIER,
@@ -487,6 +488,10 @@ class ModelRegistry:
             if client is not None:
                 response = await client.get(OPENROUTER_MODELS_URL, timeout=30)
             else:
+                # Direct/library use never ran CLI startup: sanitize
+                # here, immediately before the client that parses
+                # NO_PROXY is built.
+                sanitize_no_proxy_env()
                 async with httpx.AsyncClient() as http_client:
                     response = await http_client.get(OPENROUTER_MODELS_URL, timeout=30)
 
