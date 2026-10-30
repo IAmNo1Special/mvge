@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Chores
+
+- update CHANGELOG.md [skip ci] (2f5e52e)
+
+
 ### Features
 
 - **core,runes:** publish NO_PROXY sanitizer for runes building their own httpx clients (388b58b)
