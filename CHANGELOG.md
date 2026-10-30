@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.22] - 2026-10-30
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (9346d4c)
+
+- **deps-dev:** bump pytest-asyncio from 1.4.0 to 1.4.1 (e4c431a)
+
+- **release:** v0.2.22 (2664283)
+
+
+### Features
+
+- **runes:** sanitize NO_PROXY before rune module execution and factory calls (293c90a)
+
+
 ## [0.2.21] - 2026-10-30
 
 
