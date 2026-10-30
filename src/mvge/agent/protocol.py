@@ -161,7 +161,7 @@ class MvgeAgent(Protocol):
         ...
 
     async def reload(self) -> ReloadResult:
-        """Rebuild runes, system prompt, spells, and harness mid-session.
+        """Rebuild runes, system prompt, spells, skills, and harness mid-session.
 
         Transactional: a failed reload preserves last-known-good state and
         surfaces the exact diagnostic. When a turn is in flight the reload

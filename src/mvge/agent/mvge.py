@@ -662,7 +662,9 @@ class Mvge:
         Raises on any failure; the caller preserves last-known-good state.
         Nothing here mutates the live agent: rune factories are
         re-executed on a candidate runner owned by a candidate lifecycle,
-        the prompt-mutating hook fires on that candidate, rehydrate
+        rehydrate runs on the candidate before prompt assembly so
+        refreshed rune state informs the rebuilt prompt, the
+        prompt-mutating hook fires on that candidate, rehydrate
         touches only candidate instances, and the candidate harness is
         built before the swap. Rune-declared providers are re-registered
         on the shared provider registry as at construction, but the
@@ -712,10 +714,10 @@ class Mvge:
             candidate_runner = candidate_lifecycle.runner
             if candidate_runner is not None:
                 rune_diags = list(candidate_runner.diagnostics)
-                rune_diagnostics = [
-                    *rune_diags,
-                    *candidate_runner.skill_catalog.skill_diagnostics,
-                ]
+                # The final diagnostics aggregation happens after
+                # rehydrate below, so skill diagnostics produced by a
+                # refresh land in the reload summary. The broken-rune
+                # check stays here, on load-time diagnostics.
                 # A previously working rune that no longer loads (broken
                 # manifest or factory, reported as a diagnostic) fails the
                 # whole candidate: the spec grants rune refresh no tolerant
@@ -758,15 +760,12 @@ class Mvge:
                 gateway_rune = _apply_gateway_allowlist(candidate_runner)
 
         new_spells = self._build_spells_from(discovered, runner=candidate_runner)
-        # The prompt-mutating hook fires exactly once for this rebuild,
-        # on the candidate runner — never on the live instances.
-        new_prompt = await self._assemble_prompt_async(
-            new_environment, new_spells, active_dir, runner=candidate_runner
-        )
 
         # 4. Fresh sigil payload for rehydration: hook-derived rune
         #    instance state is restored on the candidate WITHOUT refiring
-        #    the prompt-mutating hook.
+        #    the prompt-mutating hook. This runs BEFORE prompt assembly
+        #    so rehydrated rune state (e.g. a refreshed skill catalog)
+        #    informs the rebuilt prompt, rather than landing after it.
         payload = new_environment.build_sigil_payload(
             base_prompt=fresh_prompt.text,
             spell_names=[s.name for s in new_spells],
@@ -778,6 +777,22 @@ class Mvge:
         rehydrate_errors: list[str] = []
         if candidate_runner is not None:
             rehydrate_errors = await candidate_runner.rehydrate_runes(payload)
+
+        # Diagnostics are derived once, after rehydrate, so refresh
+        # diagnostics (shadowing, invalid manifests) are included.
+        # Gated on the candidate lifecycle as before: an injected live
+        # runner with no candidate lifecycle keeps empty diagnostics.
+        if candidate_runner is not None and candidate_lifecycle is not None:
+            rune_diagnostics = [
+                *candidate_runner.diagnostics,
+                *candidate_runner.skill_catalog.skill_diagnostics,
+            ]
+
+        # The prompt-mutating hook fires exactly once for this rebuild,
+        # on the candidate runner — never on the live instances.
+        new_prompt = await self._assemble_prompt_async(
+            new_environment, new_spells, active_dir, runner=candidate_runner
+        )
 
         old_prompt = self._state.system_prompt if self._state is not None else None
         old_spell_names = (
