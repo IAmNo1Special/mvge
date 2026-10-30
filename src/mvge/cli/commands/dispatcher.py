@@ -145,6 +145,23 @@ class CliCommandDispatcher:
                 output("[dim]No spells available[/dim]")
             return
 
+        if outcome.action == CommandAction.SKILLS_LISTED:
+            skills = outcome.data.get("skills", [])
+            if not skills:
+                output("[dim]No skills registered[/dim]")
+                return
+            output(f"[bold]Available skills ({len(skills)}):[/bold]")
+            for s in skills:
+                name = s.get("name", "")
+                scope = s.get("scope", "unknown")
+                desc = s.get("description", "")
+                output(f"  {name:<20} ({scope}) - {desc}")
+            return
+
+        if outcome.action == CommandAction.SKILL_ACTIVATED:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
         if outcome.action == CommandAction.QUEUE_MODE_CHANGED:
             output(f"[dim]Queue mode: {outcome.data.get('queue_mode')}[/dim]")
             return
@@ -167,6 +184,46 @@ class CliCommandDispatcher:
 
         if outcome.action == CommandAction.SESSION_RESUMED:
             output(f"[green]Resumed tome: {outcome.data.get('tome_id')}[/green]")
+            return
+
+        if outcome.action == CommandAction.FORK_CREATED:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.LEAVES_LISTED:
+            leaves = outcome.data.get("leaves", [])
+            if not leaves:
+                output("[dim]No leaves available[/dim]")
+                return
+            output(f"[bold]Tome leaves ({len(leaves)}):[/bold]")
+            for leaf in leaves:
+                output(f"  {leaf}")
+            return
+
+        if outcome.action == CommandAction.LEAF_CHECKED_OUT:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.INVOCATION_UNDONE:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.MANA_COMPACTED:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.RELOADED:
+            output(f"[green]{outcome.message}[/green]")
+            return
+
+        if outcome.action == CommandAction.RELOAD_QUEUED:
+            output(f"[dim]{outcome.message}[/dim]")
+            return
+
+        if outcome.action == CommandAction.RUNE_COMMAND:
+            # The message is the rune command's own output, not a status
+            # line, so it prints verbatim rather than dimmed or green.
+            output(outcome.message)
             return
 
         if outcome.action == CommandAction.ERROR:
