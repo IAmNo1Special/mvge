@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Chores
 
+- update CHANGELOG.md [skip ci] (955fb4b)
+
+
+## [0.2.20] - 2026-10-30
+
+
+### Chores
+
 - update CHANGELOG.md [skip ci] (2f5e52e)
 
 
