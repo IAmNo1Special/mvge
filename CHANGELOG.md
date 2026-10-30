@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.21] - 2026-10-30
 
 
 ### Chores
@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - update CHANGELOG.md [skip ci] (946504c)
 
 - update CHANGELOG.md [skip ci] (236cf8b)
+
+- update CHANGELOG.md [skip ci] (39366f9)
+
+- **release:** v0.2.21 (18032ba)
 
 
 ## [0.2.20] - 2026-10-30
