@@ -999,18 +999,30 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
 
         return stream_fn
 
-    async def run_turn(self, invocation: SummonerRequest) -> MvgeInvocation:
+    async def run_turn(
+        self,
+        invocation: SummonerRequest,
+        *,
+        signal: AbortSignal | None = None,
+    ) -> MvgeInvocation:
         """Run one turn for the given Summoner invocation.
 
         TurnDriver entry point: appends the invocation, builds the
         provider closure from the captured Realm, and drives the turn.
         A reload queued mid-turn applies at the turn boundary.
+        ``signal`` is an external abort signal the turn must also observe:
+        the turn stops when either its own abort or the external signal
+        fires. Without it, a caller that only holds the external signal
+        (a parent turn aborting a child) has no way to stop the turn.
         """
         self._state.invocations.append(invocation)
         if self._abort_controller is not None:
             self._abort_controller.abort()
         self._abort_controller = AbortController()
-        signal = self._abort_controller.signal
+        own_signal = self._abort_controller.signal
+        effective_signal = (
+            AbortSignal.any([own_signal, signal]) if signal is not None else own_signal
+        )
 
         self._turn_in_flight = True
         try:
@@ -1022,7 +1034,7 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
                     if isinstance(self._state.contemplation_level, ContemplationLevel)
                     else str(self._state.contemplation_level)
                 ),
-                signal=signal,
+                signal=effective_signal,
             )
         finally:
             self._turn_in_flight = False

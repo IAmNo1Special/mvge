@@ -50,6 +50,7 @@ from mvge.agent.sigil_payloads import payload_for
 from mvge.agent.snapshot import RuntimeSnapshot
 from mvge.core.abort import (
     AbortController,
+    AbortSignal,
 )
 from mvge.core.channel import (
     Model,
@@ -1441,8 +1442,18 @@ class Mvge:
         )
         return harness
 
-    async def run(self, prompt: str | list[dict[str, Any]]) -> MvgeInvocation:
-        """Run one turn for the given prompt via the harness TurnDriver."""
+    async def run(
+        self,
+        prompt: str | list[dict[str, Any]],
+        *,
+        signal: AbortSignal | None = None,
+    ) -> MvgeInvocation:
+        """Run one turn for the given prompt via the harness TurnDriver.
+
+        ``signal`` is an external abort signal the turn must also observe
+        (for example a parent turn's signal forwarded to a child sub-Mvge):
+        the turn stops when either its own abort or this signal fires.
+        """
         await self.initialize()
         assert self._harness is not None
 
@@ -1451,7 +1462,8 @@ class Mvge:
             self._harness.ensure_system_prompt(final_prompt)
 
         return await self._harness.run_turn(
-            SummonerRequest(role="user", content=prompt)
+            SummonerRequest(role="user", content=prompt),
+            signal=signal,
         )
 
     async def switch_model(self, model_id: str) -> None:

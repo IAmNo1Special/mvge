@@ -16,6 +16,7 @@ from mvge.agent.harness import MvgeHarness
 from mvge.agent.harness._state import MvgeState
 from mvge.agent.harness.compaction.compaction import DEFAULT_COMPACTION_SETTINGS
 from mvge.agent.harness.harness import _apply_prepare_next_turn
+from mvge.core.abort import AbortController, AbortSignal
 from mvge.core.channel import (
     Model,
     MvgeResponse,
@@ -180,6 +181,89 @@ async def test_harness_run_with_prompt_appends_invocation() -> None:
     assert len(mock_state.invocations) == 1
     assert isinstance(mock_state.invocations[0], SummonerRequest)
     assert mock_state.invocations[0].content == "User question"
+
+
+def _run_turn_harness() -> MvgeHarness:
+    mock_state = MagicMock(spec=MvgeState)
+    mock_state.invocations = []
+    mock_state.rune_runner = None
+    mock_state.spells = []
+    mock_state.system_prompt = "system"
+    mock_state.prompt_source = PromptSource.BUILTIN
+    mock_state.max_tokens = 1000
+    mock_state.temperature = 0.5
+    mock_state.spell_timeout_ms = 5000
+    mock_state.contemplation_budget = None
+    mock_state.exclude_contemplation = False
+    mock_state.max_turns = 10
+    mock_state.queue_mode = QueueMode.ALL
+    mock_state.contemplation_level = ContemplationLevel.MEDIUM
+    return MvgeHarness(
+        state=mock_state,
+        realm=MagicMock(),
+        model=_crowded_model(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_turn_aborts_when_external_signal_aborts() -> None:
+    """A turn started with an external signal must observe it: the signal
+    handed to the loop aborts when the external signal does, so a caller
+    (e.g. a parent turn aborting a child) can actually stop the turn."""
+    harness = _run_turn_harness()
+    external = AbortController()
+    seen: dict[str, AbortSignal] = {}
+
+    async def fake_run_loop(*args: Any, **kwargs: Any) -> list[Any]:
+        signal = args[4] if len(args) > 4 else kwargs["signal"]
+        seen["signal"] = signal
+        await signal.wait()
+        return []
+
+    with patch(
+        "mvge.agent.harness.harness.run_loop",
+        new=fake_run_loop,
+    ):
+        turn_task = asyncio.create_task(
+            harness.run_turn(
+                SummonerRequest(role="user", content="Hello"),
+                signal=external.signal,
+            )
+        )
+        await asyncio.sleep(0.05)
+        assert "signal" in seen
+        external.abort()
+        await asyncio.wait_for(turn_task, timeout=5.0)
+
+    assert seen["signal"].aborted is True
+
+
+@pytest.mark.asyncio
+async def test_run_turn_still_aborts_via_harness_abort() -> None:
+    """Combining an external signal must not displace the harness's own
+    abort: harness.abort() still stops the in-flight turn."""
+    harness = _run_turn_harness()
+    seen: dict[str, AbortSignal] = {}
+
+    async def fake_run_loop(*args: Any, **kwargs: Any) -> list[Any]:
+        signal = args[4] if len(args) > 4 else kwargs["signal"]
+        seen["signal"] = signal
+        await signal.wait()
+        return []
+
+    with patch(
+        "mvge.agent.harness.harness.run_loop",
+        new=fake_run_loop,
+    ):
+        turn_task = asyncio.create_task(
+            harness.run_turn(SummonerRequest(role="user", content="Hello"))
+        )
+        await asyncio.sleep(0.05)
+        assert "signal" in seen
+        harness.abort()
+        await asyncio.wait_for(turn_task, timeout=5.0)
+
+    assert seen["signal"].aborted is True
 
 
 def _crowded_model() -> Model:

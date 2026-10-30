@@ -10,7 +10,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from mvge.core.abort import AbortController, AbortSignal
+from mvge.core.abort import AbortController, AbortError, AbortSignal
 from mvge.core.layers import sessions_dir
 
 if TYPE_CHECKING:
@@ -266,16 +266,33 @@ class SubMvgeManager:
         mvge = self._instances[sub_mvge_id]
         rec.state = SubMvgeState.RUNNING
         rec.state_detail = "Executing turn"
+        controller = self._controllers.get(sub_mvge_id)
+        signal = controller.signal if controller is not None else None
         try:
-            inv = await mvge.run(prompt)
-            rec.summary = _extract_invocation_text(inv)
-            rec.state = SubMvgeState.COMPLETED
-            rec.state_detail = "Completed"
-            rec.error = None
-            harness = getattr(mvge, "harness", None) or getattr(mvge, "_harness", None)
-            if harness is not None and getattr(harness, "state", None) is not None:
-                rec.mana_used = {"mana_total": getattr(harness.state, "mana_used", 0)}
-        except asyncio.CancelledError:
+            inv = await mvge.run(prompt, signal=signal)
+            # An aborted turn returns normally (the loop ends with an
+            # ABORTED stop reason), so the signal is the only reliable
+            # witness: without this check an aborted child would be
+            # reported COMPLETED with the prompt itself as its summary.
+            # Previously the controller was never passed to run at all,
+            # so a parent abort left the child turn running to completion.
+            if signal is not None and signal.aborted:
+                rec.state = SubMvgeState.CANCELING
+                rec.state_detail = "Cancelled"
+                rec.error = "Cancelled"
+            else:
+                rec.summary = _extract_invocation_text(inv)
+                rec.state = SubMvgeState.COMPLETED
+                rec.state_detail = "Completed"
+                rec.error = None
+                harness = getattr(mvge, "harness", None) or getattr(
+                    mvge, "_harness", None
+                )
+                if harness is not None and getattr(harness, "state", None) is not None:
+                    rec.mana_used = {
+                        "mana_total": getattr(harness.state, "mana_used", 0)
+                    }
+        except (asyncio.CancelledError, AbortError):
             rec.state = SubMvgeState.CANCELING
             rec.state_detail = "Cancelled"
             rec.error = "Cancelled"
@@ -329,15 +346,29 @@ class SubMvgeManager:
 
         rec.state = SubMvgeState.RUNNING
         rec.state_detail = f"Running follow-up turn: {message[:60]}"
+        # A controller aborted by an earlier parent abort or kill stays
+        # aborted forever; a follow-up is a new turn, so it needs a fresh
+        # one, otherwise every revival would abort before it starts.
+        controller = self._controllers.get(sub_mvge_id)
+        if controller is None or controller.signal.aborted:
+            controller = AbortController()
+            self._controllers[sub_mvge_id] = controller
         try:
-            inv = await mvge.run(message)
-            rec.summary = _extract_invocation_text(inv)
-            rec.state = SubMvgeState.COMPLETED
-            rec.state_detail = "Follow-up turn completed"
-            rec.error = None
-            if harness is not None and getattr(harness, "state", None) is not None:
-                rec.mana_used = {"mana_total": getattr(harness.state, "mana_used", 0)}
-        except asyncio.CancelledError:
+            inv = await mvge.run(message, signal=controller.signal)
+            if controller.signal.aborted:
+                rec.state = SubMvgeState.CANCELING
+                rec.state_detail = "Cancelled"
+                rec.error = "Cancelled"
+            else:
+                rec.summary = _extract_invocation_text(inv)
+                rec.state = SubMvgeState.COMPLETED
+                rec.state_detail = "Follow-up turn completed"
+                rec.error = None
+                if harness is not None and getattr(harness, "state", None) is not None:
+                    rec.mana_used = {
+                        "mana_total": getattr(harness.state, "mana_used", 0)
+                    }
+        except (asyncio.CancelledError, AbortError):
             rec.state = SubMvgeState.CANCELING
             rec.state_detail = "Cancelled"
             rec.error = "Cancelled"
