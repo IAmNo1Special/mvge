@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Features
+
+- **core,runes:** publish NO_PROXY sanitizer for runes building their own httpx clients (388b58b)
+
+
+## [0.2.19] - 2026-10-30
+
+
+### Bug Fixes
+
+- **core:** add per-spell dispatcher timeout override, opt summon out of the 30s wall clock (c19cf35)
+
+- **agent:** dispose retired runes on reload and serve commands from the live runner (828a15d)
+
+- **provider,runes:** sanitize bracketed NO_PROXY at every httpx construction site (e9fbd73)
+
+- **agent:** thread the parent abort signal into child sub-Mvge turns (da46a4f)
+
+- **cli:** render /reload and rune command outcomes in the REPL (df149e4)
+
+- **cli:** render seven silent outcomes in the REPL (cf5f6ac)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (b0e0ab6)
+
+- **release:** v0.2.19 (a6b5798)
+
+
 ## [0.2.18] - 2026-10-29
 
 
