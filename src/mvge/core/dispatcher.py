@@ -581,6 +581,26 @@ class SpellDispatcher:
             )
         )
 
+        # A spell may override the loop's wall-clock timeout, or opt out
+        # of it with 0 when its duration is bounded by the work itself (a
+        # wait:true summon, bounded by the child's max_turns and provider
+        # timeouts). The parent turn's abort still cancels the cast either
+        # way; only the wall clock is removed. No override means the loop
+        # timeout applies. Only a real int counts as an override: a
+        # spec-mocked spell carries a mock attribute, and doing arithmetic
+        # on it would turn every cast into a spurious error result.
+        raw_timeout_ms = getattr(spell, "timeout_ms", None)
+        spell_timeout_ms = (
+            raw_timeout_ms
+            if isinstance(raw_timeout_ms, int) and not isinstance(raw_timeout_ms, bool)
+            else None
+        )
+        effective_timeout_ms = (
+            spell_timeout_ms
+            if spell_timeout_ms is not None
+            else context.spell_timeout_ms
+        )
+
         try:
             if signal is not None and signal.aborted:
                 raise AbortError("Operation aborted")
@@ -593,14 +613,21 @@ class SpellDispatcher:
                 ):
                     execute_kwargs["ctx"] = ctx
 
-                raw_result = await asyncio.wait_for(
-                    spell.execute(
+                if spell_timeout_ms == 0:
+                    raw_result = await spell.execute(
                         spell_cast_id,
                         execution_arguments,
                         **execute_kwargs,
-                    ),
-                    timeout=context.spell_timeout_ms / 1000,
-                )
+                    )
+                else:
+                    raw_result = await asyncio.wait_for(
+                        spell.execute(
+                            spell_cast_id,
+                            execution_arguments,
+                            **execute_kwargs,
+                        ),
+                        timeout=effective_timeout_ms / 1000,
+                    )
             except asyncio.CancelledError as exc:
                 if signal is not None and signal.aborted:
                     raise AbortError("Operation aborted") from exc
@@ -660,7 +687,7 @@ class SpellDispatcher:
                 terminate=terminate,
             )
         except TimeoutError:
-            err = SpellTimeoutError(spell_name, context.spell_timeout_ms)
+            err = SpellTimeoutError(spell_name, effective_timeout_ms)
         except AbortError:
             raise
         except Exception as exc:

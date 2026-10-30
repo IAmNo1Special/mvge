@@ -526,6 +526,7 @@ class SpellDefinition:
         source_rune: str | None = None,
         handler: Any | None = None,
         read_only: bool = False,
+        timeout_ms: int | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -536,6 +537,9 @@ class SpellDefinition:
         self.source_rune = source_rune
         self._handler = handler
         self.read_only = read_only
+        # Dispatcher timeout override, same semantics as MvgeSpell.timeout_ms:
+        # None inherits the loop timeout, 0 disables the dispatcher timeout.
+        self.timeout_ms = timeout_ms
 
     async def execute(
         self,

@@ -306,6 +306,7 @@ class RuneSpellWrapper(MvgeSpell):
                 spell_def, "execution_mode", SpellExecutionMode.PARALLEL
             ),
             read_only=getattr(spell_def, "read_only", False),
+            timeout_ms=getattr(spell_def, "timeout_ms", None),
         )
         self._spell_def = spell_def
         # Engine-owned provenance mark: this wrapper was built by the engine
@@ -359,6 +360,7 @@ class FunctionSpell(MvgeSpell):
         parameters: dict[str, Any] | None = None,
         execution_mode: SpellExecutionMode = SpellExecutionMode.PARALLEL,
         read_only: bool = False,
+        timeout_ms: int | None = None,
     ) -> None:
         func_name = (
             name if name is not None else getattr(func, "__name__", "custom_spell")
@@ -376,6 +378,7 @@ class FunctionSpell(MvgeSpell):
             parameters=schema,
             execution_mode=execution_mode,
             read_only=read_only,
+            timeout_ms=timeout_ms,
         )
         self.func = func
 
