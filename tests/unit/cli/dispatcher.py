@@ -291,3 +291,125 @@ async def test_contemplation_command(
     # Set new
     await dispatcher.dispatch("/contemplation high")
     mock_agent.set_contemplation_level.assert_awaited_once_with("high")
+
+
+@pytest.mark.asyncio
+async def test_fork_command_renders_forked_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.fork_tome = AsyncMock(return_value="tome-forked123")
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/fork")
+    assert should_exit is False
+    mock_agent.fork_tome.assert_awaited_once_with(None)
+    assert any("Forked tome: tome-forked123" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_leaves_command_renders_leaves_list(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.list_leaves = AsyncMock(return_value=["leaf-aaa", "leaf-bbb"])
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/leaves")
+    assert should_exit is False
+    assert any("Tome leaves (2):" in line for line in output)
+    assert any("leaf-aaa" in line for line in output)
+    assert any("leaf-bbb" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_checkout_command_renders_checked_out_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.checkout_leaf = AsyncMock()
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/checkout leaf-aaa")
+    assert should_exit is False
+    mock_agent.checkout_leaf.assert_awaited_once_with("leaf-aaa")
+    assert any("Checked out leaf: leaf-aaa" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_undo_command_renders_undone_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.undo = AsyncMock(return_value="inv-99")
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/undo")
+    assert should_exit is False
+    mock_agent.undo.assert_awaited_once_with()
+    assert any("Undone to invocation: inv-99" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_compact_command_renders_compacted_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.compact = AsyncMock(return_value="Compaction completed")
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/compact")
+    assert should_exit is False
+    mock_agent.compact.assert_awaited_once_with()
+    assert any("Compaction completed" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_skills_command_renders_skills_list(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.get_skills_catalog = MagicMock(
+        return_value=[
+            {
+                "name": "demo-skill",
+                "description": "A demo skill",
+                "scope": "project",
+                "path": "/tmp/demo-skill",
+            }
+        ]
+    )
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/skills")
+    assert should_exit is False
+    assert any("Available skills (1):" in line for line in output)
+    assert any("demo-skill" in line for line in output)
+    assert any("A demo skill" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_skills_command_renders_empty_catalog(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.get_skills_catalog = MagicMock(return_value=[])
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/skills")
+    assert should_exit is False
+    assert any("No skills registered" in line for line in output)
+
+
+@pytest.mark.asyncio
+async def test_skill_command_renders_activated_outcome(
+    mock_agent: MagicMock, mock_registry: MagicMock
+) -> None:
+    output: list[str] = []
+    mock_agent.activate_skill = AsyncMock(return_value="demo skill content")
+    dispatcher = CliCommandDispatcher(mock_agent, mock_registry, out=output.append)
+
+    should_exit = await dispatcher.dispatch("/skill demo-skill")
+    assert should_exit is False
+    mock_agent.activate_skill.assert_awaited_once_with("demo-skill")
+    assert any("Skill 'demo-skill' activated." in line for line in output)
