@@ -87,6 +87,10 @@ from mvge.core.loop import (
     StreamFn,
     run_loop,
 )
+from mvge.core.proxy import (
+    sanitize_no_proxy_env,
+    strip_bracketed_no_proxy_entries,
+)
 from mvge.core.sandbox import MvgeSandbox, SandboxTimeoutError
 from mvge.core.spell_schema import (
     find_context_parameter,
@@ -203,6 +207,8 @@ __all__ = [
     "resolve_rune_paths",
     "scope_rank",
     "sessions_dir",
+    "sanitize_no_proxy_env",
+    "strip_bracketed_no_proxy_entries",
     "run_loop",
     "to_error",
     "unwrap_callable",
