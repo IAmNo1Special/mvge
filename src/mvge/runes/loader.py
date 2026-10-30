@@ -13,6 +13,7 @@ from typing import cast
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneFactory
@@ -249,6 +250,18 @@ def load_factory_from_manifest(
     stale_bytecode = Path(importlib.util.cache_from_source(str(entry)))
     with contextlib.suppress(OSError):
         stale_bytecode.unlink(missing_ok=True)
+    # Before executing any rune module code: a module top-level may
+    # build an httpx client, and client construction parses NO_PROXY
+    # and raises on bracketed IPv6 tokens. Library embeddings never
+    # ran CLI startup, so without this the rune would fail to load
+    # for purely environmental reasons. The mutation is process-wide
+    # and persists, so the factory and every later spell, sigil, and
+    # realm-factory call in this process inherit the clean value --
+    # unless rune code itself re-dirties it afterwards (see the
+    # factory-call sites in RuneRunner, which sanitize again before
+    # each factory). Only bracketed tokens are removed; this rewrites
+    # no rune client and patches nothing.
+    sanitize_no_proxy_env()
     try:
         spec.loader.exec_module(mod)
     except Exception as err:

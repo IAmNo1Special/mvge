@@ -21,6 +21,7 @@ from mvge.core.approval import (
     deny,
 )
 from mvge.core.layers import scope_rank
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.loader import load_factory_from_manifest
@@ -484,6 +485,12 @@ class RuneRunner:
                 self.register_shortcut(sc, override=True)
             self._current_loading_rune = manifest.name
             api = self.create_api(rune_name=manifest.name, override=True)
+            # Candidates were all loaded before any factory ran, so an
+            # earlier factory that re-dirtied NO_PROXY would otherwise
+            # break a later factory's httpx client. Sanitize again
+            # before each factory; the loader already sanitized before
+            # module execution, this covers the inter-factory window.
+            sanitize_no_proxy_env()
             try:
                 result = factory(api)
                 if isinstance(result, Awaitable):
@@ -985,6 +992,12 @@ class RuneRunner:
             if load.factory is not None:
                 self._current_loading_rune = load.manifest.name
                 api = self.create_api()
+                # Hand-built loads bypass the loader entirely, and a
+                # previous factory may have re-dirtied the environment
+                # since load time. Sanitize before every factory so a
+                # rune building its own httpx client never needs the
+                # rune-side helper to survive an engine load.
+                sanitize_no_proxy_env()
                 result = load.factory(api)
                 if isinstance(result, Awaitable):
                     result = await result

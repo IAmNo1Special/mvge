@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -330,3 +331,50 @@ def test_load_rune_cli_command_handler_none(tmp_path: Path) -> None:
     assert cmd is not None
     res = CliRunner().invoke(cmd, [])
     assert res.exit_code == 0
+
+
+def test_load_rune_cli_command_sanitizes_before_cli_module(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Dynamic CLI loading is a rune entry point outside the loader.
+
+    ``load_rune_cli_command`` executes a rune's ``cli.py`` directly
+    rather than through ``load_factory_from_manifest``, and its
+    strategy-1 failure is swallowed, so a bracketed NO_PROXY would
+    silently make the command vanish instead of loading it. The
+    module's top-level httpx client must build under a bracketed
+    environment, with no helper call from the rune itself.
+    """
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("NO_PROXY", "[::1],localhost")
+    ext_dir = tmp_path / "extensions" / "noproxy-rune"
+    ext_dir.mkdir(parents=True)
+    (ext_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "noproxy-rune",
+                "version": "0.1.0",
+                "commands": ["noproxy-click"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (ext_dir / "cli.py").write_text(
+        "import httpx\n"
+        "import click\n"
+        "with httpx.Client():\n"
+        "    pass\n"
+        "@click.command()\n"
+        "def app():\n"
+        "    click.echo('NOPROXY RUN')\n",
+        encoding="utf-8",
+    )
+
+    cmd = load_rune_cli_command("noproxy-click", global_dir=tmp_path)
+    assert cmd is not None
+    assert os.environ["NO_PROXY"] == "localhost"
+    runner = CliRunner()
+    res = runner.invoke(cmd, [])
+    assert res.exit_code == 0
+    assert "NOPROXY RUN" in res.output

@@ -3,11 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
 from mvge.runes.loader import load_runes_from_paths
@@ -1168,3 +1170,108 @@ class TestRehydrateRunes:
             [RuneLoad(manifest=manifest, factory=lambda api: object())]
         )
         assert await runner.rehydrate_runes(object()) == []
+
+
+class TestRuneRunnerNoProxy:
+    @pytest.mark.asyncio
+    async def test_load_rune_loads_sanitizes_before_each_factory(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """One rune must not poison the next rune's client build.
+
+        Loads built by hand bypass the loader, and even loader-built
+        loads run their factories in sequence: a first factory that
+        re-dirties NO_PROXY with a bracketed token would otherwise
+        make a second factory's httpx client fail to construct. The
+        runner sanitizes before every factory invocation, so the
+        second factory builds its client without calling the helper.
+        """
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.setenv("NO_PROXY", "localhost")
+        runner = RuneRunner()
+
+        def dirty_factory(api: Any) -> None:
+            os.environ["NO_PROXY"] = "[::1],localhost"
+            api.register_spell(SpellDefinition(name="dirty_spell", description="First"))
+
+        def client_factory(api: Any) -> None:
+            with httpx.Client():
+                pass
+            api.register_spell(
+                SpellDefinition(name="client_spell", description="Second")
+            )
+
+        await runner.load_rune_loads(
+            [
+                RuneLoad(
+                    manifest=RuneManifest(
+                        name="dirty", version="1.0.0", description="First"
+                    ),
+                    factory=dirty_factory,
+                ),
+                RuneLoad(
+                    manifest=RuneManifest(
+                        name="client", version="1.0.0", description="Second"
+                    ),
+                    factory=client_factory,
+                ),
+            ]
+        )
+        names = {s.name for s in runner.get_all_registered_spells()}
+        assert names == {"dirty_spell", "client_spell"}
+        assert os.environ["NO_PROXY"] == "localhost"
+
+    @pytest.mark.asyncio
+    async def test_refresh_runes_sanitizes_before_each_factory(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Refresh has the same inter-factory window as initial load.
+
+        Candidates are all loaded before any factory runs, so a
+        loader-time sanitize alone cannot protect a later factory from
+        an earlier factory that re-dirtied the environment during the
+        same refresh.
+        """
+        monkeypatch.delenv("NO_PROXY", raising=False)
+        monkeypatch.delenv("no_proxy", raising=False)
+        monkeypatch.setenv("NO_PROXY", "localhost")
+        extensions_dir = tmp_path / "extensions"
+        dirty_dir = extensions_dir / "a_dirty"
+        dirty_dir.mkdir(parents=True)
+        (dirty_dir / "manifest.json").write_text(
+            '{"name": "a_dirty", "version": "1.0.0", '
+            '"description": "First", "entry_point": "main.py"}',
+            encoding="utf-8",
+        )
+        (dirty_dir / "main.py").write_text(
+            "import os\n\n"
+            "def rune_factory(api):\n"
+            '    os.environ["NO_PROXY"] = "[::1],localhost"\n'
+            "    from mvge.runes.types import SpellDefinition\n"
+            '    api.register_spell(SpellDefinition(name="dirty_spell", '
+            'description="First"))\n',
+            encoding="utf-8",
+        )
+        client_dir = extensions_dir / "b_client"
+        client_dir.mkdir(parents=True)
+        (client_dir / "manifest.json").write_text(
+            '{"name": "b_client", "version": "1.0.0", '
+            '"description": "Second", "entry_point": "main.py"}',
+            encoding="utf-8",
+        )
+        (client_dir / "main.py").write_text(
+            "import httpx\n\n"
+            "def rune_factory(api):\n"
+            "    with httpx.Client():\n"
+            "        pass\n"
+            "    from mvge.runes.types import SpellDefinition\n"
+            '    api.register_spell(SpellDefinition(name="client_spell", '
+            'description="Second"))\n',
+            encoding="utf-8",
+        )
+        runner = RuneRunner()
+        diagnostics = await runner.refresh_runes([extensions_dir])
+        assert diagnostics == []
+        names = {s.name for s in runner.get_all_registered_spells()}
+        assert names == {"dirty_spell", "client_spell"}
