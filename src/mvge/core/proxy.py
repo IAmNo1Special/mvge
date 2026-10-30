@@ -13,9 +13,16 @@ line of defense, and this per-site call is the second.
 
 Public rune contract: this helper is public API (exported from
 ``mvge.core`` and reachable from a rune factory as
-``RuneAPI.sanitize_no_proxy_env``). A rune that builds its own httpx
-client -- bypassing every engine construction site -- must call it
-BEFORE building that client::
+``RuneAPI.sanitize_no_proxy_env``). A rune loaded through the engine
+rune loader needs no call: the loader sanitizes before executing the
+rune module, and ``RuneRunner`` sanitizes again before every factory
+invocation, so module-top-level, factory, and later spell/sigil
+client builds in that process all start from a clean environment.
+The helper remains for the two paths the engine never sees: a rune
+module imported directly by a host (bypassing the loader entirely),
+and rune code that re-dirties the environment after its factory
+returns and then builds a client outside any engine factory call.
+In both, call it BEFORE building the client::
 
     from mvge.core import sanitize_no_proxy_env
 
@@ -24,11 +31,8 @@ BEFORE building that client::
 
 The engine cannot interpose on a client it never sees, and sanitizing
 after construction cannot repair a client that already failed to
-build, so the call must come first. CLI runs are incidentally covered
-because CLI startup sanitizes before runes load; library embeddings
-that never run CLI startup are the exposed path, and that is where a
-rune must call this itself. The call is idempotent, and a second call
-after a clean environment is a no-op.
+build, so the call must come first. The call is idempotent, and a
+second call after a clean environment is a no-op.
 
 Only bracketed tokens are removed; plain hosts, CIDRs, and
 unbracketed IPv6 literals pass through untouched.

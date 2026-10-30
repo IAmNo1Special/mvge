@@ -97,13 +97,17 @@ class RuneAPI:
     def sanitize_no_proxy_env(self) -> bool:
         """Strip bracketed IPv6 tokens from NO_PROXY before building a client.
 
-        A rune that builds its own httpx client bypasses every engine
-        construction site, so the engine cannot protect that client.
-        Call this first, in the factory, before any ``httpx.Client`` or
-        ``httpx.AsyncClient`` is constructed -- sanitizing after a
-        client failed to build cannot repair it. Returns True when
-        anything changed; idempotent, and a no-op on a clean
-        environment. Only bracketed tokens are removed.
+        A rune loaded through the engine loader already had the
+        environment sanitized before its module executed and again
+        before its factory ran, so this call is a no-op in that path.
+        It is still needed when the rune module was imported directly
+        by a host (bypassing the loader), or when rune code re-dirtied
+        the environment after its factory returned: call it first,
+        before any ``httpx.Client`` or ``httpx.AsyncClient`` is
+        constructed -- sanitizing after a client failed to build
+        cannot repair it. Returns True when anything changed;
+        idempotent, and a no-op on a clean environment. Only
+        bracketed tokens are removed.
         """
         return sanitize_no_proxy_env()
 

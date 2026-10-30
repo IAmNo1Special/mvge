@@ -15,6 +15,7 @@ from mvge.agent.config_manager import ConfigManager
 from mvge.agent.mvge import discover_agent_rune_extras
 from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.layers import ResolvedLayer, Scope, resolve_rune_layers
+from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.runes.loader import _inject_rune_paths
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneAPI
@@ -187,6 +188,12 @@ def load_rune_cli_command(
         if spec and spec.loader:
             mod = importlib.util.module_from_spec(spec)
             try:
+                # This executes rune code outside the rune loader, so
+                # the loader's sanitize does not apply here: a
+                # bracketed NO_PROXY would otherwise fail the module
+                # silently (the except below swallows it) and the
+                # command would simply vanish.
+                sanitize_no_proxy_env()
                 spec.loader.exec_module(mod)
                 for attr_name in (
                     "app",
@@ -230,6 +237,9 @@ def load_rune_cli_command(
         if spec and spec.loader:
             mod = importlib.util.module_from_spec(spec)
             try:
+                # Same loader-bypass sanitize as the cli.py strategy
+                # above: this module is rune code executed directly.
+                sanitize_no_proxy_env()
                 spec.loader.exec_module(mod)
                 # Check for click/typer command in rune.py
                 for attr_name in (

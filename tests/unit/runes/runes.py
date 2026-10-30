@@ -1,5 +1,6 @@
 import concurrent.futures
 import json
+import os
 import py_compile
 import sys
 import tempfile
@@ -1067,3 +1068,90 @@ def test_load_manifest_ui_contributions_defaults() -> None:
         assert manifest is not None
         assert manifest.ui.views == []
         assert manifest.ui.canvas_tabs == []
+
+
+def _write_noproxy_rune(rune_dir: Path, source: str) -> None:
+    rune_dir.mkdir(parents=True, exist_ok=True)
+    (rune_dir / "manifest.json").write_text(
+        '{"name": "noproxy_rune", "version": "1.0.0", '
+        '"description": "Test", "entry_point": "rune.py"}',
+        encoding="utf-8",
+    )
+    (rune_dir / "rune.py").write_text(source, encoding="utf-8")
+
+
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+def test_load_factory_sanitizes_before_module_top_level_client(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """A rune entry point may build an httpx client at module scope.
+
+    Library embeddings never ran CLI startup, so a bracketed NO_PROXY
+    was fatal the moment the loader executed the module: client
+    construction parses the variable and raises InvalidURL, which the
+    loader reported as a LOAD_FAILURE and the rune never loaded. The
+    loader must strip the bracketed tokens before executing any rune
+    module code, so the module's own top-level client builds.
+    """
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv(name, "[::1],localhost")
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "noproxy_rune"
+            _write_noproxy_rune(
+                rune_dir,
+                "import httpx\n\n"
+                "with httpx.Client():\n"
+                "    pass\n\n"
+                "def rune_factory(api):\n"
+                "    pass\n",
+            )
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            diagnostics: list[Diagnostic] = []
+            factory = load_factory_from_manifest(manifest, rune_dir, diagnostics)
+            assert not diagnostics, [d.message for d in diagnostics]
+            assert factory is not None
+            assert os.environ[name] == "localhost"
+    finally:
+        sys.modules.pop("mvge_rune_noproxy_rune", None)
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
+
+
+def test_load_factory_sanitizes_before_factory_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sanitization must already hold when the factory runs.
+
+    A rune that builds its client in the factory -- never calling the
+    rune-side helper, because it was written for the CLI where startup
+    sanitized first -- must find a clean environment after load, in a
+    library embedding where CLI startup never ran.
+    """
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("NO_PROXY", "[::1],localhost")
+    orig_sys_path = list(sys.path)
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            rune_dir = Path(tmpdir) / "noproxy_rune"
+            _write_noproxy_rune(
+                rune_dir,
+                "import httpx\n\n"
+                "def rune_factory(api):\n"
+                "    with httpx.Client():\n"
+                "        pass\n",
+            )
+            manifest = load_manifest(rune_dir)
+            assert manifest is not None
+            factory = load_factory_from_manifest(manifest, rune_dir)
+            assert factory is not None
+            assert os.environ["NO_PROXY"] == "localhost"
+            factory(None)
+    finally:
+        sys.modules.pop("mvge_rune_noproxy_rune", None)
+        sys.path.clear()
+        sys.path.extend(orig_sys_path)
