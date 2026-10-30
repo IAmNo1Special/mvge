@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - update CHANGELOG.md [skip ci] (955fb4b)
 
+- update CHANGELOG.md [skip ci] (946504c)
+
 
 ## [0.2.20] - 2026-10-30
 
