@@ -9,9 +9,12 @@ never reads. That failure is silent, and it is why this project does not
 give each rune its own virtualenv.
 
 So there is exactly one environment, owned by the extensions directory.
-``mvge.runes.loader.discover_rune_site_packages`` already walks each
-rune's parent directories looking for a ``.venv``, which means this
-environment needs no loader changes to be found.
+That environment is found at load and check time by
+``mvge.runes.loader.inject_dependency_site_packages``, which injects the
+shared extensions venv for every rune whatever layer it lives in, plus
+each rune's own parent venvs. Rune-local discovery alone is not enough:
+it only walks the rune's own parents, which never reaches the shared
+extensions venv for an agent- or project-layer rune.
 
 The environment has its own project manifest, mirroring the single
 generated manifest per install root that Pi maintains for its

@@ -1,6 +1,7 @@
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from mvge.runes.loader import load_factory_from_manifest
 from mvge.runes.types import (
@@ -152,3 +153,47 @@ def test_auto_discover_parent_venv_site_packages() -> None:
         assert factory is not None
         assert factory(None) == "loaded_from_parent_venv"
         assert str(site_pkg.resolve()) in sys.path
+
+
+def test_agent_layer_rune_sees_shared_extensions_venv() -> None:
+    """An agent-layer rune must load a dep installed in the shared venv.
+
+    ``setup install`` always targets the shared extensions project,
+    whatever layer the rune lives in, but rune-local discovery only walks
+    the rune's own parents: for an agent-layer rune that walk never
+    reaches the shared extensions venv, so preflight reports the dep
+    missing even though the install succeeded. The shared environment
+    must be injected for every rune load, not just user-layer ones.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        shared = Path(tmpdir) / "extensions"
+        site_pkg = shared / ".venv" / "lib" / "site-packages"
+        site_pkg.mkdir(parents=True)
+        (site_pkg / "setupcheck_shared_dep.py").write_text(
+            "FLAG = 'loaded_from_shared_venv'", encoding="utf-8"
+        )
+        rune_dir = Path(tmpdir) / "agents" / "test" / "extensions" / "agent-rune"
+        rune_dir.mkdir(parents=True)
+        entry_point = rune_dir / "main.py"
+        entry_point.write_text(
+            "import setupcheck_shared_dep\n"
+            "def rune_factory(api):\n"
+            "    return setupcheck_shared_dep.FLAG\n",
+            encoding="utf-8",
+        )
+        manifest = RuneManifest(
+            name="agent-rune",
+            version="1.0.0",
+            description="Test rune",
+            entry_point="main.py",
+            python_deps=["setupcheck_shared_dep"],
+            scope=RuneScope.AGENT,
+        )
+        with patch("mvge.runes.loader.extensions_dir", return_value=shared):
+            diagnostics: list = []
+            factory = load_factory_from_manifest(
+                manifest, rune_dir, diagnostics=diagnostics
+            )
+        assert factory is not None
+        assert diagnostics == []
+        assert factory(None) == "loaded_from_shared_venv"

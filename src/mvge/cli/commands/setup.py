@@ -22,7 +22,10 @@ from mvge.core.constants import DEFAULT_AGENT_NAME
 from mvge.core.layers import extensions_dir, resolve_rune_paths
 from mvge.runes.catalog import DEFAULT_MARKETPLACE_URL
 from mvge.runes.deps import ensure_extensions_project
-from mvge.runes.loader import check_python_dep_installed
+from mvge.runes.loader import (
+    check_python_dep_installed,
+    inject_dependency_site_packages,
+)
 from mvge.runes.manifest import load_manifest
 from mvge.runes.types import RuneManifest
 
@@ -445,6 +448,14 @@ def setup_check(
         console.print("[green]No dependencies declared by runes[/green]")
         return
 
+    # Probe the same environment the install targets and the loader uses:
+    # the shared extensions venv plus each rune's local roots, not the
+    # host interpreter alone. Without this, a dep ``setup install`` just
+    # installed into the extensions venv still reports MISSING here.
+    inject_dependency_site_packages(
+        [rune_dir for _, rune_dir in runes], env_project=extensions_dir()
+    )
+
     any_missing = False
 
     if all_system_deps:
@@ -508,6 +519,13 @@ def install_missing_deps(
     if not all_system_deps and not all_python_deps:
         console.print("[green]No dependencies declared by runes[/green]")
         return 0
+
+    # Same probe environment as ``setup check`` (see there): without it,
+    # a second install run would still believe the extensions-venv deps
+    # missing and reinstall them instead of reporting them installed.
+    inject_dependency_site_packages(
+        [rune_dir for _, rune_dir in runes], env_project=extensions_dir()
+    )
 
     missing_system = sorted(d for d in all_system_deps if not check_tool_installed(d))
     missing_python = sorted(d for d in all_python_deps if not check_python_dep(d))

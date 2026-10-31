@@ -890,3 +890,87 @@ def test_run_streaming_kills_child_on_timeout(tmp_path: Path) -> None:
         if time.monotonic() > deadline:
             raise AssertionError("child still alive after timeout kill")
         time.sleep(0.05)
+
+
+def _extensions_venv_with_module(tmp_path: Path, module: str) -> Path:
+    """Create a fake shared extensions project whose venv holds ``module``."""
+    extensions_dir = tmp_path / "extensions"
+    site_pkg = extensions_dir / ".venv" / "lib" / "site-packages"
+    site_pkg.mkdir(parents=True)
+    (site_pkg / f"{module}.py").write_text("VALUE = 1\n", encoding="utf-8")
+    return extensions_dir
+
+
+def test_setup_check_sees_extensions_venv_dep(tmp_path: Path) -> None:
+    """setup check must report a dep present only in the extensions venv.
+
+    This is the rerun-10 disagreement: ``setup install`` writes deps into
+    the shared extensions venv, so a check that probes only the host
+    interpreter still reports them MISSING after a successful install.
+    The dep below exists nowhere else: it is a synthetic module that
+    lives only in the fake extensions venv.
+    """
+    extensions_dir = _extensions_venv_with_module(
+        tmp_path, "setupcheck_only_in_ext_venv"
+    )
+    rune_mock = (
+        RuneManifest(
+            name="demo",
+            version="1.0.0",
+            description="test",
+            python_deps=["setupcheck_only_in_ext_venv"],
+        ),
+        tmp_path / "demo-rune",
+    )
+    runner = CliRunner()
+    with (
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=extensions_dir),
+        patch("mvge.cli.commands.setup.collect_rune_dirs", return_value=[rune_mock]),
+    ):
+        res = runner.invoke(setup_app, ["check"])
+    assert res.exit_code == 0
+    assert "setupcheck_only_in_ext_venv: OK" in res.output
+
+
+def test_setup_check_missing_dep_not_in_extensions_venv(tmp_path: Path) -> None:
+    """Negative control: a dep absent from host and extensions venv is MISSING."""
+    extensions_dir = tmp_path / "extensions"
+    (extensions_dir / ".venv" / "lib" / "site-packages").mkdir(parents=True)
+    rune_mock = (
+        RuneManifest(
+            name="demo",
+            version="1.0.0",
+            description="test",
+            python_deps=["setupcheck_definitely_absent_dep_xyz"],
+        ),
+        tmp_path / "demo-rune",
+    )
+    runner = CliRunner()
+    with (
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=extensions_dir),
+        patch("mvge.cli.commands.setup.collect_rune_dirs", return_value=[rune_mock]),
+    ):
+        res = runner.invoke(setup_app, ["check"])
+    assert res.exit_code == 1
+    assert "setupcheck_definitely_absent_dep_xyz: MISSING" in res.output
+
+
+def test_install_missing_deps_sees_extensions_venv_dep(tmp_path: Path) -> None:
+    """install must agree with check: a venv-only dep is already installed."""
+    extensions_dir = _extensions_venv_with_module(
+        tmp_path, "setupcheck_only_in_ext_venv"
+    )
+    rune_mock = (
+        RuneManifest(
+            name="demo",
+            version="1.0.0",
+            description="test",
+            python_deps=["setupcheck_only_in_ext_venv"],
+        ),
+        tmp_path / "demo-rune",
+    )
+    with (
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=extensions_dir),
+        patch("mvge.cli.commands.setup.collect_rune_dirs", return_value=[rune_mock]),
+    ):
+        assert install_missing_deps() == 0

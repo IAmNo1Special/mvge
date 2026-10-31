@@ -13,6 +13,7 @@ from typing import cast
 
 from packaging.requirements import InvalidRequirement, Requirement
 
+from mvge.core.layers import extensions_dir
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.manifest import load_manifest
@@ -113,43 +114,94 @@ def _missing_dep_diagnostic(manifest: RuneManifest, dep: str) -> Diagnostic:
     )
 
 
+def _venv_site_packages(base: Path) -> list[Path]:
+    """Return the site-packages directories of ``base``'s venvs, if any."""
+    site_pkg_paths: list[Path] = []
+    for venv_name in (".venv", "venv"):
+        venv_dir = base / venv_name
+        if not venv_dir.is_dir():
+            continue
+        win_sp = venv_dir / "Lib" / "site-packages"
+        if win_sp.is_dir() and win_sp not in site_pkg_paths:
+            site_pkg_paths.append(win_sp)
+        lib_dir = venv_dir / "lib"
+        if lib_dir.is_dir():
+            posix_sp = lib_dir / "site-packages"
+            if posix_sp.is_dir() and posix_sp not in site_pkg_paths:
+                site_pkg_paths.append(posix_sp)
+            for sp in sorted(lib_dir.glob("python*/site-packages")):
+                if sp.is_dir() and sp not in site_pkg_paths:
+                    site_pkg_paths.append(sp)
+    return site_pkg_paths
+
+
 def discover_rune_site_packages(rune_dir: Path) -> list[Path]:
     """Return rune-local import roots (venv site-packages, entry dir, rune dir).
 
     A rune may bundle python_deps in its own ``.venv``/``venv`` site-packages;
     these must be on ``sys.path`` *before* dependency inspection so bundled
     deps are not falsely reported as missing.
+
+    This covers only the rune's own directory and its parents. It does
+    NOT cover the shared extensions environment: ``setup install`` always
+    targets that one project whatever layer the rune lives in, so a rune
+    outside the user layer never has the shared venv among its parents.
+    See :func:`shared_extensions_site_packages` for that environment.
     """
     rune_dir_resolved = rune_dir.resolve()
     site_pkg_paths: list[Path] = []
     search_dirs = [rune_dir_resolved] + list(rune_dir_resolved.parents)[:2]
     for candidate_dir in search_dirs:
-        for venv_name in (".venv", "venv"):
-            venv_dir = candidate_dir / venv_name
-            if venv_dir.is_dir():
-                win_sp = venv_dir / "Lib" / "site-packages"
-                if win_sp.is_dir() and win_sp not in site_pkg_paths:
-                    site_pkg_paths.append(win_sp)
-                lib_dir = venv_dir / "lib"
-                if lib_dir.is_dir():
-                    posix_sp = lib_dir / "site-packages"
-                    if posix_sp.is_dir() and posix_sp not in site_pkg_paths:
-                        site_pkg_paths.append(posix_sp)
-                    for sp in sorted(lib_dir.glob("python*/site-packages")):
-                        if sp.is_dir() and sp not in site_pkg_paths:
-                            site_pkg_paths.append(sp)
+        for sp in _venv_site_packages(candidate_dir):
+            if sp not in site_pkg_paths:
+                site_pkg_paths.append(sp)
     site_pkg_paths.append(rune_dir_resolved)
     return site_pkg_paths
 
 
+def shared_extensions_site_packages(
+    env_project: Path | None = None,
+) -> list[Path]:
+    """Return the shared extensions environment's site-packages directories.
+
+    The shared environment is the one project ``setup install`` targets
+    (:func:`mvge.core.layers.extensions_dir` by default): its venv is where
+    installed rune dependencies actually land. Probing the host interpreter
+    alone therefore disagrees with a successful install for every dep that
+    is not also a host dependency. Returns ``[]`` when the environment
+    has no venv yet (nothing installed).
+    """
+    project = env_project if env_project is not None else extensions_dir()
+    return _venv_site_packages(project)
+
+
+def inject_dependency_site_packages(
+    rune_dirs: Sequence[Path], env_project: Path | None = None
+) -> None:
+    """Put dependency import roots on ``sys.path`` for later probing.
+
+    Injects each rune's discovered site-packages first (rune-local roots
+    keep their established precedence), then the shared extensions
+    environment last, so a dep installed by ``setup install`` resolves
+    here exactly as it does at rune load time. ``setup check`` and
+    ``setup install``'s missing computation call this before probing, so
+    they inspect the same environment the install targets and the loader
+    uses -- never the host interpreter alone.
+    """
+    for rune_dir in rune_dirs:
+        for p in discover_rune_site_packages(rune_dir):
+            p_str = str(p)
+            if p.name == "site-packages":
+                site.addsitedir(p_str)
+            elif p_str not in sys.path:
+                sys.path.insert(0, p_str)
+    for sp in shared_extensions_site_packages(env_project):
+        site.addsitedir(str(sp))
+
+
 def _inject_rune_paths(rune_dir: Path, entry: Path) -> None:
     """Put rune-local import roots on ``sys.path`` so bundled deps resolve."""
-    for p in discover_rune_site_packages(rune_dir):
-        p_str = str(p)
-        if p.name == "site-packages":
-            site.addsitedir(p_str)
-        elif p_str not in sys.path:
-            sys.path.insert(0, p_str)
+    inject_dependency_site_packages([rune_dir])
     entry_parent = entry.parent.resolve()
     entry_parent_str = str(entry_parent)
     if entry_parent_str not in sys.path:
