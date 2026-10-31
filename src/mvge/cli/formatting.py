@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import subprocess
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -148,6 +150,99 @@ def landed_work_of(agent: MvgeAgent, since: int = 0) -> LandedWork | None:
     )
 
 
+def _normalize_for_quote_match(value: str) -> str:
+    """Collapse a string for quote comparison: JSON escapes, whitespace."""
+    text = value.replace("\\n", " ").replace("\\r", " ").replace("\\t", " ")
+    text = text.replace('\\"', '"').replace("\\/", "/").replace("\\\\", "\\")
+    text = re.sub(
+        r"\\u([0-9a-fA-F]{4})",
+        lambda match: chr(int(match.group(1), 16)),
+        text,
+    )
+    return " ".join(text.split())
+
+
+def _error_core(value: str) -> str:
+    """Normalized error text with any leading ``Error: `` prefix stripped."""
+    text = _normalize_for_quote_match(value)
+    while text.lower().startswith("error: "):
+        text = text[len("error: ") :].strip()
+    return text
+
+
+def _error_dedup_key(value: str) -> str:
+    """Identity of an error for dedup: its normalized, prefix-stripped core."""
+    return _error_core(value) or _normalize_for_quote_match(value)
+
+
+def _json_string_values(final_text: str) -> list[str]:
+    """Every string value a JSON document or JSON fragment in ``final_text`` holds.
+
+    A whole-document parse covers a bare JSON object; the quoted-token scan
+    covers a JSON fragment embedded in prose, where a whole parse fails.
+    Each token is JSON-decoded so escaped quotes inside it unescape.
+    """
+    values: list[str] = []
+    try:
+        parsed = json.loads(final_text)
+    except (ValueError, TypeError):
+        parsed = None
+    if parsed is not None:
+        stack: list[object] = [parsed]
+        while stack:
+            item = stack.pop()
+            if isinstance(item, str):
+                values.append(item)
+            elif isinstance(item, dict):
+                stack.extend(item.values())
+            elif isinstance(item, list):
+                stack.extend(item)
+    for token in re.findall(r'"((?:\\.|[^"\\])*)"', final_text):
+        try:
+            values.append(json.loads(f'"{token}"'))
+        except (ValueError, TypeError):
+            values.append(token)
+    return values
+
+
+def _error_is_quoted(error_text: str, final_text: str) -> bool:
+    """Whether the final message already quotes ``error_text``.
+
+    Exact substring is the common case. It misses the quote shapes a model
+    actually produces: a JSON-wrapped quote (``{"error": "..."}``) whose
+    value drops the ``Error: `` prefix and escapes its quotes, and a prose
+    quote that drops the prefix. So compare normalized forms too: the
+    full normalized error, and its prefix-stripped core. The core
+    substring match requires a core of at least 15 characters, so a
+    short generic core (``failed``) cannot suppress a report merely by
+    sharing a word with the final message; a JSON value that equals the
+    core exactly is a quote at any length, since equality is not a
+    coincidence.
+    """
+    if not error_text or not final_text:
+        return False
+    if error_text in final_text:
+        return True
+    norm_error = _normalize_for_quote_match(error_text)
+    norm_final = _normalize_for_quote_match(final_text)
+    if norm_error and norm_error in norm_final:
+        return True
+    core = _error_core(error_text)
+    if core and len(core) >= 15 and core in norm_final:
+        return True
+    for value in _json_string_values(final_text):
+        norm_value = _normalize_for_quote_match(value)
+        if not norm_value:
+            continue
+        if norm_value in (core, norm_error):
+            return True
+        if norm_error and norm_error in norm_value:
+            return True
+        if core and len(core) >= 15 and core in norm_value:
+            return True
+    return False
+
+
 def turn_error_reports(
     agent: MvgeAgent, since: int = 0, final_text: str = ""
 ) -> list[str]:
@@ -157,7 +252,10 @@ def turn_error_reports(
     An error counts as unrecovered when no successful spell result follows it
     in the slice: a later success means the turn recovered and the error is
     history, not the outcome. An error the final message already quotes is
-    skipped, so print mode never prints the same failure twice.
+    skipped, so print mode never prints the same failure twice. Quoting is
+    recognized in normalized form (see ``_error_is_quoted``): a JSON-wrapped
+    quote, a quote that drops the ``Error: `` prefix, and JSON-escaped or
+    whitespace-variant quotes all count as quotes.
 
     Returns [] when the agent exposes no readable transcript. A custom
     ``agent_factory`` may return an agent without the engine's accessors, and
@@ -184,9 +282,10 @@ def turn_error_reports(
             if not isinstance(item, dict) or item.get("type") != "text":
                 continue
             text = str(item.get("text", ""))
-            if not text or text in seen or text in final_text:
+            key = _error_dedup_key(text)
+            if not text or key in seen or _error_is_quoted(text, final_text):
                 continue
-            seen.add(text)
+            seen.add(key)
             reports.append(text)
     return reports
 
@@ -196,10 +295,10 @@ def turn_unrecovered_error_count(agent: MvgeAgent, since: int = 0) -> int:
 
     The same classification as ``turn_error_reports`` — an error counts
     as unrecovered when no successful spell result follows it in the
-    slice from ``since`` onward, distinct error texts only — but without
-    the ``final_text`` quote filter, so an unrecovered error the final
-    message already quotes still counts. The recovered-note gate uses
-    this count, not the printed reports: a quoted unrecovered error
+    slice from ``since`` onward, distinct normalized error cores only —
+    but without the ``final_text`` quote filter, so an unrecovered error
+    the final message already quotes still counts. The recovered-note gate
+    uses this count, not the printed reports: a quoted unrecovered error
     prints no report, yet the turn still ended in failure.
 
     Returns 0 when the agent exposes no readable transcript.
@@ -228,9 +327,10 @@ def turn_unrecovered_error_count(agent: MvgeAgent, since: int = 0) -> int:
             if not isinstance(item, dict) or item.get("type") != "text":
                 continue
             text = str(item.get("text", ""))
-            if not text or text in seen:
+            key = _error_dedup_key(text)
+            if not text or key in seen:
                 continue
-            seen.add(text)
+            seen.add(key)
             count += 1
     return count
 
@@ -242,9 +342,10 @@ def turn_recovered_error_count(
 
     The mirror of ``turn_error_reports`` for the recovered half: an error
     counts as recovered when a successful spell result follows it in the
-    slice from ``since`` onward. Distinct error texts only, mirroring the
-    ``seen`` deduplication there, and an error the final message already
-    quotes is skipped, so a model that already explained the recovery
+    slice from ``since`` onward. Distinct normalized error cores only,
+    mirroring the ``seen`` deduplication there, and an error the final
+    message already quotes — in normalized form, see ``_error_is_quoted``
+    — is skipped, so a model that already explained the recovery
     does not earn a redundant note.
 
     Call only when the turn has no unrecovered error; the count alone
@@ -276,9 +377,10 @@ def turn_recovered_error_count(
             if not isinstance(item, dict) or item.get("type") != "text":
                 continue
             text = str(item.get("text", ""))
-            if not text or text in seen or text in final_text:
+            key = _error_dedup_key(text)
+            if not text or key in seen or _error_is_quoted(text, final_text):
                 continue
-            seen.add(text)
+            seen.add(key)
             count += 1
     return count
 
