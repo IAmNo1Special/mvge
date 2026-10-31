@@ -173,16 +173,135 @@ async def test_install_rune_python_deps(tmp_path: Path) -> None:
     (tmp_path / "pyproject.toml").unlink()
     with (
         patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=tmp_path),
         patch("mvge.cli.commands.setup.install_python_dep_by_name") as mock_dep,
     ):
         mock_dep.return_value = (True, "Installed python dep pytest via uv")
         ok, msg = await install_rune_python_deps(tmp_path, manifest)
         assert ok is True
-        mock_dep.assert_called_once_with("pytest", dry_run=False)
+        mock_dep.assert_called_once_with("pytest", dry_run=False, env_project=tmp_path)
 
         mock_dep.return_value = (False, "Failed to install pytest")
         ok_fail, _ = await install_rune_python_deps(tmp_path, manifest)
         assert ok_fail is False
+
+
+@pytest.mark.asyncio
+async def test_install_python_dep_by_name_targets_shared_project(
+    tmp_path: Path,
+) -> None:
+    """A named dep must install into the shared extensions project, not cwd.
+
+    This is the bare-directory failure: a bare ``uv add <dep>`` needs a
+    pyproject.toml in the working directory, so ``mvge setup install``
+    from an empty directory fails outright, and from a project directory
+    it pollutes that project's manifest instead of the extensions env.
+    """
+    project_dir = tmp_path / "extensions"
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch(
+            "mvge.cli.commands.setup._run_streaming", return_value=(0, "")
+        ) as mock_run,
+    ):
+        ok, msg = await install_python_dep_by_name("cowsay", env_project=project_dir)
+    assert ok is True
+    assert "Installed python dep cowsay via uv" in msg
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args.args[0]
+    assert cmd == ["uv", "add", "--project", str(project_dir), "cowsay"]
+    manifest = project_dir / "pyproject.toml"
+    assert manifest.is_file()
+    assert "mvge-extensions" in manifest.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_install_rune_python_deps_targets_shared_project_by_name(
+    tmp_path: Path,
+) -> None:
+    """By-name rune deps must target the shared extensions project."""
+
+    manifest = RuneManifest(
+        name="demo",
+        version="1.0.0",
+        description="test",
+        python_deps=["cowsay"],
+    )
+    rune_dir = tmp_path / "demo-rune"
+    rune_dir.mkdir()
+    project_dir = tmp_path / "extensions"
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=project_dir),
+        patch(
+            "mvge.cli.commands.setup._run_streaming", return_value=(0, "")
+        ) as mock_run,
+    ):
+        ok, _ = await install_rune_python_deps(rune_dir, manifest)
+    assert ok is True
+    cmd = mock_run.call_args.args[0]
+    assert cmd == ["uv", "add", "--project", str(project_dir), "cowsay"]
+
+
+@pytest.mark.asyncio
+async def test_install_rune_python_deps_targets_shared_project_editable(
+    tmp_path: Path,
+) -> None:
+    """Editable rune installs must target the shared extensions project."""
+
+    manifest = RuneManifest(
+        name="demo",
+        version="1.0.0",
+        description="test",
+        python_deps=["cowsay"],
+    )
+    rune_dir = tmp_path / "demo-rune"
+    rune_dir.mkdir()
+    (rune_dir / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    project_dir = tmp_path / "extensions"
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=project_dir),
+        patch(
+            "mvge.cli.commands.setup._run_streaming", return_value=(0, "")
+        ) as mock_run,
+    ):
+        ok, _ = await install_rune_python_deps(rune_dir, manifest)
+    assert ok is True
+    cmd = mock_run.call_args.args[0]
+    assert cmd == [
+        "uv",
+        "add",
+        "--project",
+        str(project_dir),
+        "--editable",
+        str(rune_dir),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_install_rune_python_deps_dry_run_creates_no_project(
+    tmp_path: Path,
+) -> None:
+    """A dry run must not create the shared extensions project manifest."""
+
+    manifest = RuneManifest(
+        name="demo",
+        version="1.0.0",
+        description="test",
+        python_deps=["cowsay"],
+    )
+    rune_dir = tmp_path / "demo-rune"
+    rune_dir.mkdir()
+    project_dir = tmp_path / "extensions"
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.extensions_dir", return_value=project_dir),
+    ):
+        ok, msg = await install_rune_python_deps(rune_dir, manifest, dry_run=True)
+    assert ok is True
+    assert "--project" in msg
+    assert not (project_dir / "pyproject.toml").exists()
 
 
 def test_collect_rune_dirs(tmp_path: Path) -> None:
