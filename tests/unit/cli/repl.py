@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -429,3 +430,65 @@ class TestStreamRendererSpellMethods:
         assert renderer._spell_cast_line_open is False
         assert renderer._spell_cast_start_time is None
         assert renderer._tool_line_open is False
+
+
+class TestCtrlCAbortsBeforeCancelling:
+    """Ctrl-C on a running turn must fire the abort signal before
+    cancelling the task (the RPC precedent): cancelling alone leaves a
+    wait:false background child running to completion."""
+
+    @pytest.mark.asyncio
+    @patch("mvge.cli.commands.repl._create_agent")
+    @patch("mvge.cli.commands.repl.PromptSession")
+    async def test_sigint_aborts_agent_before_cancelling_task(
+        self,
+        mock_session_cls: MagicMock,
+        mock_create_agent: MagicMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        class FakeSignal:
+            SIGINT = 2
+
+            def signal(self, sig: int, handler: object) -> None:
+                captured["handler"] = handler
+
+        order: list[str] = []
+        run_started = asyncio.Event()
+
+        async def fake_run(text: str) -> None:
+            run_started.set()
+            try:
+                await asyncio.sleep(30.0)
+            except asyncio.CancelledError:
+                order.append("cancelled")
+                raise
+
+        mock_agent = AsyncMock()
+        mock_agent.on = MagicMock(return_value=lambda: None)
+        mock_agent.tome_id = "test-tome-id"
+        mock_agent._model_id = "fake/parent"
+        mock_agent.environment = MagicMock()
+        mock_agent.environment.diagnostics = []
+        mock_agent.runner = None
+        mock_agent.run = AsyncMock(side_effect=fake_run)
+        mock_agent.close = AsyncMock()
+        mock_agent.abort = MagicMock(side_effect=lambda: order.append("abort"))
+        mock_create_agent.return_value = mock_agent
+        mock_session_cls.side_effect = NoConsoleScreenBufferError()
+
+        inputs = iter(["hello", "/quit"])
+        monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+        with patch("mvge.cli.commands.repl.signal", FakeSignal()):
+            repl_task = asyncio.create_task(run_repl(api_key="test-key"))
+            await asyncio.wait_for(run_started.wait(), timeout=10.0)
+            assert "handler" in captured, "SIGINT handler was not installed"
+            handler = captured["handler"]
+            assert callable(handler)
+            handler(2, None)
+            await asyncio.wait_for(repl_task, timeout=10.0)
+
+        assert order == ["abort", "cancelled"]
+        mock_agent.abort.assert_called_once()

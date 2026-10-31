@@ -387,8 +387,13 @@ class TuiApp:
 
     def _handle_interrupt(self, event: Any) -> None:
         """Ctrl-C semantics, shared by the app-level and input-control
-        bindings: cancel a running turn or slash command, else exit."""
+        bindings: abort then cancel a running turn, cancel a slash
+        command, else exit. Aborting first matters: cancelling the turn
+        task alone never fires the parent turn's signal, so wait:false
+        background children would keep running to completion."""
         if self._task is not None and not self._task.done():
+            if hasattr(self._agent, "abort"):
+                self._agent.abort()
             self._task.cancel()
         elif self._slash_task is not None and not self._slash_task.done():
             self._slash_task.cancel()

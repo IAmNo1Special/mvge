@@ -733,6 +733,12 @@ async def run_repl(
 
         def _on_sigint(sig: int, frame: Any) -> None:
             if agent_task is not None and not agent_task.done():
+                # Abort before cancelling, as the RPC abort command does:
+                # cancelling the turn task alone never fires the parent
+                # turn's signal, so wait:false background children would
+                # keep running to completion.
+                if hasattr(agent, "abort"):
+                    agent.abort()
                 agent_task.cancel()
 
         if threading.current_thread() is threading.main_thread():
