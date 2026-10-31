@@ -354,6 +354,12 @@ class Mvge:
     ) -> None:
         self._trust_store = trust_store
         self._workspace_trust_status: WorkspaceTrustStatus | None = None
+        # Only an explicitly supplied caller_dir anchors the project: it
+        # is the summoned workspace for an embedded child (SubMvgeManager
+        # passes it), while the stack-inferred fallback below is just the
+        # calling module's directory and must never move the project off
+        # the process cwd for a directly constructed agent.
+        supplied_caller_dir = caller_dir
         resolved_caller_dir: Path | None = (
             caller_dir.resolve() if caller_dir is not None else None
         )
@@ -408,6 +414,9 @@ class Mvge:
             environment = MvgeEnvironment.resolve(
                 self._name,
                 config_dir=resolve_config_dir(self._name),
+                project_dir=(
+                    resolved_caller_dir if supplied_caller_dir is not None else None
+                ),
                 caller_dir=caller_dir,
                 extension_dir=extension_dir,
                 runes_paths=list(runes_paths) if runes_paths is not None else None,
@@ -738,6 +747,7 @@ class Mvge:
                 rune_layers=self._rune_layers,
                 environment=new_environment,
                 provider_registry=self._provider_registry,
+                cwd=str(self._effective_cwd()),
                 reload_callback=(
                     self._harness.reload if self._harness is not None else self.reload
                 ),
@@ -944,6 +954,18 @@ class Mvge:
         return resolve_config_dir(self._name)
 
     @property
+    def cwd(self) -> Path:
+        """The agent's effective working directory.
+
+        The summoned workspace for an embedded child, the supplied
+        environment's project_dir for a CLI/REPL/TUI agent, and the
+        process cwd for a directly constructed agent. This is what
+        SubMvgeManager reads when a child summons its own child with
+        workspace "inherit", so nesting never falls back to the host cwd.
+        """
+        return self._effective_cwd()
+
+    @property
     def environment(self) -> MvgeEnvironment:
         return self._environment
 
@@ -1104,6 +1126,7 @@ class Mvge:
                 environment=self._environment,
                 provider_registry=self._provider_registry,
                 runner=self._runner,
+                cwd=str(self._effective_cwd()),
                 reload_callback=(
                     self._harness.reload if self._harness is not None else self.reload
                 ),
@@ -1489,14 +1512,22 @@ class Mvge:
             project_root = self._runner.context.project_root
             config_manager = getattr(self, "_config_manager", None)
             configured = getattr(config_manager, "project_dir", None)
+            replace_kwargs: dict[str, Any] = {
+                "project_root": project_root,
+                "session_id": self._agent_tome.tome_id,
+                "tome_dir": str(self._tome_dir),
+                "model_id": self._model_id,
+            }
             if configured is not None:
                 project_root = str(Path(configured).resolve())
+                replace_kwargs["project_root"] = project_root
+                # cwd is part of the runner context, not a bystander: a
+                # rebind that only moved project_root left runes reading
+                # cwd (checkpoint capture) on the previous anchor.
+                replace_kwargs["cwd"] = project_root
             new_ctx = dataclasses.replace(
                 self._runner.context,
-                project_root=project_root,
-                session_id=self._agent_tome.tome_id,
-                tome_dir=str(self._tome_dir),
-                model_id=self._model_id,
+                **replace_kwargs,
             )
             self._runner.bind_context(new_ctx)
 

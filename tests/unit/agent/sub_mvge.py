@@ -1034,3 +1034,174 @@ async def test_summoned_child_reload_keeps_allowed_drops_ephemeral(
     finally:
         await _d1_drain(manager)
         await manager.kill_all()
+
+
+def _child_cwd_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path, SubMvgeManager]:
+    """A summoned-workspace setup with the host cwd somewhere else.
+
+    The host cwd (``host``) is deliberately not the summoned workspace
+    (``ws``): any value that still names ``host`` after a summon is the
+    leak, not the workspace.
+    """
+    host = tmp_path / "host"
+    host.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(host)
+    workspace = _d1_workspace(tmp_path)
+    manager = _d1_manager(tmp_path, workspace, monkeypatch)
+    return host, workspace, manager
+
+
+@pytest.mark.asyncio
+async def test_summoned_child_effective_cwd_is_summoned_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A summoned child's effective cwd is its summoned workspace, not
+    the host process cwd: config project_dir, runner context cwd and
+    project_root, and the persisted tome header must all name the
+    workspace, while the host cwd is untouched."""
+    host, workspace, manager = _child_cwd_workspace(tmp_path, monkeypatch)
+    expected = workspace.resolve()
+    try:
+        records = await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="hi", wait=False)]
+        )
+        assert records[0].workspace_path == workspace
+        child = manager._instances[records[0].sub_mvge_id]
+        assert child.cwd == expected
+        assert child.environment.config_manager.project_dir == expected
+        assert child.runner is not None
+        assert child.runner.context.cwd == str(expected)
+        assert child.runner.context.project_root == str(expected)
+        header = json.loads(records[0].tome_path.read_text().splitlines()[0])
+        assert header["cwd"] == str(expected)
+        assert Path.cwd() == host
+    finally:
+        await _d1_drain(manager)
+        await manager.kill_all()
+
+
+@pytest.mark.asyncio
+async def test_summoned_child_reload_keeps_summoned_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reloading a summoned child must not hand its runner context back
+    to the host cwd: the candidate lifecycle and rebind keep the
+    summoned workspace."""
+    _host, workspace, manager = _child_cwd_workspace(tmp_path, monkeypatch)
+    expected = workspace.resolve()
+    try:
+        records = await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="hi", wait=False)]
+        )
+        child = manager._instances[records[0].sub_mvge_id]
+        result = await child.reload()
+        assert result.ok
+        assert child.cwd == expected
+        assert child.runner is not None
+        assert child.runner.context.cwd == str(expected)
+        assert child.runner.context.project_root == str(expected)
+    finally:
+        await _d1_drain(manager)
+        await manager.kill_all()
+
+
+@pytest.mark.asyncio
+async def test_nested_summon_inherits_parent_effective_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child that summons its own child with workspace "inherit"
+    passes on its own effective workspace, not the host process cwd."""
+    _host, workspace, manager = _child_cwd_workspace(tmp_path, monkeypatch)
+    expected = workspace.resolve()
+    try:
+        records = await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="hi", wait=False)]
+        )
+        child = manager._instances[records[0].sub_mvge_id]
+        from mvge.provider.base import Realm
+        from mvge.provider.realms import realm_for_model_id
+        from mvge.provider.registry import RealmRegistry
+
+        registry = RealmRegistry()
+        registry.register_realm_factory(
+            realm_for_model_id("openrouter/free"),
+            lambda **kwargs: MagicMock(spec=Realm),
+        )
+        nested = SubMvgeManager(
+            parent_mvge=child,
+            shared_realm_registry=registry,
+            subsessions_dir=tmp_path / "nested-subsessions",
+        )
+        nested_records = await nested.summon(
+            [SubMvgeSpec(role="worker", prompt="hi", wait=False)]
+        )
+        assert nested_records[0].workspace_path == expected
+        grandchild = nested._instances[nested_records[0].sub_mvge_id]
+        assert grandchild.cwd == expected
+    finally:
+        await _d1_drain(manager)
+        await manager.kill_all()
+
+
+def test_standalone_agent_cwd_unchanged_without_caller_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: a directly constructed agent with no caller_dir and
+    no supplied environment still anchors on the process cwd, exactly
+    as before the child-workspace fix."""
+    host = tmp_path / "host"
+    host.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(host)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    config_dir = tmp_path / "global" / "agents" / "d1-child"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "SYSTEM.md").write_text("# D1 child\n", encoding="utf-8")
+    from mvge.provider.base import Realm
+    from mvge.provider.realms import realm_for_model_id
+    from mvge.provider.registry import RealmRegistry
+
+    registry = RealmRegistry()
+    registry.register_realm_factory(
+        realm_for_model_id("openrouter/free"),
+        lambda **kwargs: MagicMock(spec=Realm),
+    )
+    agent = Mvge(
+        name="d1-child",
+        model_id="openrouter/free",
+        shared_realm_registry=registry,
+    )
+    assert agent.cwd == host.resolve()
+    assert agent.environment.config_manager.project_dir == host.resolve()
+
+
+def test_environment_supplied_project_dir_preserved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression: the CLI/REPL/TUI route, which resolves its
+    environment up front with an explicit project_dir, keeps that
+    anchor when the agent is built from the supplied environment."""
+    host = tmp_path / "host"
+    host.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(host)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    config_dir = tmp_path / "global" / "agents" / "d1-child"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "SYSTEM.md").write_text("# D1 child\n", encoding="utf-8")
+    from mvge.agent.environment import MvgeEnvironment, resolve_config_dir
+
+    workspace = tmp_path / "ws"
+    workspace.mkdir(parents=True, exist_ok=True)
+    env = MvgeEnvironment.resolve(
+        "d1-child",
+        config_dir=resolve_config_dir("d1-child"),
+        project_dir=workspace,
+    )
+    agent = Mvge(name="d1-child", environment=env)
+    assert agent.cwd == workspace.resolve()
+    assert agent.environment.config_manager.project_dir == workspace.resolve()

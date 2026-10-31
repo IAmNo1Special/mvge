@@ -771,12 +771,20 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             if dataclasses.is_dataclass(runner.context) and not isinstance(
                 runner.context, type
             ):
+                replace_kwargs: dict[str, Any] = {
+                    "project_root": project_root,
+                    "session_id": self._tome.tome_id,
+                    "tome_dir": str(self._tome_dir) if self._tome_dir else "",
+                    "model_id": self._model_id or "",
+                }
+                if configured is not None:
+                    # cwd is part of the runner context, not a bystander:
+                    # a rebind that only moved project_root left runes
+                    # reading cwd (checkpoint capture) on the old anchor.
+                    replace_kwargs["cwd"] = project_root
                 new_ctx = dataclasses.replace(
                     runner.context,
-                    project_root=project_root,
-                    session_id=self._tome.tome_id,
-                    tome_dir=str(self._tome_dir) if self._tome_dir else "",
-                    model_id=self._model_id or "",
+                    **replace_kwargs,
                 )
                 runner.bind_context(new_ctx)
 
@@ -1586,6 +1594,12 @@ class MvgeHarness(TurnDriver, SessionLifecycle, AgentConfiguration):
             project_root=self._rune_context_value("project_root"),
             tome_id=self._rune_context_value("session_id"),
             agent_name=self._rune_context_value("agent_name"),
+            # Spells resolve a "." cwd against workspace_root, not
+            # project_root: leaving it unset sent every spell's "."
+            # to the host process cwd, whatever the runner context said.
+            workspace_root=(
+                Path(root) if (root := self._workspace_root()) is not None else None
+            ),
         )
 
         try:
