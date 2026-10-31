@@ -763,6 +763,11 @@ def test_run_streaming_kills_child_on_timeout(tmp_path: Path) -> None:
             os.kill(pid, 0)
         except ProcessLookupError:
             break
+        except OSError as exc:
+            # Windows reports a dead process as WinError 87, not ESRCH.
+            if platform.system() == "Windows" and getattr(exc, "winerror", None) == 87:
+                break
+            raise
         if time.monotonic() > deadline:
             raise AssertionError("child still alive after timeout kill")
         time.sleep(0.05)
