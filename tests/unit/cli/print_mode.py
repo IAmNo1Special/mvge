@@ -104,6 +104,102 @@ async def test_run_print_mode_does_not_duplicate_quoted_error(
 
 
 @pytest.mark.asyncio
+async def test_run_print_mode_does_not_duplicate_json_wrapped_quoted_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A JSON-wrapped quote that drops the "Error: " prefix still dedups."""
+    agent = _turn_agent(
+        '{"error": "Validation error: Forbidden AST node: import os"}',
+        [_error_result()],
+    )
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_does_not_duplicate_json_escaped_quoted_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A JSON-wrapped quote with escaped quotes still dedups."""
+    quoted_error = 'Error: Import of module "os" is forbidden.'
+    agent = _turn_agent(
+        '{"error": "Import of module \\"os\\" is forbidden."}',
+        [_error_result_with(quoted_error)],
+    )
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Import of module") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_does_not_duplicate_prefix_dropped_quoted_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A prose quote that drops the "Error: " prefix still dedups."""
+    agent = _turn_agent(
+        "The call was rejected: Validation error: Forbidden AST node: import os",
+        [_error_result()],
+    )
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_mixed_json_wrapped_quoted_terminal_error_gains_no_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Mixed turn ending in a JSON-wrapped quoted terminal error: quote alone."""
+    agent = _turn_agent(
+        '{"error": "Validation error: Forbidden AST node: import os"}',
+        [
+            _error_result_with(SEARCH_ERROR_1, "c1"),
+            _success_result(),
+            _error_result_with(ERROR_TEXT, "c3"),
+        ],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+    assert "successful retry" not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_recovered_turn_json_explained_gains_no_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovery the model already explained JSON-wrapped gets no note."""
+    agent = _turn_agent(
+        '{"error": "Validation error: Forbidden AST node: import os"}',
+        [_error_result(), _success_result()],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
 async def test_run_print_mode_skips_error_after_recovery(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
