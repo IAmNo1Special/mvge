@@ -59,6 +59,7 @@ DEFAULT_PROFILES: dict[str, dict[str, Any]] = {
             "lsp-bridge",
             "checkpoint-bridge",
             "submvge-bridge",
+            "codeact-rune",
         ],
     },
     "autonomous": {
