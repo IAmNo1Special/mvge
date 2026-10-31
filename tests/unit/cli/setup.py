@@ -507,12 +507,16 @@ class _FakeStdin:
     def __init__(self, *, tty: bool, line: str) -> None:
         self._tty = tty
         self._line = line
+        self.seekable_result = True
 
     def isatty(self) -> bool:
         return self._tty
 
     def readline(self) -> str:
         return self._line
+
+    def seekable(self) -> bool:
+        return self.seekable_result
 
 
 def _missing_deps_rune() -> tuple[RuneManifest, Path]:
@@ -602,6 +606,44 @@ def test_install_missing_deps_piped_y_proceeds(
         ),
     ):
         assert install_missing_deps(yes=False, dry_run=False) == 0
+
+
+def test_install_missing_deps_unselectable_seekable_stdin_reads_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A seekable stdin without a fileno (e.g. CliRunner) is read, not refused."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=False, line="n\n"))
+
+    def _no_select(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("no fileno")
+
+    monkeypatch.setattr(select, "select", _no_select)
+    with patch(
+        "mvge.cli.commands.setup.install_package",
+        side_effect=AssertionError("install must not run"),
+    ):
+        assert install_missing_deps(yes=False, dry_run=False) == 0
+    assert "Aborted" in console.text
+
+
+def test_install_missing_deps_unselectable_non_seekable_stdin_refuses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-seekable stdin without select support refuses fast."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    fake = _FakeStdin(tty=False, line="y\n")
+    fake.seekable_result = False
+    monkeypatch.setattr(sys, "stdin", fake)
+
+    def _no_select(*args: Any, **kwargs: Any) -> Any:
+        raise OSError("no fileno")
+
+    monkeypatch.setattr(select, "select", _no_select)
+    assert install_missing_deps(yes=False, dry_run=False) == 1
+    assert "--yes" in console.text
 
 
 def test_install_missing_deps_tty_eof_aborts_cleanly(

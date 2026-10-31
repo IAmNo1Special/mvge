@@ -184,14 +184,25 @@ def _read_non_tty_confirmation() -> str | None:
 
     Never blocks: a zero-timeout ``select`` decides whether a line can be
     read right now. Returns ``None`` when nothing is ready, stdin is at
-    EOF, or ``select`` on stdin is unavailable (e.g. non-POSIX platforms
-    or a stdin without a fileno) — the caller refuses fast in all of
-    those cases instead of waiting on an unanswered prompt.
+    EOF, or ``select`` on stdin is unavailable for a non-seekable stream
+    (e.g. a non-POSIX pipe) — the caller refuses fast in all of those
+    cases instead of waiting on an unanswered prompt. A seekable stream
+    without a selectable fileno (e.g. an in-memory test stdin) is read
+    directly, since readline cannot block on it.
     """
     try:
         readable, _, _ = select.select([sys.stdin], [], [], 0)
     except (OSError, ValueError, TypeError):
-        return None
+        # No selectable fileno (e.g. an in-memory test stdin): a seekable
+        # stream cannot block on readline, so it is safe to read directly.
+        # A non-seekable stream keeps the refuse-fast fallback below.
+        try:
+            seekable = sys.stdin.seekable()
+        except (AttributeError, OSError, ValueError):
+            return None
+        if not seekable:
+            return None
+        readable = [sys.stdin]
     if not readable:
         return None
     try:
