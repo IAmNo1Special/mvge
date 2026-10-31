@@ -401,7 +401,7 @@ wheels = [
 
 [[package]]
 name = "mvge"
-version = "0.2.37"
+version = "0.2.39"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
