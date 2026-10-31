@@ -1406,49 +1406,74 @@ class Mvge:
                 realm=realm, api_key_env=api_key_env_for_realm(realm)
             )
 
-        await self._load_runes()
+        try:
+            await self._load_runes()
 
-        final_prompt = await self._build_system_prompt_async()
-        self._model, self._realm = self._provider_registry.resolve(
-            self._model_id, self._api_key, self._provider_name
-        )
-        active_spells = [s.name for s in self._build_spells()]
-        if self._runner is not None:
-            active_spells.extend(
-                [s.name for s in self._runner.get_all_registered_spells()]
+            final_prompt = await self._build_system_prompt_async()
+            self._model, self._realm = self._provider_registry.resolve(
+                self._model_id, self._api_key, self._provider_name
             )
-        active_spells = list(dict.fromkeys(active_spells))
+            active_spells = [s.name for s in self._build_spells()]
+            if self._runner is not None:
+                active_spells.extend(
+                    [s.name for s in self._runner.get_all_registered_spells()]
+                )
+            active_spells = list(dict.fromkeys(active_spells))
 
-        model_id = self._model.id if self._model is not None else self._model_id
-        self._agent_tome = await MvgeTome.open_or_create(
-            self._tome_factory,
-            self._tome_resume,
-            # Record the agent's project directory, not the host process cwd:
-            # embedders (e.g. the GUI) run the engine in-process with a
-            # project path that differs from os.getcwd(). The project filter
-            # in session listings matches on this value.
-            cwd=self._effective_cwd(),
-            runner=self._runner,
-            model=model_id,
-            contemplation_level=str(self._contemplation_level),
-            spells=active_spells,
-            strict=self._strict_resume,
-            force_fork=self._force_fork_resume,
-        )
-
-        self._rebind_runner_context()
-
-        if (
-            self._agent_tome is not None
-            and self._agent_tome.compatibility_report is not None
-        ):
-            self._resume_diagnostics = list(
-                self._agent_tome.compatibility_report.diagnostics
+            model_id = self._model.id if self._model is not None else self._model_id
+            self._agent_tome = await MvgeTome.open_or_create(
+                self._tome_factory,
+                self._tome_resume,
+                # Record the agent's project directory, not the host process cwd:
+                # embedders (e.g. the GUI) run the engine in-process with a
+                # project path that differs from os.getcwd(). The project filter
+                # in session listings matches on this value.
+                cwd=self._effective_cwd(),
+                runner=self._runner,
+                model=model_id,
+                contemplation_level=str(self._contemplation_level),
+                spells=active_spells,
+                strict=self._strict_resume,
+                force_fork=self._force_fork_resume,
             )
 
-        self._wire_runtime(final_prompt)
-        self._initialized = True
-        await self._check_workspace_trust()
+            self._rebind_runner_context()
+
+            if (
+                self._agent_tome is not None
+                and self._agent_tome.compatibility_report is not None
+            ):
+                self._resume_diagnostics = list(
+                    self._agent_tome.compatibility_report.diagnostics
+                )
+
+            self._wire_runtime(final_prompt)
+            self._initialized = True
+            await self._check_workspace_trust()
+        except Exception:
+            # _load_runes() starts the hot-reload watchers before the Realm
+            # resolve that can fail (e.g. NoRealmRegisteredError on a
+            # Realm-less first run). Without this cleanup the failed
+            # agent's watchers leak: the caller never receives the agent,
+            # so nothing ever closes them, and the CLI's bootstrap
+            # self-heal then installs the missing Realm's rune into the
+            # still-watched extensions directory. On watchdog 7 that
+            # in-place tree copy races the observer's _recursive_simulate
+            # walk, raising KeyError on a directory created between its
+            # registration and simulation walks, killing the singleton
+            # inotify thread and silently disabling hot reload for the
+            # rest of the process. Stop what was started; the original
+            # error is the one the caller must see, so a shutdown failure
+            # is logged, not substituted for it.
+            if self._rune_lifecycle is not None:
+                try:
+                    await self._rune_lifecycle.shutdown()
+                except Exception:
+                    logger.warning(
+                        "Failed to shut down rune watchers after failed initialize",
+                        exc_info=True,
+                    )
+            raise
 
     async def _check_workspace_trust(self) -> None:
         """Verify workspace trust status, emitting WORKSPACE_UNTRUSTED.

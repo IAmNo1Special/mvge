@@ -15,7 +15,15 @@ dependencies = [
     "pyyaml>=6.0",
     "rich>=13.0",
     "typer>=0.27.1",
-    "watchdog>=6.0.0",
+    # Capped below 7: watchdog 7 rewrote its inotify layer and its
+    # _recursive_simulate walk raises KeyError on a directory created
+    # between the registration and simulation walks (rerun 9, Group C:
+    # KeyError on a rune's tests/ dir during install, killing the
+    # singleton inotify thread and silently disabling hot reload).
+    # Watchdog 6 registers each directory before simulating its files
+    # and does not hit this race. Lift the cap once upstream fixes
+    # _recursive_simulate to tolerate directories it has not registered.
+    "watchdog>=6.0.0,<7",
 ]
 
 [project.scripts]
