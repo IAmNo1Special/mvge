@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.32] - 2026-10-31
+
+
+### Bug Fixes
+
+- **cli:** suppress recovered-turn note when a turn ends in an unrecovered error (0caab18)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (b28fc6c)
+
+- **release:** v0.2.32 (a49ba5c)
+
+
 ## [0.2.31] - 2026-10-31
 
 
