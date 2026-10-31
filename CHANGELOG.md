@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.31] - 2026-10-31
+
+
+### Bug Fixes
+
+- **cli:** bound and surface mvge setup install silent waits (b76518e)
+
+- **runes:** name the rune in sigil timeout and exception diagnostics (27cbe81)
+
+- **cli:** read seekable stdin when select has no fileno (f7458d4)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (38f4fcb)
+
+- **release:** v0.2.31 (5cd9bd8)
+
+
+### Tests
+
+- **cli:** treat Windows WinError 87 as dead process in streaming kill probe (63f7fbe)
+
+
 ## [0.2.30] - 2026-10-31
 
 
