@@ -574,9 +574,9 @@ class StreamRenderer:
                 self._markdown_buffer += pending
                 self._ensure_started()
                 self._sink.stream_narration(pending, self._get_full_md())
-            if not self._narration_finalized:
-                self._sink.finalize_narration()
-                self._narration_finalized = True
+        if not self._narration_finalized:
+            self._sink.finalize_narration()
+            self._narration_finalized = True
         if self._started:
             self._sink.write("\n")
         self._started = False
