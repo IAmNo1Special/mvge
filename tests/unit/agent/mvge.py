@@ -649,6 +649,101 @@ class TestActiveSpellsDirRecording:
         assert agent._environment.active_spells_dir is None
 
 
+class TestProjectSpellsAnchor:
+    """Project spells resolve against the named project, never the ambient cwd.
+
+    Follow-up to rerun 10: ``_discover_spells`` read ``Path.cwd() /
+    ".agents" / "spells"`` unconditionally, so a project named through an
+    explicit caller_dir or a supplied environment still picked up spells
+    from wherever the process happened to be running, and missed its own
+    project's spells when run from elsewhere. Pi anchors cwd once at
+    startup and carries it explicitly (``AgentSessionConfig.cwd``,
+    ``ResourceLoader`` rooted at that cwd, never re-reading
+    ``process.cwd()``); dsh does the same in the other direction, refusing
+    a cwd default for its session root precisely because a later cwd
+    change would scatter one backend across roots. Mvge's equivalent of
+    that anchored value is the config manager's project_dir, which is
+    what ``_effective_cwd`` already returns for the running agent.
+    """
+
+    def _write_spell(self, spells_dir: Path, name: str) -> None:
+        spells_dir.mkdir(parents=True, exist_ok=True)
+        (spells_dir / f"{name}.py").write_text(
+            f"def {name}(value: str) -> str:\n    '''Return the value.'''\n"
+            f"    return value\n",
+            encoding="utf-8",
+        )
+
+    def _isolate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+
+    def test_explicit_caller_project_found_from_other_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate(tmp_path, monkeypatch)
+        project = tmp_path / "project"
+        self._write_spell(project / ".agents" / "spells", "proj_spell")
+        other = tmp_path / "other"
+        self._write_spell(other / ".agents" / "spells", "leak_spell")
+        monkeypatch.chdir(other)
+
+        agent = Mvge(api_key="k", caller_dir=project, trust_store=_TrustedStore())
+
+        assert [s.name for s in agent.spells] == ["proj_spell"]
+        assert agent._active_spells_dir == project / ".agents" / "spells"
+
+    def test_supplied_environment_project_wins_over_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate(tmp_path, monkeypatch)
+        project = tmp_path / "project"
+        self._write_spell(project / ".agents" / "spells", "proj_spell")
+        other = tmp_path / "other"
+        self._write_spell(other / ".agents" / "spells", "leak_spell")
+        monkeypatch.chdir(other)
+        from mvge.agent.environment import resolve_config_dir
+
+        env = MvgeEnvironment.resolve(
+            "discover-probe",
+            config_dir=resolve_config_dir("discover-probe"),
+            project_dir=project,
+        )
+
+        agent = Mvge(api_key="k", environment=env, trust_store=_TrustedStore())
+
+        assert [s.name for s in agent.spells] == ["proj_spell"]
+        assert agent._active_spells_dir == project / ".agents" / "spells"
+
+    def test_named_project_without_spells_does_not_fall_back_to_cwd(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate(tmp_path, monkeypatch)
+        project = tmp_path / "project"
+        project.mkdir()
+        other = tmp_path / "other"
+        self._write_spell(other / ".agents" / "spells", "leak_spell")
+        monkeypatch.chdir(other)
+
+        agent = Mvge(api_key="k", caller_dir=project, trust_store=_TrustedStore())
+
+        assert [s.name for s in agent.spells] == []
+        assert agent._active_spells_dir is None
+
+    def test_no_named_project_invoked_from_inside_project_still_works(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate(tmp_path, monkeypatch)
+        project = tmp_path / "project"
+        self._write_spell(project / ".agents" / "spells", "proj_spell")
+        monkeypatch.chdir(project)
+
+        agent = Mvge(api_key="k", trust_store=_TrustedStore())
+
+        assert [s.name for s in agent.spells] == ["proj_spell"]
+        assert agent._active_spells_dir == project / ".agents" / "spells"
+
+
 @pytest.mark.asyncio
 async def test_initialize_records_project_dir_as_tome_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
