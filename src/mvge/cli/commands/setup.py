@@ -19,8 +19,9 @@ from mvge.agent.agent_name import validate_agent_name
 from mvge.cli.agent_name import resolve_agent_name
 from mvge.cli.console import format_error, get_console
 from mvge.core.constants import DEFAULT_AGENT_NAME
-from mvge.core.layers import resolve_rune_paths
+from mvge.core.layers import extensions_dir, resolve_rune_paths
 from mvge.runes.catalog import DEFAULT_MARKETPLACE_URL
+from mvge.runes.deps import ensure_extensions_project
 from mvge.runes.loader import check_python_dep_installed
 from mvge.runes.manifest import load_manifest
 from mvge.runes.types import RuneManifest
@@ -266,12 +267,22 @@ def _has_build_config(rune_dir: Path) -> bool:
 
 
 async def install_python_dep_by_name(
-    dep: str, dry_run: bool = False
+    dep: str, dry_run: bool = False, env_project: Path | None = None
 ) -> tuple[bool, str]:
-    """Install a single declared Python dependency by name via uv add."""
+    """Install a single declared Python dependency by name via uv add.
+
+    When ``env_project`` is given, the dependency is added to that
+    project's manifest (``uv add --project``) instead of the working
+    directory's project. ``setup install`` always passes the shared
+    extensions project, so the install works from any directory and
+    never mutates whatever project the user happened to invoke from.
+    """
     if not shutil.which("uv"):
         return False, "uv not found on PATH"
-    cmd = ["uv", "add", dep]
+    cmd = ["uv", "add"]
+    if env_project is not None:
+        cmd += ["--project", str(env_project)]
+    cmd.append(dep)
     console.print(
         f"Installing python dep {dep} via '{' '.join(cmd)}' (timeout 600s)..."
     )
@@ -279,6 +290,8 @@ async def install_python_dep_by_name(
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
+    if env_project is not None:
+        ensure_extensions_project(env_project)
     try:
         returncode, tail = await asyncio.to_thread(_run_streaming, cmd, 600)
         if returncode == 0:
@@ -291,9 +304,19 @@ async def install_python_dep_by_name(
         return False, f"uv add {dep} error: {e}"
 
 
-async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
-    """Editable-install a rune directory via uv add --editable."""
-    cmd = ["uv", "add", "--editable", str(rune_dir)]
+async def _run_uv_editable(
+    rune_dir: Path, dry_run: bool = False, env_project: Path | None = None
+) -> tuple[bool, str]:
+    """Editable-install a rune directory via uv add --editable.
+
+    When ``env_project`` is given, the editable install targets that
+    project (``uv add --project``) instead of the working directory's
+    project; see :func:`install_python_dep_by_name`.
+    """
+    cmd = ["uv", "add"]
+    if env_project is not None:
+        cmd += ["--project", str(env_project)]
+    cmd += ["--editable", str(rune_dir)]
     console.print(
         f"Installing rune {rune_dir.name} via '{' '.join(cmd)}' (timeout 600s)..."
     )
@@ -301,6 +324,8 @@ async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool,
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
+    if env_project is not None:
+        ensure_extensions_project(env_project)
     try:
         returncode, tail = await asyncio.to_thread(_run_streaming, cmd, 600)
         if returncode == 0:
@@ -326,19 +351,30 @@ async def install_rune_python_deps(
     When the rune directory ships a build config (``pyproject.toml`` /
     ``setup.py``) we fall back to an editable install of the directory,
     which also covers runes like heal-my-goap that ship no package.
+
+    Both paths target the shared extensions project
+    (:func:`mvge.core.layers.extensions_dir`), never the working
+    directory's project. That is the one-environment design in
+    :mod:`mvge.runes.deps`: a bare ``uv add`` fails from a directory
+    with no project, and from a project directory it would pollute that
+    project's manifest with dependencies the rune loader never looks
+    for there.
     """
     if not shutil.which("uv"):
         return False, "uv not found on PATH"
 
+    env_project = extensions_dir()
     deps = list(manifest.python_deps) if manifest is not None else []
     if _has_build_config(rune_dir) or not deps:
         # Packaged rune (has build config) or no declared deps by name:
         # fall back to an editable install of the rune directory.
-        return await _run_uv_editable(rune_dir, dry_run)
+        return await _run_uv_editable(rune_dir, dry_run, env_project=env_project)
 
     results: list[tuple[bool, str]] = []
     for dep in deps:
-        ok, msg = await install_python_dep_by_name(dep, dry_run=dry_run)
+        ok, msg = await install_python_dep_by_name(
+            dep, dry_run=dry_run, env_project=env_project
+        )
         results.append((ok, msg))
     failed = [r for r in results if not r[0]]
     if failed:

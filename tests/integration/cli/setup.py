@@ -154,7 +154,8 @@ def test_install_rune_python_deps_dry_run() -> None:
             install_rune_python_deps(Path("/tmp/rune"), None, dry_run=True)
         )
         assert success is True
-        assert "uv add --editable" in msg
+        assert "uv add --project" in msg
+        assert "--editable" in msg
 
 
 def test_install_rune_python_deps_by_name_without_build_config() -> None:
@@ -179,7 +180,8 @@ def test_install_rune_python_deps_by_name_without_build_config() -> None:
             install_rune_python_deps(rune_dir, manifest, dry_run=True)
         )
         assert success is True
-        assert "uv add heal_my_goap" in msg
+        assert "uv add --project" in msg
+        assert "heal_my_goap" in msg
 
 
 def test_install_rune_python_deps_editable_when_build_config_present() -> None:
@@ -205,7 +207,8 @@ def test_install_rune_python_deps_editable_when_build_config_present() -> None:
             install_rune_python_deps(rune_dir, manifest, dry_run=True)
         )
         assert success is True
-        assert "uv add --editable" in msg
+        assert "uv add --project" in msg
+        assert "--editable" in msg
 
 
 def test_install_package_dry_run() -> None:
@@ -351,7 +354,8 @@ def test_setup_install_command_dry_run_python() -> None:
     ):
         result = runner.invoke(app, ["setup", "install", "--dry-run", "--yes"])
         assert result.exit_code == 0
-        assert "uv add heal_my_goap" in result.output
+        assert "uv add --project" in result.output
+        assert "heal_my_goap" in result.output
 
 
 def test_setup_install_command_yes_skips_prompt() -> None:
