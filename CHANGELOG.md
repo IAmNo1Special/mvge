@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.28] - 2026-10-31
+
+
+### Bug Fixes
+
+- **profiles:** include codeact-rune in coding profile (fde6eda)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (2b4989c)
+
+- **release:** v0.2.28 (8067086)
+
+
 ## [0.2.27] - 2026-10-31
 
 
