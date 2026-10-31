@@ -40,6 +40,40 @@ def _error_result() -> SpellResultMessage:
     )
 
 
+def _error_result_with(text: str, cast_id: str = "c1") -> SpellResultMessage:
+    return SpellResultMessage(
+        spell_cast_id=cast_id,
+        spell_name="execute_python",
+        content=[{"type": "text", "text": text}],
+        is_error=True,
+    )
+
+
+def _success_result() -> SpellResultMessage:
+    return SpellResultMessage(
+        spell_cast_id="c2",
+        spell_name="execute_python",
+        content=[{"type": "text", "text": "1"}],
+        is_error=False,
+    )
+
+
+NOTE_1 = (
+    "Note: 1 earlier attempt(s) in this turn did not succeed; "
+    "the answer above reflects the successful retry."
+)
+NOTE_2 = (
+    "Note: 2 earlier attempt(s) in this turn did not succeed; "
+    "the answer above reflects the successful retry."
+)
+NOTE_MARKER = "earlier attempt(s) in this turn did not succeed"
+
+
+def _flat(out: str) -> str:
+    """Collapse Rich console wrapping so exact note wording is checkable."""
+    return " ".join(out.split())
+
+
 @pytest.mark.asyncio
 async def test_run_print_mode_renders_unrecovered_spell_error(
     capsys: pytest.CaptureFixture[str],
@@ -112,6 +146,176 @@ async def test_run_print_mode_renders_terminating_error_once(
     assert code == 0
     captured = capsys.readouterr()
     assert captured.out.count("Forbidden AST node: import os") == 1
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_recovered_turn_gains_note_not_error_text(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovered bare answer gains the neutral note, not the error text."""
+    agent = _turn_agent("1", [_error_result(), _success_result()])
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert NOTE_1 in _flat(captured.out)
+    assert "Forbidden AST node: import os" not in captured.out
+    assert "blocked" not in captured.out.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_recovered_turn_explained_by_model_gains_no_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovery the model already explained gets no redundant note."""
+    agent = _turn_agent(
+        f"The first call failed: {ERROR_TEXT}",
+        [_error_result(), _success_result()],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_unrecovered_turn_reports_without_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An unrecovered turn prints the full report and no note."""
+    agent = _turn_agent("I can't run that code", [_error_result()])
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Forbidden AST node: import os" in captured.out
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_clean_turn_gains_nothing(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A clean turn prints neither report nor note."""
+    agent = _turn_agent("1", [_success_result()])
+
+    code = await _run_print_mode(agent, ["Compute something"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert "Forbidden AST node: import os" not in captured.out
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_multiple_recovered_errors_collapse_to_one_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Two recovered errors produce one counted note, not two lines."""
+    second_error = _error_result_with(
+        "Error: Validation error: Forbidden AST node: import sys", "c2"
+    )
+    agent = _turn_agent("1", [_error_result(), second_error, _success_result()])
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert NOTE_2 in _flat(captured.out)
+    assert _flat(captured.out).count(NOTE_MARKER) == 1
+    assert "Forbidden AST node: import os" not in captured.out
+    assert "Forbidden AST node: import sys" not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_mixed_turn_reports_without_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovered error plus a later unrecovered error prints report only."""
+    later_error = _error_result_with(
+        "Error: Validation error: Forbidden AST node: import subprocess", "c3"
+    )
+    agent = _turn_agent(
+        "I can't run that code",
+        [_error_result(), _success_result(), later_error],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "Forbidden AST node: import subprocess" in captured.out
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_terminating_error_reports_without_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A terminating error with no later success is unrecovered, not noted."""
+    agent = MagicMock()
+    agent.workspace_trust_status = WorkspaceTrustStatus.TRUSTED
+    agent._state = SimpleNamespace(invocations=[])
+    error = _error_result()
+    error.terminate = True
+
+    async def _run(prompt: str) -> SpellResultMessage:
+        agent._state.invocations.append(error)
+        return error
+
+    agent.run = _run
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_recovered_execution_error_gains_neutral_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovered execution error gains the neutral note, never a cause claim."""
+    exec_error = _error_result_with(
+        "Error: Traceback (most recent call last): ZeroDivisionError: division by zero"
+    )
+    agent = _turn_agent("1", [exec_error, _success_result()])
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert NOTE_1 in _flat(captured.out)
+    assert "ZeroDivisionError" not in captured.out
+    assert "blocked" not in captured.out.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_recovered_denial_shaped_error_gains_neutral_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A recovered denial-shaped error gains the neutral note, never a cause claim."""
+    denial_error = _error_result_with("Error: The Summoner declined this spell cast.")
+    agent = _turn_agent("1", [denial_error, _success_result()])
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert "1" in captured.out
+    assert NOTE_1 in _flat(captured.out)
+    assert "declined this spell cast" not in captured.out
+    assert "blocked" not in captured.out.lower()
 
 
 @pytest.mark.asyncio

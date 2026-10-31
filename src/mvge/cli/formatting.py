@@ -191,6 +191,51 @@ def turn_error_reports(
     return reports
 
 
+def turn_recovered_error_count(
+    agent: MvgeAgent, since: int = 0, final_text: str = ""
+) -> int:
+    """Count this turn's recovered spell errors, minus quoted ones.
+
+    The mirror of ``turn_error_reports`` for the recovered half: an error
+    counts as recovered when a successful spell result follows it in the
+    slice from ``since`` onward. Distinct error texts only, mirroring the
+    ``seen`` deduplication there, and an error the final message already
+    quotes is skipped, so a model that already explained the recovery
+    does not earn a redundant note.
+
+    Returns 0 when the agent exposes no readable transcript. The count
+    carries no error text and no cause: it is true for a validation
+    failure, an execution error, and a denial-shaped error alike, and
+    the caller must not attach a cause claim to it.
+    """
+    state = getattr(agent, "_state", None)
+    invocations = getattr(state, "invocations", None)
+    if not isinstance(invocations, list):
+        return 0
+    turn = invocations[since:]
+    seen: set[str] = set()
+    count = 0
+    for index, invocation in enumerate(turn):
+        if not isinstance(invocation, SpellResultMessage):
+            continue
+        if not invocation.is_error:
+            continue
+        if not any(
+            isinstance(later, SpellResultMessage) and not later.is_error
+            for later in turn[index + 1 :]
+        ):
+            continue
+        for item in invocation.content or []:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = str(item.get("text", ""))
+            if not text or text in seen or text in final_text:
+                continue
+            seen.add(text)
+            count += 1
+    return count
+
+
 def format_cwd() -> str:
     """Return formatted current working directory relative to user home."""
     home = Path.home()
