@@ -95,6 +95,13 @@ def compute_project_agents_digest(project_root: Path | str) -> str:
     Walks {project_root}/.agents/extensions/ and {project_root}/.agents/spells/
     in deterministic sorted relative-path order.
     Returns 'sha256:empty' if no executable files exist in those directories.
+
+    Bytecode caches are excluded: importing a spell or rune writes
+    ``__pycache__/*.pyc`` next to its source, so hashing those derived
+    artifacts would make a first load invalidate its own trust record on
+    the next load. Caches are never executed on their own (discovery loads
+    ``.py`` sources), so excluding them does not weaken the check: any
+    genuine source edit, addition, or removal still changes the digest.
     """
     root = canonicalize_workspace_path(project_root)
     scanned_dirs = [
@@ -107,9 +114,13 @@ def compute_project_agents_digest(project_root: Path | str) -> str:
         if not sdir.is_dir():
             continue
         for child in sdir.rglob("*"):
-            if child.is_file():
-                rel_posix = child.relative_to(root).as_posix()
-                files_to_hash.append((rel_posix, child))
+            if not child.is_file():
+                continue
+            rel_parts = child.relative_to(root).parts
+            if "__pycache__" in rel_parts or child.suffix in {".pyc", ".pyo"}:
+                continue
+            rel_posix = child.relative_to(root).as_posix()
+            files_to_hash.append((rel_posix, child))
 
     if not files_to_hash:
         return "sha256:empty"
