@@ -5,12 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.39] - 2026-10-31
+
+
+### Bug Fixes
+
+- **runes:** exclude bytecode caches from project trust digest (f2889db)
+
+
+### Chores
+
+- **release:** v0.2.39 (04107f3)
+
+
+## [0.2.38] - 2026-10-31
 
 
 ### Chores
 
 - update CHANGELOG.md [skip ci] (e22811c)
+
+- update CHANGELOG.md [skip ci] (5908ef0)
 
 
 ## [0.2.37] - 2026-10-31
