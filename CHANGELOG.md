@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Bug Fixes
+
+- **cli:** install setup deps into shared extensions project, not cwd (5795aca)
+
+
+## [0.2.33] - 2026-10-31
+
+
+### Bug Fixes
+
+- **cli:** dedup JSON-wrapped and prefix-dropped quoted errors in print mode (c025f9c)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (0825fd8)
+
+- **release:** v0.2.33 (7bc072e)
+
+
 ## [0.2.32] - 2026-10-31
 
 
