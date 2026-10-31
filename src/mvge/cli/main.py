@@ -58,6 +58,7 @@ from mvge.cli.formatting import (
     landed_work_of,
     transcript_length,
     turn_error_reports,
+    turn_recovered_error_count,
 )
 from mvge.cli.rpc import run_rpc
 from mvge.core.constants import DEFAULT_AGENT_NAME
@@ -170,9 +171,23 @@ async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
             # here makes it deterministic: the user sees the failure
             # whether the model quoted it, refused bare, or retried
             # malformed. It supplements the model's answer, never
-            # displaces it, and recovered turns report nothing.
-            for report in turn_error_reports(agent, turn_start, displayed):
+            # displaces it. The unrecovered-only invariant is preserved:
+            # unrecovered turns print the full report, and a recovered
+            # turn prints only a dim count-only note (never the error
+            # text, never a cause claim) — and only when no report
+            # printed, so a turn never shows both a report and a note.
+            reports = turn_error_reports(agent, turn_start, displayed)
+            for report in reports:
                 console.print(Markdown(report))
+            if not reports:
+                recovered = turn_recovered_error_count(agent, turn_start, displayed)
+                if recovered:
+                    console.print(
+                        "[dim]Note: "
+                        f"{recovered} earlier attempt(s) in this turn "
+                        "did not succeed; the answer above reflects "
+                        "the successful retry.[/dim]"
+                    )
         _warn_untrusted_workspace(agent)
         return 0
     except Exception as exc:
