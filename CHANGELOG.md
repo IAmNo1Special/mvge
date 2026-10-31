@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.30] - 2026-10-31
+
+
+### Bug Fixes
+
+- **cli:** abort before cancelling on REPL/TUI Ctrl-C so wait:false children stop (0428eeb)
+
+- **agent:** child dispatch set equals declared scope at spawn (49c67d1)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (9dbdf0e)
+
+- **release:** v0.2.30 (9e30a5d)
+
+
 ## [0.2.29] - 2026-10-31
 
 
