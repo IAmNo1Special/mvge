@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.25] - 2026-10-31
+
+
+### Bug Fixes
+
+- **cli:** finalize narration on renderer error path (15d0da6)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (f17a596)
+
+- **release:** v0.2.25 (bc9cc45)
+
+
 ## [0.2.24] - 2026-10-30
 
 
