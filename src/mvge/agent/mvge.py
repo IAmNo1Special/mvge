@@ -56,7 +56,11 @@ from mvge.core.channel import (
     Model,
 )
 from mvge.core.constants import DEFAULT_AGENT_NAME
-from mvge.core.errors import MissingApiKeyError, TomeResumeError
+from mvge.core.errors import (
+    GatewayLoadError,
+    MissingApiKeyError,
+    TomeResumeError,
+)
 from mvge.core.event_bus import EventBus
 from mvge.core.events import (
     ContemplationLevel,
@@ -90,6 +94,7 @@ from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.trust import WorkspaceTrustStatus, WorkspaceTrustStore
 from mvge.runes.types import (
     Diagnostic,
+    DiagnosticKind,
     RegisteredCommand,
     RuneShortcut,
     SigilHook,
@@ -206,6 +211,34 @@ def _apply_gateway_allowlist(runner: RuneRunner) -> str | None:
     runner.set_global_spell_allowlist(names)
     logger.info("Spell-gateway mode engaged via rune '%s'", gateway)
     return gateway
+
+
+def _widen_allowlist_with_allowed_spells(
+    runner: RuneRunner, allowed_spells: frozenset[str] | None
+) -> None:
+    """Widen an active global allowlist with host-declared allowed names.
+
+    Host-declared scope is not model-discovered capability, so the
+    seeker search-first gate does not apply to it: a child allowed
+    ``bash`` must dispatch ``bash`` even when the gateway allowlist
+    would otherwise hide it. The guard matters: unlike
+    ``RuneAPI.widen_global_allowlist``, which no-ops without an active
+    allowlist, ``RuneRunner.widen_global_allowlist`` CREATES one when
+    none is active. Calling it unconditionally would narrow a
+    no-gateway child's view to its allowed set instead of leaving the
+    full view for the ``_allowed_spells`` filter to narrow. So this is
+    a strict no-op unless an allowlist is already active.
+
+    Spawn-time scope only: this widen does not stamp the seeker's
+    ledger, so in a long-lived child an allowed spell remains subject
+    to seeker idle eviction (8 idle turns). Exempting host scope from
+    TTL is a separate follow-up decision, not part of this change.
+    """
+    if allowed_spells is None:
+        return
+    if runner.get_global_spell_allowlist() is None:
+        return
+    runner.widen_global_allowlist(sorted(allowed_spells))
 
 
 def discover_agent_rune_extras(
@@ -746,6 +779,11 @@ class Mvge:
         # gateway-engaged view is re-derived from the candidate's runes so
         # a removed or changed gateway rune cannot leave a stale view
         # behind. Ephemeral widenings are re-discoverable after reload.
+        # D1 reload rule: the live-allowlist transfer never applies to
+        # an agent with _allowed_spells set, or a reload would preserve
+        # seeker-discovered ephemeral activations across reload. For
+        # such an agent the candidate re-derives the gateway allowlist
+        # and is widened with _allowed_spells ONLY.
         gateway_rune = self._gateway_engaged_rune
         if candidate_runner is not None and candidate_lifecycle is not None:
             live_runner = self._live_runner()
@@ -754,10 +792,17 @@ class Mvge:
                 if live_runner is not None
                 else None
             )
-            if live_allowlist is not None and self._gateway_engaged_rune is None:
+            if (
+                live_allowlist is not None
+                and self._gateway_engaged_rune is None
+                and self._allowed_spells is None
+            ):
                 candidate_runner.set_global_spell_allowlist(live_allowlist)
             else:
                 gateway_rune = _apply_gateway_allowlist(candidate_runner)
+                _widen_allowlist_with_allowed_spells(
+                    candidate_runner, self._allowed_spells
+                )
 
         new_spells = self._build_spells_from(discovered, runner=candidate_runner)
 
@@ -991,6 +1036,63 @@ class Mvge:
             dirs.append(active_spells_dir)
         return [d for d in dirs if d.is_dir()]
 
+    def _apply_child_scope(self, runner: RuneRunner | None) -> None:
+        """Apply the D1 child-scope rules to a freshly loaded runner.
+
+        Runs in ``_load_runes`` after gateway engagement, in this order:
+
+        1. Gated gateway failure: a designated gateway rune with zero
+           spells AND a ``MISSING_DEP`` / ``LOAD_FAILURE`` diagnostic
+           for itself raises ``GatewayLoadError`` instead of silently
+           starting ungated. Zero spells with no such diagnostic keeps
+           the existing ungated behaviour plus a warning log, so an
+           intentionally spell-less gateway configuration still starts.
+        2. Widen the active allowlist (if any) with this agent's
+           host-declared ``_allowed_spells`` (see
+           ``_widen_allowlist_with_allowed_spells``).
+        3. Validate ``_allowed_spells`` against the unfiltered known
+           set: this agent's own discovered spells plus the runner's
+           registered spells. This is deliberately NOT
+           ``available_spells``: in plan mode that property returns the
+           plan-mode-filtered build, which would reject a valid
+           non-read-only allowed name (e.g. ``bash``) for a plan-mode
+           child, and it is NOT the discoverable-builtin cache, which
+           is populated only as a side effect of a spell build and may
+           be empty when a summon runs before any parent build. An
+           unknown name raises ``ValueError`` naming every unknown
+           name. ``allowed_spells=[]`` stays legal: it is a genuine
+           no-spells scope, made observable via the summon result's
+           ``effective_spells`` field rather than rejected here.
+        """
+        if runner is None:
+            return
+        gateway = runner.gateway_rune_name
+        if gateway is not None and not runner.gateway_spell_names():
+            failure = next(
+                (
+                    d
+                    for d in runner.diagnostics
+                    if d.rune_name == gateway
+                    and d.kind
+                    in (DiagnosticKind.MISSING_DEP, DiagnosticKind.LOAD_FAILURE)
+                ),
+                None,
+            )
+            if failure is not None:
+                raise GatewayLoadError(gateway, failure.kind, failure.message)
+            logger.warning(
+                "Spell-gateway rune '%s' registered no spells and carries "
+                "no load diagnostic; continuing ungated.",
+                gateway,
+            )
+        _widen_allowlist_with_allowed_spells(runner, self._allowed_spells)
+        if self._allowed_spells is not None:
+            known: set[str] = {coerce_spell(s).name for s in self._spells}
+            known.update(s.name for s in runner.get_all_registered_spells())
+            unknown = sorted(set(self._allowed_spells) - known)
+            if unknown:
+                raise ValueError(f"Unknown allowed spell(s): {', '.join(unknown)}")
+
     async def _load_runes(self) -> None:
         """Initialize the RuneLifecycle collaborator."""
         if self._rune_lifecycle is None:
@@ -1015,6 +1117,7 @@ class Mvge:
                 "mvge_event", lambda ev: self._event_bus.emit(ev.type, ev.data)
             )
             self._gateway_engaged_rune = _apply_gateway_allowlist(self._runner)
+            self._apply_child_scope(self._runner)
         if self._rune_lifecycle.environment is not None:
             self._environment = self._rune_lifecycle.environment
         if self._environment.diagnostics:

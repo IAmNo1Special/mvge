@@ -57,6 +57,11 @@ class SubMvgeRecord:
     summary: str | None = None
     error: str | None = None
     mana_used: dict[str, int] = field(default_factory=dict)
+    # The child's loop dispatch set at spawn (D1, route (b)): the spells
+    # the child can actually cast, counted from the harness state or the
+    # agent's spell build -- never from the legacy tome header, which
+    # reports the registered-spells union instead of the dispatch set.
+    effective_spells: list[str] = field(default_factory=list)
 
 
 def _extract_invocation_text(inv: object) -> str:
@@ -187,6 +192,18 @@ class SubMvgeManager:
                 else (self._subsessions_dir / f"{child_tome_id}.jsonl")
             )
 
+            # Effective dispatch set at spawn: the harness state when
+            # the child is already wired, else the agent's spell build.
+            # Both are the loop's dispatch set, not the tome header.
+            harness = getattr(child_mvge, "harness", None) or getattr(
+                child_mvge, "_harness", None
+            )
+            harness_state = getattr(harness, "state", None) if harness else None
+            if harness_state is not None:
+                effective_spells = [s.name for s in harness_state.spells]
+            else:
+                effective_spells = [s.name for s in child_mvge._build_spells()]
+
             record = SubMvgeRecord(
                 sub_mvge_id=sub_mvge_id,
                 role=spec.role,
@@ -197,6 +214,7 @@ class SubMvgeManager:
                 workspace_path=workspace_path,
                 state=SubMvgeState.RUNNING,
                 state_detail="Initializing",
+                effective_spells=effective_spells,
             )
 
             self._records[sub_mvge_id] = record
