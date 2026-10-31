@@ -59,6 +59,7 @@ from mvge.cli.formatting import (
     transcript_length,
     turn_error_reports,
     turn_recovered_error_count,
+    turn_unrecovered_error_count,
 )
 from mvge.cli.rpc import run_rpc
 from mvge.core.constants import DEFAULT_AGENT_NAME
@@ -174,12 +175,13 @@ async def _run_print_mode(agent: MvgeAgent, prompts: list[str]) -> int:
             # displaces it. The unrecovered-only invariant is preserved:
             # unrecovered turns print the full report, and a recovered
             # turn prints only a dim count-only note (never the error
-            # text, never a cause claim) — and only when no report
-            # printed, so a turn never shows both a report and a note.
+            # text, never a cause claim). The gate is not "no report
+            # printed": a quoted unrecovered error prints no report,
+            # yet the turn still ended in failure. Instead, the note prints only when the turn contains no unrecovered error at all — reported or quoted — so a turn that ends in failure never carries a success claim; a turn never shows a report and a note, and never a quoted *unrecovered* error and a note (a quoted *recovered* error plus a note, shape 4, remains possible and unchanged).  # noqa: E501
             reports = turn_error_reports(agent, turn_start, displayed)
             for report in reports:
                 console.print(Markdown(report))
-            if not reports:
+            if not turn_unrecovered_error_count(agent, turn_start):
                 recovered = turn_recovered_error_count(agent, turn_start, displayed)
                 if recovered:
                     console.print(
