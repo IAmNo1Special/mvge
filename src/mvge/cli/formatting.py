@@ -191,6 +191,50 @@ def turn_error_reports(
     return reports
 
 
+def turn_unrecovered_error_count(agent: MvgeAgent, since: int = 0) -> int:
+    """Count this turn's unrecovered spell errors, quoted or not.
+
+    The same classification as ``turn_error_reports`` — an error counts
+    as unrecovered when no successful spell result follows it in the
+    slice from ``since`` onward, distinct error texts only — but without
+    the ``final_text`` quote filter, so an unrecovered error the final
+    message already quotes still counts. The recovered-note gate uses
+    this count, not the printed reports: a quoted unrecovered error
+    prints no report, yet the turn still ended in failure.
+
+    Returns 0 when the agent exposes no readable transcript.
+
+    Note: an unrecovered error with empty text produces no report today,
+    and this helper, mirroring the distinct-text scan, inherits that hole.
+    """
+    state = getattr(agent, "_state", None)
+    invocations = getattr(state, "invocations", None)
+    if not isinstance(invocations, list):
+        return 0
+    turn = invocations[since:]
+    seen: set[str] = set()
+    count = 0
+    for index, invocation in enumerate(turn):
+        if not isinstance(invocation, SpellResultMessage):
+            continue
+        if not invocation.is_error:
+            continue
+        if any(
+            isinstance(later, SpellResultMessage) and not later.is_error
+            for later in turn[index + 1 :]
+        ):
+            continue
+        for item in invocation.content or []:
+            if not isinstance(item, dict) or item.get("type") != "text":
+                continue
+            text = str(item.get("text", ""))
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            count += 1
+    return count
+
+
 def turn_recovered_error_count(
     agent: MvgeAgent, since: int = 0, final_text: str = ""
 ) -> int:
@@ -202,6 +246,9 @@ def turn_recovered_error_count(
     ``seen`` deduplication there, and an error the final message already
     quotes is skipped, so a model that already explained the recovery
     does not earn a redundant note.
+
+    Call only when the turn has no unrecovered error; the count alone
+    cannot tell a pure-recovered turn from a mixed one.
 
     Returns 0 when the agent exposes no readable transcript. The count
     carries no error text and no cause: it is true for a validation

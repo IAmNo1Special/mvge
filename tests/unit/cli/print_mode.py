@@ -387,3 +387,81 @@ async def test_run_print_mode_generic_error(capsys: pytest.CaptureFixture[str]) 
     assert code == 1
     captured = capsys.readouterr()
     assert "Error: Unexpected connection error" in captured.out
+
+
+SEARCH_ERROR_1 = "Error: search failed: connection reset while querying the index"
+SEARCH_ERROR_2 = "Error: search failed: index shard unavailable for query"
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_mixed_quoted_terminal_error_gains_no_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Mixed turn ending in a quoted terminal error gains no recovered note."""
+    agent = _turn_agent(
+        f"The call was rejected: {ERROR_TEXT}",
+        [
+            _error_result_with(SEARCH_ERROR_1, "c1"),
+            _success_result(),
+            _error_result_with(ERROR_TEXT, "c3"),
+        ],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+    assert "successful retry" not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_mixed_terminating_error_gains_no_note(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Mixed turn ending on the terminal error itself gains no recovered note."""
+    agent = MagicMock()
+    agent.workspace_trust_status = WorkspaceTrustStatus.TRUSTED
+    agent._state = SimpleNamespace(invocations=[])
+    error = _error_result()
+    error.terminate = True
+
+    async def _run(prompt: str) -> SpellResultMessage:
+        agent._state.invocations.extend(
+            [_error_result_with(SEARCH_ERROR_1, "c1"), _success_result()]
+        )
+        agent._state.invocations.append(error)
+        return error
+
+    agent.run = _run
+
+    code = await _run_print_mode(agent, ["Use execute_python with import os"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
+
+
+@pytest.mark.asyncio
+async def test_run_print_mode_mixed_quoted_terminal_error_multiple_recovered_gains_no_note(  # noqa: E501
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Mixed turn with two recovered errors gains no note."""
+    agent = _turn_agent(
+        f"The call was rejected: {ERROR_TEXT}",
+        [
+            _error_result_with(SEARCH_ERROR_1, "c1"),
+            _error_result_with(SEARCH_ERROR_2, "c2"),
+            _success_result(),
+            _error_result_with(ERROR_TEXT, "c4"),
+        ],
+    )
+
+    code = await _run_print_mode(agent, ["Try something, then compute"])
+
+    assert code == 0
+    captured = capsys.readouterr()
+    assert captured.out.count("Forbidden AST node: import os") == 1
+    assert NOTE_MARKER not in captured.out
