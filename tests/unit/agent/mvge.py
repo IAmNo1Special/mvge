@@ -699,6 +699,62 @@ async def test_initialize_records_project_dir_as_tome_cwd(
         await agent.close()
 
 
+@pytest.mark.asyncio
+async def test_initialize_failure_stops_watchers_it_started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression (rerun 9, Group C): a failed initialize() must not leak
+    its hot-reload watchers.
+
+    initialize() starts the rune watchers in _load_runes() and only then
+    resolves the model's Realm. With no Realm registered it raises
+    NoRealmRegisteredError -- and the CLI's bootstrap self-heal then
+    installs the missing Realm's rune into the still-watched extensions
+    directory. On watchdog 7 that in-place tree copy races the observer's
+    _recursive_simulate walk (KeyError on a directory created between
+    its registration and simulation walks), kills the singleton inotify
+    thread, and silently disables hot reload for the rest of the process.
+    Stopping the watchers on any initialize() failure keeps the install
+    off a live watch, so the race has nothing to fire on.
+    """
+    from mvge.provider.base import NoRealmRegisteredError
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    project_dir = tmp_path / "proj"
+    project_dir.mkdir()
+    agent_name = "watcher-leak-probe"
+    config_dir = tmp_path / ".agents" / "agents" / agent_name
+    config_dir.mkdir(parents=True)
+    (config_dir / "SYSTEM.md").write_text("# Probe\n", encoding="utf-8")
+    extensions_dir = tmp_path / "runes"
+    extensions_dir.mkdir()
+
+    env = MvgeEnvironment.resolve(
+        agent_name=agent_name,
+        project_dir=project_dir,
+        config_dir=config_dir,
+        caller_dir=tmp_path,
+        overrides={"model": "pollinations/openai"},
+    )
+    # Empty registry: no Realm factory for pollinations, so the resolve
+    # after _load_runes() raises, exactly as on a Realm-less first run.
+    registry = RealmRegistry()
+    agent = Mvge(
+        api_key="dummy",
+        environment=env,
+        tome_dir=tmp_path / "tomes",
+        runes_paths=[str(extensions_dir)],
+        provider_registry=registry,
+    )
+    with pytest.raises(NoRealmRegisteredError):
+        await agent.initialize()
+
+    assert agent._rune_lifecycle is not None
+    assert agent._rune_lifecycle.watchers == []
+    # Cleanup after a failed initialize must stay safe to call.
+    await agent.close()
+
+
 def test_api_key_resolution_never_crosses_realms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
