@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import os
 import platform
+import select
 import subprocess
+import sys
+import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 from typer.testing import CliRunner
 
 from mvge.cli.commands.setup import (
     _has_build_config,
+    _run_streaming,
     _run_uv_editable,
     check_python_dep,
     check_tool_installed,
@@ -97,21 +103,18 @@ async def test_install_package_success_and_failure() -> None:
     """install_package should handle process success, error, and timeout."""
     with (
         patch("shutil.which", return_value="/usr/bin/winget"),
-        patch("asyncio.to_thread") as mock_thread,
+        patch("mvge.cli.commands.setup._run_streaming") as mock_run,
     ):
-        mock_res = MagicMock()
-        mock_res.returncode = 0
-        mock_thread.return_value = mock_res
+        mock_run.return_value = (0, "")
         success, msg = await install_package("ripgrep", dry_run=False)
         assert success is True
         assert "Installed ripgrep via" in msg
 
-        mock_res.returncode = 1
-        mock_res.stderr = "Package not found"
+        mock_run.return_value = (1, "Package not found")
         success_fail, _ = await install_package("ripgrep", dry_run=False)
         assert success_fail is False
 
-        mock_thread.side_effect = subprocess.TimeoutExpired(cmd="winget", timeout=300)
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="winget", timeout=300)
         success_timeout, _ = await install_package("ripgrep", dry_run=False)
         assert success_timeout is False
 
@@ -124,9 +127,7 @@ async def test_install_python_dep_by_name() -> None:
         assert success_dry is True
         assert "Would run: uv add rich" in msg_dry
 
-        with patch("asyncio.to_thread") as mock_thread:
-            mock_res = MagicMock(returncode=0)
-            mock_thread.return_value = mock_res
+        with patch("mvge.cli.commands.setup._run_streaming", return_value=(0, "")):
             success, msg = await install_python_dep_by_name("rich", dry_run=False)
             assert success is True
             assert "Installed python dep rich via uv" in msg
@@ -139,9 +140,7 @@ async def test_run_uv_editable(tmp_path: Path) -> None:
     assert success_dry is True
     assert "Would run: uv add --editable" in msg_dry
 
-    with patch("asyncio.to_thread") as mock_thread:
-        mock_res = MagicMock(returncode=0)
-        mock_thread.return_value = mock_res
+    with patch("mvge.cli.commands.setup._run_streaming", return_value=(0, "")):
         success, msg = await _run_uv_editable(tmp_path, dry_run=False)
         assert success is True
         assert "Installed via uv add --editable" in msg
@@ -310,6 +309,7 @@ def test_install_missing_deps_flow() -> None:
         patch("mvge.cli.commands.setup.collect_rune_dirs", return_value=[rune_mock]),
         patch("mvge.cli.commands.setup.check_tool_installed", return_value=False),
         patch("mvge.cli.commands.setup.check_python_dep", return_value=False),
+        patch("sys.stdin", _FakeStdin(tty=True, line="")),
         patch("builtins.input", return_value="n"),
     ):
         assert install_missing_deps(yes=False, dry_run=False) == 0
@@ -415,28 +415,32 @@ def test_setup_profile_command_failure() -> None:
 @pytest.mark.asyncio
 async def test_run_uv_add_failures() -> None:
     import subprocess
-    from unittest.mock import MagicMock
 
     from mvge.cli.commands.setup import install_python_dep_by_name
 
     with patch("shutil.which", return_value="/bin/uv"):
         # Failed returncode
-        mock_fail = MagicMock(returncode=1, stderr="error msg")
-        with patch("subprocess.run", return_value=mock_fail):
+        with patch(
+            "mvge.cli.commands.setup._run_streaming", return_value=(1, "error msg")
+        ):
             ok, msg = await install_python_dep_by_name("pkg")
             assert not ok
             assert "error msg" in msg
 
         # Timeout
         with patch(
-            "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="uv", timeout=1)
+            "mvge.cli.commands.setup._run_streaming",
+            side_effect=subprocess.TimeoutExpired(cmd="uv", timeout=1),
         ):
             ok, msg = await install_python_dep_by_name("pkg")
             assert not ok
             assert "timed out" in msg
 
         # Generic error
-        with patch("subprocess.run", side_effect=OSError("uv missing")):
+        with patch(
+            "mvge.cli.commands.setup._run_streaming",
+            side_effect=OSError("uv missing"),
+        ):
             ok, msg = await install_python_dep_by_name("pkg")
             assert not ok
             assert "uv missing" in msg
@@ -445,27 +449,278 @@ async def test_run_uv_add_failures() -> None:
 @pytest.mark.asyncio
 async def test_run_uv_editable_failures(tmp_path: Path) -> None:
     import subprocess
-    from unittest.mock import MagicMock
 
     from mvge.cli.commands.setup import _run_uv_editable
 
     # Failed returncode
-    mock_fail = MagicMock(returncode=1, stderr="editable error")
-    with patch("subprocess.run", return_value=mock_fail):
+    with patch(
+        "mvge.cli.commands.setup._run_streaming",
+        return_value=(1, "editable error"),
+    ):
         ok, msg = await _run_uv_editable(tmp_path)
         assert not ok
         assert "editable error" in msg
 
     # Timeout
     with patch(
-        "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="uv", timeout=1)
+        "mvge.cli.commands.setup._run_streaming",
+        side_effect=subprocess.TimeoutExpired(cmd="uv", timeout=1),
     ):
         ok, msg = await _run_uv_editable(tmp_path)
         assert not ok
         assert "timed out" in msg
 
     # Generic error
-    with patch("subprocess.run", side_effect=OSError("uv missing")):
+    with patch(
+        "mvge.cli.commands.setup._run_streaming",
+        side_effect=OSError("uv missing"),
+    ):
         ok, msg = await _run_uv_editable(tmp_path)
         assert not ok
         assert "uv missing" in msg
+
+
+# --- Rerun-8 O1: non-TTY prompt guard + streaming installs ---
+
+
+class _RecordingConsole:
+    """Stand-in for the Rich console that records printed lines."""
+
+    def __init__(self) -> None:
+        self.lines: list[str] = []
+        self.file = self
+
+    def print(self, *args: Any, **kwargs: Any) -> None:
+        self.lines.append(" ".join(str(arg) for arg in args))
+
+    def flush(self) -> None:
+        return None
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.lines)
+
+
+class _FakeStdin:
+    """Stdin double with a fixed TTY answer and one readline result."""
+
+    def __init__(self, *, tty: bool, line: str) -> None:
+        self._tty = tty
+        self._line = line
+
+    def isatty(self) -> bool:
+        return self._tty
+
+    def readline(self) -> str:
+        return self._line
+
+
+def _missing_deps_rune() -> tuple[RuneManifest, Path]:
+    return (
+        RuneManifest(
+            name="demo",
+            version="1.0.0",
+            description="test",
+            system_deps=["ripgrep"],
+            python_deps=["rich"],
+        ),
+        Path("/fake/path"),
+    )
+
+
+def _patch_missing_deps(
+    monkeypatch: pytest.MonkeyPatch, console: _RecordingConsole
+) -> None:
+    monkeypatch.setattr(
+        "mvge.cli.commands.setup.collect_rune_dirs",
+        lambda *args, **kwargs: [_missing_deps_rune()],
+    )
+    monkeypatch.setattr(
+        "mvge.cli.commands.setup.check_tool_installed", lambda dep: False
+    )
+    monkeypatch.setattr("mvge.cli.commands.setup.check_python_dep", lambda dep: False)
+    monkeypatch.setattr("mvge.cli.commands.setup.console", console)
+
+
+def test_install_missing_deps_non_tty_refuses_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-TTY without --yes refuses fast and never reads stdin."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=False, line=""))
+    # Open-but-silent pipe: select reports nothing readable.
+    monkeypatch.setattr(select, "select", lambda r, w, x, timeout=0: ([], [], []))
+    with patch("builtins.input", side_effect=AssertionError("input must not run")):
+        result = install_missing_deps(yes=False, dry_run=False)
+    assert result == 1
+    assert "--yes" in console.text
+
+
+def test_install_missing_deps_dev_null_refuses_fast(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-TTY stdin at EOF refuses fast instead of trace-backing."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=False, line=""))
+    # EOF is readable, but readline returns "" (no line was ever written).
+    monkeypatch.setattr(select, "select", lambda r, w, x, timeout=0: ([r[0]], [], []))
+    with patch("builtins.input", side_effect=AssertionError("input must not run")):
+        result = install_missing_deps(yes=False, dry_run=False)
+    assert result == 1
+    assert "--yes" in console.text
+
+
+def test_install_missing_deps_piped_y_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The documented `echo y | mvge setup install` pattern still works."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=False, line="y\n"))
+    monkeypatch.setattr(select, "select", lambda r, w, x, timeout=0: ([r[0]], [], []))
+
+    async def fake_install_pkg(dep: str, dry_run: bool = False) -> tuple[bool, str]:
+        return True, f"Installed {dep}"
+
+    async def fake_install_rune(
+        rune_dir: Path,
+        manifest: RuneManifest | None = None,
+        dry_run: bool = False,
+    ) -> tuple[bool, str]:
+        return True, "Installed python deps"
+
+    with (
+        patch(
+            "mvge.cli.commands.setup.install_package",
+            side_effect=fake_install_pkg,
+        ),
+        patch(
+            "mvge.cli.commands.setup.install_rune_python_deps",
+            side_effect=fake_install_rune,
+        ),
+    ):
+        assert install_missing_deps(yes=False, dry_run=False) == 0
+
+
+def test_install_missing_deps_tty_eof_aborts_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """EOF on a TTY prompt is a clean abort, not a traceback."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=True, line=""))
+    with patch("builtins.input", side_effect=EOFError):
+        result = install_missing_deps(yes=False, dry_run=False)
+    assert result == 0
+    assert "Aborted" in console.text
+
+
+def test_install_missing_deps_tty_decline_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TTY prompt answering 'n' still declines without installing."""
+    console = _RecordingConsole()
+    _patch_missing_deps(monkeypatch, console)
+    monkeypatch.setattr(sys, "stdin", _FakeStdin(tty=True, line=""))
+    with (
+        patch("builtins.input", return_value="n"),
+        patch(
+            "mvge.cli.commands.setup.install_package",
+            side_effect=AssertionError("install must not run"),
+        ),
+        patch(
+            "mvge.cli.commands.setup.install_rune_python_deps",
+            side_effect=AssertionError("install must not run"),
+        ),
+    ):
+        assert install_missing_deps(yes=False, dry_run=False) == 0
+    assert "Aborted" in console.text
+
+
+@pytest.mark.asyncio
+async def test_install_python_dep_progress_printed_before_subprocess() -> None:
+    """The dep progress line is printed before the subprocess starts."""
+    console = _RecordingConsole()
+    seen_at_call: list[str] = []
+
+    def fake_run(cmd: list[str], timeout: float) -> tuple[int, str]:
+        seen_at_call.extend(console.lines)
+        return (0, "")
+
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.console", console),
+        patch("mvge.cli.commands.setup._run_streaming", side_effect=fake_run),
+    ):
+        ok, _ = await install_python_dep_by_name("aiohttp")
+    assert ok is True
+    progress = "\n".join(seen_at_call)
+    assert "aiohttp" in progress
+    assert "600s" in progress
+
+
+@pytest.mark.asyncio
+async def test_install_python_dep_timeout_text_names_dep() -> None:
+    """On timeout the printed text names the dep and the timeout itself."""
+    console = _RecordingConsole()
+    with (
+        patch("shutil.which", return_value="/bin/uv"),
+        patch("mvge.cli.commands.setup.console", console),
+        patch(
+            "mvge.cli.commands.setup._run_streaming",
+            side_effect=subprocess.TimeoutExpired(cmd="uv", timeout=600),
+        ),
+    ):
+        ok, msg = await install_python_dep_by_name("aiohttp")
+    assert ok is False
+    assert "timed out" in msg
+    # The timeout wording (not just the dep name, which the old Trying
+    # line already printed) must reach the output on a timeout.
+    assert "timed out" in console.text
+    assert "aiohttp" in console.text
+    assert "600s" in console.text
+
+
+def test_run_streaming_streams_output_and_returns_tail() -> None:
+    """_run_streaming streams child lines and returns code plus tail."""
+    console = _RecordingConsole()
+    with patch("mvge.cli.commands.setup.console", console):
+        code, tail = _run_streaming(
+            [sys.executable, "-c", "print('one'); print('two')"],
+            timeout=30.0,
+        )
+    assert code == 0
+    assert "one" in console.text
+    assert "two" in console.text
+    assert "two" in tail
+
+
+def test_run_streaming_kills_child_on_timeout(tmp_path: Path) -> None:
+    """On timeout _run_streaming kills the child instead of abandoning it."""
+    console = _RecordingConsole()
+    pid_file = tmp_path / "child.pid"
+    child_code = (
+        "import os, time\n"
+        f"open({str(pid_file)!r}, 'w').write(str(os.getpid()))\n"
+        "print('streamed-line', flush=True)\n"
+        "time.sleep(60)\n"
+    )
+    with patch("mvge.cli.commands.setup.console", console):
+        start = time.monotonic()
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_streaming([sys.executable, "-c", child_code], timeout=1.0)
+        elapsed = time.monotonic() - start
+    assert elapsed < 20.0
+    assert "streamed-line" in console.text
+    pid = int(pid_file.read_text())
+    deadline = time.monotonic() + 5.0
+    while True:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        if time.monotonic() > deadline:
+            raise AssertionError("child still alive after timeout kill")
+        time.sleep(0.05)

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import platform
+import select
 import shutil
 import subprocess
+import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +124,85 @@ def get_package_manager_commands() -> list[list[str]]:
     ]
 
 
+def _flush_console() -> None:
+    """Flush the console's output stream so progress is visible live."""
+    with contextlib.suppress(Exception):
+        console.file.flush()
+
+
+# Characters of streamed child output kept for failure messages.
+_STREAM_TAIL_CHARS = 200
+
+
+def _run_streaming(cmd: list[str], timeout: float) -> tuple[int, str]:
+    """Run ``cmd``, streaming its combined output to the console live.
+
+    Returns ``(returncode, tail)`` where ``tail`` is the last
+    ``_STREAM_TAIL_CHARS`` characters of output. On timeout the child is
+    killed (not merely abandoned) and ``subprocess.TimeoutExpired`` is
+    raised, preserving the timeout-kill semantics ``subprocess.run``
+    previously provided.
+    """
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+    )
+    stream = proc.stdout
+    if stream is None:  # pragma: no cover - Popen with PIPE always sets this
+        raise RuntimeError("streaming child produced no stdout pipe")
+    tail_parts: list[str] = []
+
+    def _drain() -> None:
+        while True:
+            line = stream.readline()
+            if not line:
+                break
+            tail_parts.append(line)
+            console.print(line, end="", markup=False, highlight=False)
+            _flush_console()
+
+    reader = threading.Thread(target=_drain, daemon=True)
+    reader.start()
+    try:
+        returncode = proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill, reap, then raise: the child must not outlive the timeout.
+        proc.kill()
+        proc.wait()
+        reader.join(timeout=5)
+        raise
+    reader.join()
+    tail = "".join(tail_parts)[-_STREAM_TAIL_CHARS:]
+    return returncode, tail
+
+
+def _read_non_tty_confirmation() -> str | None:
+    """Return a piped confirmation answer if one is already available.
+
+    Never blocks: a zero-timeout ``select`` decides whether a line can be
+    read right now. Returns ``None`` when nothing is ready, stdin is at
+    EOF, or ``select`` on stdin is unavailable (e.g. non-POSIX platforms
+    or a stdin without a fileno) — the caller refuses fast in all of
+    those cases instead of waiting on an unanswered prompt.
+    """
+    try:
+        readable, _, _ = select.select([sys.stdin], [], [], 0)
+    except (OSError, ValueError, TypeError):
+        return None
+    if not readable:
+        return None
+    try:
+        line = sys.stdin.readline()
+    except (OSError, ValueError):
+        return None
+    if line == "":
+        return None
+    return line.strip().lower()
+
+
 def check_tool_installed(tool: str) -> bool:
     """Check if a command-line tool is available on PATH."""
     check_name = TOOL_CHECK.get(tool, tool)
@@ -143,25 +226,23 @@ async def install_package(package: str, dry_run: bool = False) -> tuple[bool, st
 
         for pkg in pkg_names:
             cmd = [*pm_cmd, pkg]
+            console.print(
+                f"Installing system dep {package} via "
+                f"'{' '.join(cmd)}' (timeout 300s)..."
+            )
+            _flush_console()
             console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
             if dry_run:
                 return True, f"Would run: {' '.join(cmd)}"
             try:
-                result = await asyncio.to_thread(
-                    subprocess.run,
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                )
-                if result.returncode == 0:
+                returncode, tail = await asyncio.to_thread(_run_streaming, cmd, 300)
+                if returncode == 0:
                     return True, f"Installed {package} via {pm_name}"
-                console.print(
-                    f"[yellow]{pm_name} failed for {pkg}: "
-                    f"{result.stderr[:200]}[/yellow]"
-                )
+                console.print(f"[yellow]{pm_name} failed for {pkg}: {tail}[/yellow]")
             except subprocess.TimeoutExpired:
-                console.print(f"[yellow]{pm_name} timed out for {pkg}[/yellow]")
+                console.print(
+                    f"[yellow]{pm_name} timed out for {pkg} after 300s[/yellow]"
+                )
             except Exception as e:
                 console.print(f"[yellow]{pm_name} error for {pkg}: {e}[/yellow]")
 
@@ -180,21 +261,20 @@ async def install_python_dep_by_name(
     if not shutil.which("uv"):
         return False, "uv not found on PATH"
     cmd = ["uv", "add", dep]
+    console.print(
+        f"Installing python dep {dep} via '{' '.join(cmd)}' (timeout 600s)..."
+    )
+    _flush_console()
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
     try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.returncode == 0:
+        returncode, tail = await asyncio.to_thread(_run_streaming, cmd, 600)
+        if returncode == 0:
             return True, f"Installed python dep {dep} via uv"
-        return False, f"uv add {dep} failed: {result.stderr[:200]}"
+        return False, f"uv add {dep} failed: {tail}"
     except subprocess.TimeoutExpired:
+        console.print(f"[yellow]uv add {dep} timed out after 600s[/yellow]")
         return False, f"uv add {dep} timed out"
     except Exception as e:
         return False, f"uv add {dep} error: {e}"
@@ -203,21 +283,22 @@ async def install_python_dep_by_name(
 async def _run_uv_editable(rune_dir: Path, dry_run: bool = False) -> tuple[bool, str]:
     """Editable-install a rune directory via uv add --editable."""
     cmd = ["uv", "add", "--editable", str(rune_dir)]
+    console.print(
+        f"Installing rune {rune_dir.name} via '{' '.join(cmd)}' (timeout 600s)..."
+    )
+    _flush_console()
     console.print(f"[dim]Trying: {' '.join(cmd)}[/dim]")
     if dry_run:
         return True, f"Would run: {' '.join(cmd)}"
     try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.returncode == 0:
+        returncode, tail = await asyncio.to_thread(_run_streaming, cmd, 600)
+        if returncode == 0:
             return True, f"Installed via uv add --editable {rune_dir.name}"
-        return False, f"uv add failed: {result.stderr[:200]}"
+        return False, f"uv add failed: {tail}"
     except subprocess.TimeoutExpired:
+        console.print(
+            f"[yellow]uv add --editable {rune_dir.name} timed out after 600s[/yellow]"
+        )
         return False, "uv add timed out"
     except Exception as e:
         return False, f"uv add error: {e}"
@@ -401,10 +482,29 @@ def install_missing_deps(
         )
 
     if not yes and not dry_run:
-        response = input("Install now? [y/N]: ").strip().lower()
-        if response != "y":
-            console.print("[yellow]Aborted[/yellow]")
-            return 0
+        if sys.stdin.isatty():
+            try:
+                response = input("Install now? [y/N]: ").strip().lower()
+            except EOFError:
+                console.print("[yellow]Aborted[/yellow]")
+                return 0
+            if response != "y":
+                console.print("[yellow]Aborted[/yellow]")
+                return 0
+        else:
+            # Non-interactive stdin: never block on an unanswered prompt.
+            # A piped answer already available (e.g. `echo y | ...`) is
+            # honored; anything else refuses fast with instructions.
+            piped = _read_non_tty_confirmation()
+            if piped is None:
+                console.print(
+                    "[yellow]Not a TTY and --yes not given; rerun with "
+                    "'mvge setup install --yes' or pipe 'y' to stdin[/yellow]"
+                )
+                return 1
+            if piped != "y":
+                console.print("[yellow]Aborted[/yellow]")
+                return 0
 
     results: list[tuple[str, bool, str]] = []
     for dep in missing_system:
