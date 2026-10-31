@@ -32,6 +32,7 @@ def test_default_profiles_definitions() -> None:
     assert "checkpoint-bridge" in coding["runes"]
     assert "lsp-bridge" in coding["runes"]
     assert "submvge-bridge" in coding["runes"]
+    assert "codeact-rune" in coding["runes"]
 
     autonomous = DEFAULT_PROFILES["autonomous"]
     assert set(coding["runes"]).issubset(set(autonomous["runes"]))
@@ -110,6 +111,42 @@ def test_install_profile_success(tmp_path: Path) -> None:
             confirm_python_deps=False,
         )
         assert mock_install_rune.call_count == 4
+
+
+def test_install_profile_coding_installs_codeact(tmp_path: Path) -> None:
+    agents_dir = tmp_path / "agents"
+    extensions_dir = tmp_path / "extensions"
+    agents_dir.mkdir(parents=True)
+    extensions_dir.mkdir(parents=True)
+
+    with (
+        patch(
+            "mvge.agent.installer.fetch_marketplace_profiles",
+            return_value=DEFAULT_PROFILES,
+        ),
+        patch("mvge.agent.installer.install_mvge") as mock_install_mvge,
+        patch("mvge.agent.installer.install_rune") as mock_install_rune,
+    ):
+        result: ProfileInstallResult = install_profile(
+            "coding",
+            target_agents_dir=agents_dir,
+            target_extensions_dir=extensions_dir,
+            confirm_python_deps=False,
+        )
+
+        assert result.profile == "coding"
+        assert result.installed_mvges == ["coding_mvge"]
+        assert "codeact-rune" in result.installed_runes
+        assert len(result.installed_runes) == 12
+        assert result.skipped_mvges == []
+        assert result.skipped_runes == []
+
+        mock_install_mvge.assert_called_once()
+        assert mock_install_rune.call_count == 12
+        assert any(
+            call.args and call.args[0] == "codeact-rune"
+            for call in mock_install_rune.call_args_list
+        )
 
 
 def test_install_profile_skip_already_installed(tmp_path: Path) -> None:

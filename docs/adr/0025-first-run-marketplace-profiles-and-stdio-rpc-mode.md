@@ -22,8 +22,8 @@ Today, running `uvx mvge` on a clean machine offers to install `opencode-realm` 
    - `mvge` remains a strict microkernel shipping zero concrete Mvges, Realms, coding Spells, or Capability Bridges in its wheel distributions.
    - First-run interactive startup (when `agents_dir()` has no installed Mvge) and `mvge setup --profile <name>` bootstrap a named **Profile** from `mvge-marketplace` (with an interactive TTY confirmation prompt and `--bootstrap` / `--no-bootstrap` flags for CI):
      - `minimal`: `coding_mvge`, `openrouter-realm`, `opencode-realm`, `approval-rune`, `steering-bridge`.
-     - `coding` (**default bootstrap profile**): `minimal` + `seeker`, `skills-bridge`, `session-search`, `session-title`, `lsp-bridge`, `checkpoint-bridge`, `submvge-bridge`.
-     - `autonomous`: `coding` + `okf-bridge`, `adr-bridge`, `mcp-bridge`, `selfmod-bridge`, `skill-evolution`, `opentelemetry-bridge`, `codeact-rune`, `eval-bridge`.
+     - `coding` (**default bootstrap profile**): `minimal` + `seeker`, `skills-bridge`, `session-search`, `session-title`, `lsp-bridge`, `checkpoint-bridge`, `submvge-bridge`, `codeact-rune`.
+     - `autonomous`: `coding` + `okf-bridge`, `adr-bridge`, `mcp-bridge`, `selfmod-bridge`, `skill-evolution`, `opentelemetry-bridge`, `eval-bridge`.
 
 2. **Headless Bidirectional Stdio RPC Mode (`mvge --mode rpc` in `mvge.cli`)**:
    - Add `--mode rpc` to `mvge` implementing a strict `\n`-delimited JSONL stdio protocol compatible with `earendil-works/pi` (`--mode rpc`):
