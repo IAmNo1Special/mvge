@@ -600,6 +600,154 @@ async def test_rehydrate_failure_is_tolerated_with_diagnostic(
         await agent.close()
 
 
+_REHYDRATE_BEFORE_PROMPT_RUNE_PY = """\
+from mvge.runes.types import SigilHook, SpellDefinition
+
+
+class ProbeSpell(SpellDefinition):
+    async def execute(self, spell_cast_id, params, signal=None, on_update=None):
+        return {"status": "ok"}
+
+
+class _RehydrateState:
+    def __init__(self):
+        self.rehydrated = False
+
+    async def rehydrate(self, payload):
+        self.rehydrated = True
+
+
+def rune_factory(api):
+    state = _RehydrateState()
+    api.register_spell(ProbeSpell(name="probe_spell", description="Probe spell"))
+
+    async def on_start(data):
+        if state.rehydrated:
+            data.base_prompt = data.base_prompt + "\\n[REHYDRATED_MARKER]"
+        return data
+
+    api.on(SigilHook.BEFORE_MVGE_START, on_start)
+    return state
+"""
+
+_REHYDRATE_SKILL_BLOCK_RUNE_PY = """\
+from mvge.runes.types import SigilHook, SpellDefinition
+
+
+class ProbeSpell(SpellDefinition):
+    async def execute(self, spell_cast_id, params, signal=None, on_update=None):
+        return {"status": "ok"}
+
+
+class _SkillState:
+    def __init__(self):
+        self.skills = {}
+
+    async def rehydrate(self, payload):
+        self.skills = {"probe-skill": "Probe skill description"}
+
+
+def rune_factory(api):
+    state = _SkillState()
+    api.register_spell(ProbeSpell(name="probe_spell", description="Probe spell"))
+
+    async def on_start(data):
+        if state.skills:
+            block = (
+                "<available_skills>\\n<name>probe-skill</name>\\n</available_skills>"
+            )
+            data.base_prompt = data.base_prompt + "\\n" + block
+        return data
+
+    api.on(SigilHook.BEFORE_MVGE_START, on_start)
+    return state
+"""
+
+
+@pytest.mark.asyncio
+async def test_reload_rehydrates_before_prompt_assembly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rehydrate must run before prompt assembly on reload.
+
+    The probe rune's prompt handler appends a marker only after its
+    rehydrate ran, so the marker lands in the rebuilt prompt only when
+    rehydration precedes prompt assembly.
+    """
+    _write_probe_rune(tmp_path, body=_REHYDRATE_BEFORE_PROMPT_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "[REHYDRATED_MARKER]" not in agent.system_prompt
+        result = await agent.reload()
+        assert result.ok
+        assert "[REHYDRATED_MARKER]" in agent.system_prompt
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_prompt_contains_rehydrated_skill_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rebuilt prompt reflects refreshed rune state, not stale state.
+
+    Probe-rune simulation of the skills-bridge shape: rehydrate
+    populates a catalog-like map and the prompt handler renders an
+    <available_skills> block from it only when rehydrated.
+    """
+    _write_probe_rune(tmp_path, body=_REHYDRATE_SKILL_BLOCK_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "<available_skills>" not in agent.system_prompt
+        result = await agent.reload()
+        assert result.ok
+        assert "<available_skills>" in agent.system_prompt
+        assert "probe-skill" in agent.system_prompt
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_rehydrate_error_still_isolated_after_reorder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rehydrate errors stay isolated and non-fatal after the reorder."""
+    _write_probe_rune(tmp_path, body=_REHYDRATE_BOOM_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert "probe_spell" in agent.enabled_spells
+        result = await agent.reload()
+        assert result.ok
+        assert "rehydrate error(s)" in result.message
+        assert any("rehydrate exploded" in d.message for d in agent.diagnostics)
+        assert "probe_spell" in agent.enabled_spells
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_reload_twice_keeps_rehydrated_prompt_identical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Repeated reloads must not duplicate rehydrated prompt sections."""
+    _write_probe_rune(tmp_path, body=_REHYDRATE_BEFORE_PROMPT_RUNE_PY)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        first = await agent.reload()
+        assert first.ok
+        prompt_after_first = agent.system_prompt
+        assert "[REHYDRATED_MARKER]" in prompt_after_first
+        second = await agent.reload()
+        assert second.ok
+        assert agent.system_prompt == prompt_after_first
+    finally:
+        await agent.close()
+
+
 @pytest.mark.asyncio
 async def test_watcher_handover_failure_is_live_but_loud(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

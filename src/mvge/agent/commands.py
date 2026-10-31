@@ -35,7 +35,7 @@ SLASH_COMMANDS: dict[str, str] = {
     "/skills": "List available skills and their locations",
     "/skill": "Activate a skill: /skill <name> [instructions]",
     "/contemplation": "Show or set contemplation level: /contemplation [level]",
-    "/reload": "Rebuild runes, prompt, spells, and harness mid-session",
+    "/reload": "Rebuild runes, prompt, spells, skills, and harness mid-session",
 }
 
 
