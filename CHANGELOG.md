@@ -10,7 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- **agent:** stop rune watchers when initialize fails (d3873e7)
+
+
+## [0.2.34] - 2026-10-31
+
+
+### Bug Fixes
+
 - **cli:** install setup deps into shared extensions project, not cwd (5795aca)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (673a6bd)
+
+- **release:** v0.2.34 (41691da)
 
 
 ## [0.2.33] - 2026-10-31
