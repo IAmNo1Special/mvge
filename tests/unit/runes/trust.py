@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from mvge.agent.function_spell import discover_spells_from_dir
 from mvge.core.layers import RuneScope
 from mvge.runes.loader import load_runes_from_paths
 from mvge.runes.trust import (
@@ -219,3 +220,53 @@ def test_loader_skips_untrusted_project_runes(tmp_path: Path) -> None:
     loaded_names2 = [load.manifest.name for load in loads2]
     assert "user_rune" in loaded_names2
     assert "proj_rune" in loaded_names2
+
+
+def test_compute_project_agents_digest_ignores_bytecode_caches(
+    tmp_path: Path,
+) -> None:
+    spells_dir = tmp_path / ".agents" / "spells"
+    spells_dir.mkdir(parents=True)
+    spell_file = spells_dir / "hello.py"
+    spell_file.write_text("def hello(): pass", encoding="utf-8")
+    ext_dir = tmp_path / ".agents" / "extensions" / "my_rune"
+    ext_dir.mkdir(parents=True)
+    (ext_dir / "rune.py").write_text("x = 1", encoding="utf-8")
+
+    digest1 = compute_project_agents_digest(tmp_path)
+
+    # Bytecode caches are derived artifacts of importing the sources above,
+    # not source changes: they must not move the digest.
+    cache_dir = spells_dir / "__pycache__"
+    cache_dir.mkdir()
+    (cache_dir / "hello.cpython-313.pyc").write_bytes(b"\x00\x01fake-pyc")
+    (spells_dir / "stray.pyc").write_bytes(b"\x00\x01fake-pyc")
+    ext_cache = ext_dir / "__pycache__"
+    ext_cache.mkdir()
+    (ext_cache / "rune.cpython-313.pyc").write_bytes(b"\x00\x01fake-pyc")
+    assert compute_project_agents_digest(tmp_path) == digest1
+
+    # A genuine source change must still move the digest.
+    spell_file.write_text("def hello(): return 1", encoding="utf-8")
+    assert compute_project_agents_digest(tmp_path) != digest1
+
+
+def test_trust_store_survives_real_spell_import(tmp_path: Path) -> None:
+    trust_file = tmp_path / "approval" / "trust.json"
+    store = WorkspaceTrustStore(trust_file=trust_file)
+
+    proj_dir = tmp_path / "proj"
+    spells_dir = proj_dir / ".agents" / "spells"
+    spells_dir.mkdir(parents=True)
+    (spells_dir / "hello.py").write_text(
+        "def hello():\n    return 'hi'\n", encoding="utf-8"
+    )
+
+    store.set_trust(proj_dir, WorkspaceTrustStatus.TRUSTED)
+    assert store.check_trust(proj_dir) == WorkspaceTrustStatus.TRUSTED
+
+    # Loading the spells is the step that writes __pycache__ next to them;
+    # the next trust check must not treat that as a source change.
+    spells = discover_spells_from_dir(spells_dir)
+    assert [s.name for s in spells] == ["hello"]
+    assert store.check_trust(proj_dir) == WorkspaceTrustStatus.TRUSTED
