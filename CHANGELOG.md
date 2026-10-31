@@ -10,7 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- **agent:** summoned child workspace becomes its effective cwd (737d60b)
+
+
+## [0.2.35] - 2026-10-31
+
+
+### Bug Fixes
+
 - **agent:** stop rune watchers when initialize fails (d3873e7)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (361c7d2)
+
+- **release:** v0.2.35 (5150f87)
 
 
 ## [0.2.34] - 2026-10-31
