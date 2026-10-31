@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,6 +24,7 @@ from mvge.core.approval import (
     deny,
 )
 from mvge.core.channel import MvgeResponse
+from mvge.core.errors import GatewayLoadError
 from mvge.core.spells import MvgeSpell, SpellResult, SpellStatus
 from mvge.runes.rune_runner import RuneRunner
 
@@ -760,3 +763,274 @@ def test_extract_invocation_text_fallbacks() -> None:
             return "plain string"
 
     assert _extract_invocation_text(InvPlain()) == "plain string"
+
+
+def _d1_gateway_rune_py() -> str:
+    names = (
+        "search",
+        "activate",
+        "execute",
+        "unload",
+        "tool_search",
+        "skill_search",
+        "skill_execute",
+        "mcp_search",
+    )
+    lines = [
+        "from mvge.runes.types import SpellDefinition",
+        "",
+        "",
+        "def rune_factory(api):",
+    ]
+    for name in names:
+        lines.append(
+            f"    api.register_spell(SpellDefinition(name={name!r}, description=''))"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _d1_write_rune(
+    runes_dir: Path, name: str, body: str, gateway: bool, missing_dep: bool
+) -> None:
+    rune_dir = runes_dir / name
+    rune_dir.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, Any] = {
+        "name": name,
+        "version": "1.0.0",
+        "description": "D1 probe rune",
+        "entry_point": "rune.py",
+        "spell_gateway": gateway,
+    }
+    if missing_dep:
+        manifest["python_deps"] = ["definitely_missing_package_d1_xyz"]
+    (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+
+
+def _d1_workspace(tmp_path: Path, *, gateway_missing_dep: bool = False) -> Path:
+    """A workspace a summoned child discovers spells and runes from."""
+    ws = tmp_path / "ws"
+    spells_dir = ws / "spells"
+    spells_dir.mkdir(parents=True, exist_ok=True)
+    (spells_dir / "bash.py").write_text(
+        'def bash() -> str:\n    """Run a bash command."""\n    return "ok"\n',
+        encoding="utf-8",
+    )
+    runes_dir = ws / "runes"
+    _d1_write_rune(
+        runes_dir,
+        "seeker",
+        _d1_gateway_rune_py(),
+        gateway=True,
+        missing_dep=gateway_missing_dep,
+    )
+    _d1_write_rune(
+        runes_dir,
+        "bridge",
+        "from mvge.runes.types import SpellDefinition\n"
+        "\n"
+        "\n"
+        "def rune_factory(api):\n"
+        "    api.register_spell(\n"
+        "        SpellDefinition(name='manage_mvges', description='')\n"
+        "    )\n",
+        gateway=False,
+        missing_dep=False,
+    )
+    return ws
+
+
+def _d1_manager(
+    tmp_path: Path, workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> SubMvgeManager:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    config_dir = tmp_path / "global" / "agents" / "d1-child"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "SYSTEM.md").write_text("# D1 child\n", encoding="utf-8")
+    from mvge.provider.base import Realm
+    from mvge.provider.realms import realm_for_model_id
+    from mvge.provider.registry import RealmRegistry
+
+    registry = RealmRegistry()
+    registry.register_realm_factory(
+        realm_for_model_id("openrouter/free"), lambda **kwargs: MagicMock(spec=Realm)
+    )
+    subsessions_dir = tmp_path / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    return SubMvgeManager(
+        parent_workspace=workspace,
+        parent_model_id="openrouter/free",
+        parent_agent_name="d1-child",
+        shared_realm_registry=registry,
+        subsessions_dir=subsessions_dir,
+    )
+
+
+async def _d1_drain(manager: SubMvgeManager) -> None:
+    """Let wait=False child turns finish (they error against the stub
+    realm) so no background task outlives the test."""
+    for _ in range(1000):
+        tasks = list(manager._tasks.values())
+        if all(t.done() for t in tasks):
+            return
+        await asyncio.sleep(0)
+    await manager.kill_all()
+
+
+@pytest.mark.asyncio
+async def test_summon_record_carries_effective_spells(
+    tmp_path: Path,
+) -> None:
+    """D1 test 2: the summon result reports the loop dispatch set, so an
+    allowed_spells=[] child is observably spell-less, not mysteriously
+    broken. No tome-header field is asserted: route (b) writes none."""
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    original_init = Mvge.__init__
+
+    def intercepting_init(self: Mvge, *args: object, **kwargs: object) -> None:
+        original_init(self, *args, **kwargs)
+        self._spells = [DummySpell("bash"), DummySpell("read")]
+
+    with MockChildMvgeContext("Done", custom_init=intercepting_init):
+        records = await manager.summon(
+            [
+                SubMvgeSpec(
+                    role="worker",
+                    prompt="Do nothing",
+                    allowed_spells=frozenset(),
+                    wait=True,
+                ),
+                SubMvgeSpec(
+                    role="worker",
+                    prompt="Do bash",
+                    allowed_spells=frozenset({"bash"}),
+                    wait=True,
+                ),
+            ]
+        )
+
+    assert records[0].effective_spells == []
+    assert records[1].effective_spells == ["bash"]
+    record = SubMvgeRecord(
+        sub_mvge_id="sub-123",
+        role="worker",
+        agent_name="coding_mvge",
+        model_id="test-model",
+        tome_path=Path("/tmp/subsessions/tome-123.jsonl"),
+        child_tome_id="tome-123",
+        workspace_path=Path("/tmp/workspace"),
+        state=SubMvgeState.RUNNING,
+    )
+    assert record.effective_spells == []
+
+
+@pytest.mark.asyncio
+async def test_repeated_spawns_have_identical_dispatch_sets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 7: 10 spawns per spec, counted from the summon result's
+    effective_spells only, never from a tome header."""
+    workspace = _d1_workspace(tmp_path)
+    manager = _d1_manager(tmp_path, workspace, monkeypatch)
+    try:
+        gateway_names = sorted(
+            [
+                "search",
+                "activate",
+                "execute",
+                "unload",
+                "tool_search",
+                "skill_search",
+                "skill_execute",
+                "mcp_search",
+            ]
+        )
+        cases: list[tuple[frozenset[str] | None, list[str]]] = [
+            (None, gateway_names),
+            (frozenset({"bash"}), ["bash"]),
+            (frozenset(), []),
+        ]
+        for allowed, expected in cases:
+            seen: list[list[str]] = []
+            for _ in range(10):
+                records = await manager.summon(
+                    [
+                        SubMvgeSpec(
+                            role="worker",
+                            prompt="hi",
+                            allowed_spells=allowed,
+                            wait=False,
+                        )
+                    ]
+                )
+                seen.append(sorted(records[0].effective_spells))
+            assert len(seen) == 10
+            assert all(dispatch == expected for dispatch in seen), (
+                f"allowed={allowed}: dispatch sets varied or mismatched: {seen}"
+            )
+    finally:
+        await _d1_drain(manager)
+        await manager.kill_all()
+
+
+@pytest.mark.asyncio
+async def test_repeated_spawn_with_missing_gateway_dep_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 7, gateway-failure variant: a ["bash"] spawn under a
+    gateway rune with a MISSING_DEP diagnostic fails loudly and leaves
+    no record, instead of silently producing a different dispatch set."""
+    workspace = _d1_workspace(tmp_path, gateway_missing_dep=True)
+    manager = _d1_manager(tmp_path, workspace, monkeypatch)
+    with pytest.raises(GatewayLoadError) as exc_info:
+        await manager.summon(
+            [
+                SubMvgeSpec(
+                    role="worker",
+                    prompt="hi",
+                    allowed_spells=frozenset({"bash"}),
+                    wait=False,
+                )
+            ]
+        )
+    assert "seeker" in str(exc_info.value)
+    assert manager.list_active() == []
+
+
+@pytest.mark.asyncio
+async def test_summoned_child_reload_keeps_allowed_drops_ephemeral(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 tests 6/6c at the summon level: reloading a summoned ["bash"]
+    child keeps bash and drops a seeker-discovered ephemeral widening."""
+    workspace = _d1_workspace(tmp_path)
+    manager = _d1_manager(tmp_path, workspace, monkeypatch)
+    try:
+        records = await manager.summon(
+            [
+                SubMvgeSpec(
+                    role="worker",
+                    prompt="hi",
+                    allowed_spells=frozenset({"bash"}),
+                    wait=False,
+                )
+            ]
+        )
+        assert records[0].effective_spells == ["bash"]
+        child = manager._instances[records[0].sub_mvge_id]
+        assert child.runner is not None
+        child.runner.widen_global_allowlist(["manage_mvges"])
+        result = await child.reload()
+        assert result.ok
+        assert [s.name for s in child._build_spells()] == ["bash"]
+    finally:
+        await _d1_drain(manager)
+        await manager.kill_all()

@@ -15,6 +15,7 @@ from mvge.agent.mvge import (
     _validate_spell_name,
 )
 from mvge.core.abort import AbortSignal
+from mvge.core.errors import GatewayLoadError
 from mvge.core.events import QueueMode
 from mvge.core.spells import ExecutionMode
 from mvge.provider.base import Realm
@@ -22,7 +23,13 @@ from mvge.provider.realms import realm_for_model_id
 from mvge.provider.registry import RealmRegistry
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.trust import WorkspaceTrustStatus
-from mvge.runes.types import RuneLoad, RuneManifest, SpellDefinition
+from mvge.runes.types import (
+    Diagnostic,
+    DiagnosticKind,
+    RuneLoad,
+    RuneManifest,
+    SpellDefinition,
+)
 from mvge.tome.handle import TomeHandleFactory
 
 
@@ -766,3 +773,227 @@ async def test_mvge_workspace_untrusted_emits_sigil_without_steering(
         assert agent.workspace_trust_status == WorkspaceTrustStatus.DECLINED
     finally:
         await agent.close()
+
+
+def bash() -> str:
+    """Run a bash command."""
+    return "ok"
+
+
+_GATEWAY_META_SPELLS = (
+    "search",
+    "activate",
+    "execute",
+    "unload",
+    "tool_search",
+    "skill_search",
+    "skill_execute",
+    "mcp_search",
+)
+
+
+async def _child_scope_runner() -> RuneRunner:
+    """A gateway runner (8 seeker-style meta spells) plus a bridge spell."""
+    runner = RuneRunner()
+
+    def seeker_factory(api: Any) -> None:
+        for name in _GATEWAY_META_SPELLS:
+            api.register_spell(SpellDefinition(name=name, description=""))
+
+    def bridge_factory(api: Any) -> None:
+        api.register_spell(SpellDefinition(name="manage_mvges", description=""))
+
+    await runner.load_rune_loads(
+        [
+            RuneLoad(manifest=_gateway_manifest("seeker"), factory=seeker_factory),
+            RuneLoad(
+                manifest=_gateway_manifest("bridge", gateway=False),
+                factory=bridge_factory,
+            ),
+        ]
+    )
+    return runner
+
+
+async def _zero_spell_gateway_runner(
+    diagnostics: list[Diagnostic] | None,
+) -> RuneRunner:
+    """A designated gateway rune that registered no spells."""
+    runner = RuneRunner()
+    await runner.load_rune_loads(
+        [RuneLoad(manifest=_gateway_manifest("seeker"), factory=None)],
+        diagnostics=diagnostics,
+    )
+    return runner
+
+
+class TestChildSpellScopeThroughGateway:
+    """D1: a child's dispatch set must equal its declared scope at spawn."""
+
+    @pytest.mark.asyncio
+    async def test_child_allowed_spell_survives_gateway(self) -> None:
+        runner = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._apply_child_scope(runner)
+        names = [s.name for s in agent._build_spells()]
+        assert names == ["bash"]
+
+    @pytest.mark.asyncio
+    async def test_child_allowed_empty_dispatch_is_empty(self) -> None:
+        runner = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=[])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._apply_child_scope(runner)
+        assert [s.name for s in agent._build_spells()] == []
+
+    @pytest.mark.asyncio
+    async def test_unknown_allowed_spell_is_summon_error(self) -> None:
+        runner = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        agent = Mvge(
+            api_key="test-key",
+            spells=[bash],
+            allowed_spells=["definitely_not_a_spell"],
+        )
+        agent._runner = runner  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="definitely_not_a_spell"):
+            agent._apply_child_scope(runner)
+
+    @pytest.mark.asyncio
+    async def test_builtin_allowed_name_validates_before_any_parent_build(
+        self,
+    ) -> None:
+        # No spell build runs before the scope step: the validation source
+        # is the agent's own discovered spells plus registered rune spells,
+        # never the discoverable-builtin cache populated by a build.
+        runner = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._apply_child_scope(runner)
+        assert [s.name for s in agent._build_spells()] == ["bash"]
+
+        runner2 = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner2) == "seeker"
+        agent2 = Mvge(
+            api_key="test-key",
+            spells=[bash],
+            allowed_spells=["definitely_not_a_spell"],
+        )
+        agent2._runner = runner2  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="definitely_not_a_spell"):
+            agent2._apply_child_scope(runner2)
+
+    @pytest.mark.asyncio
+    async def test_plan_mode_does_not_reject_non_readonly_allowed(self) -> None:
+        # Re-review note: validation must use the unfiltered union, not
+        # the plan-mode-filtered available_spells property, or a plan-mode
+        # child could never be allowed a non-read-only spell such as bash.
+        runner = await _child_scope_runner()
+        assert _apply_gateway_allowlist(runner) == "seeker"
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._plan_mode = True
+        agent._apply_child_scope(runner)
+        assert "bash" in (runner.get_global_spell_allowlist() or [])
+
+    @pytest.mark.asyncio
+    async def test_designated_gateway_with_no_spells_missing_dep_fails(
+        self,
+    ) -> None:
+        runner = await _zero_spell_gateway_runner(
+            [
+                Diagnostic(
+                    kind=DiagnosticKind.MISSING_DEP,
+                    rune_name="seeker",
+                    message="Rune 'seeker' requires python dependency "
+                    "'aiohttp' which is not installed.",
+                )
+            ]
+        )
+        assert _apply_gateway_allowlist(runner) is None
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        with pytest.raises(GatewayLoadError) as exc_info:
+            agent._apply_child_scope(runner)
+        assert exc_info.value.code == "gateway_load_failed"
+        assert exc_info.value.gateway_rune_name == "seeker"
+        assert "seeker" in str(exc_info.value)
+        assert "mvge setup install" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_designated_gateway_with_no_spells_load_failure_fails(
+        self,
+    ) -> None:
+        runner = await _zero_spell_gateway_runner(
+            [
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name="seeker",
+                    message="Failed to execute rune module seeker: boom",
+                )
+            ]
+        )
+        assert _apply_gateway_allowlist(runner) is None
+        agent = Mvge(api_key="test-key", spells=[bash])
+        agent._runner = runner  # type: ignore[assignment]
+        with pytest.raises(GatewayLoadError) as exc_info:
+            agent._apply_child_scope(runner)
+        assert exc_info.value.code == "gateway_load_failed"
+        assert "seeker" in str(exc_info.value)
+        assert "mvge info" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_designated_gateway_with_no_spells_no_diagnostic_starts(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        runner = await _zero_spell_gateway_runner(None)
+        assert _apply_gateway_allowlist(runner) is None
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        with caplog.at_level(logging.WARNING):
+            agent._apply_child_scope(runner)
+        assert runner.get_global_spell_allowlist() is None
+        assert any("seeker" in record.message for record in caplog.records)
+        assert [s.name for s in agent._build_spells()] == ["bash"]
+
+    @pytest.mark.asyncio
+    async def test_gateway_absent_is_still_full_view(self) -> None:
+        runner = RuneRunner()
+
+        def bridge_factory(api: Any) -> None:
+            api.register_spell(SpellDefinition(name="manage_mvges", description=""))
+
+        await runner.load_rune_loads(
+            [
+                RuneLoad(
+                    manifest=_gateway_manifest("bridge", gateway=False),
+                    factory=bridge_factory,
+                )
+            ]
+        )
+        assert _apply_gateway_allowlist(runner) is None
+        agent = Mvge(api_key="test-key", spells=[bash])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._apply_child_scope(runner)
+        assert runner.get_global_spell_allowlist() is None
+        assert sorted(s.name for s in agent._build_spells()) == [
+            "bash",
+            "manage_mvges",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_widen_is_noop_when_no_allowlist_active(self) -> None:
+        # Runner.widen_global_allowlist would CREATE an allowlist; the
+        # child-scope step must not call it unless one is already active,
+        # or a no-gateway child would be narrowed to its allowed set
+        # instead of keeping its full view filtered by allowed_spells.
+        runner = await _child_scope_runner()
+        agent = Mvge(api_key="test-key", spells=[bash], allowed_spells=["bash"])
+        agent._runner = runner  # type: ignore[assignment]
+        agent._apply_child_scope(runner)
+        assert runner.get_global_spell_allowlist() is None
+        assert [s.name for s in agent._build_spells()] == ["bash"]

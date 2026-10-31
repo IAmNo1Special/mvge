@@ -29,6 +29,43 @@ class SpellDiscoveryError(MvgeError):
         super().__init__("spell_discovery_error", message)
 
 
+class GatewayLoadError(MvgeError):
+    """Raised when a designated spell-gateway rune registers no spells
+    and carries a load-failure diagnostic for itself.
+
+    A gateway that failed to load is a visibility-boundary failure: the
+    engine must not silently fall back to a full ungated spell view.
+    The message names the rune, the diagnostic kind, and the remedy:
+    ``mvge setup install`` for a missing dependency, ``mvge info`` for
+    diagnostic detail on a load failure. ``diagnostic_kind`` is taken
+    as a string so this core module never reaches into the runes
+    package for the DiagnosticKind enum.
+    """
+
+    def __init__(
+        self,
+        gateway_rune_name: str,
+        diagnostic_kind: str,
+        diagnostic_message: str,
+    ) -> None:
+        self.gateway_rune_name = gateway_rune_name
+        self.diagnostic_kind = diagnostic_kind
+        self.diagnostic_message = diagnostic_message
+        if str(diagnostic_kind) == "missing_dep":
+            remedy = "Run 'mvge setup install' to install its dependencies."
+            remedy_keyword = "mvge setup install"
+        else:
+            remedy = "Run 'mvge info' for diagnostic detail."
+            remedy_keyword = "mvge info"
+        message = (
+            f"Spell-gateway rune '{gateway_rune_name}' failed to load "
+            f"({diagnostic_kind}): {diagnostic_message}"
+        )
+        if remedy_keyword not in diagnostic_message:
+            message += f" {remedy}"
+        super().__init__("gateway_load_failed", message)
+
+
 class RateLimitError(MvgeError):
     def __init__(
         self,

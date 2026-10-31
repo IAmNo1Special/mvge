@@ -1544,3 +1544,147 @@ async def test_reload_removes_deleted_rune_providers(
         assert agent._provider_registry.get_realm_factory("probe:") is None
     finally:
         await agent.close()
+
+
+def _write_gateway_probe_rune(tmp_path: Path) -> None:
+    """A probe rune that is also the spell gateway (probe_spell only)."""
+    _write_probe_rune(tmp_path, manifest_extra={"spell_gateway": True})
+
+
+@pytest.mark.asyncio
+async def test_d1_child_allowed_spell_survives_gateway_at_initialize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 1 at the initialize level: a ["bash"] child under a loaded
+    gateway dispatches exactly bash, not the empty set rerun 8 produced."""
+    _write_gateway_probe_rune(tmp_path)
+    _write_function_spell(tmp_path, "bash")
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch, allowed_spells=["bash"])
+    await agent.initialize()
+    try:
+        assert agent.enabled_spells == ["bash"]
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_d1_reload_preserves_allowed_through_gateway(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 6: /reload on an allowed child keeps its dispatch set."""
+    _write_gateway_probe_rune(tmp_path)
+    _write_function_spell(tmp_path, "bash")
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch, allowed_spells=["bash"])
+    await agent.initialize()
+    try:
+        assert agent.enabled_spells == ["bash"]
+        result = await agent.reload()
+        assert result.ok
+        assert agent.enabled_spells == ["bash"]
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_d1_child_reload_does_not_touch_parent_allowlist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 6b: a child reload widens only the child's own runner.
+
+    Summoned children get fresh runners (sub_mvge.py constructs a new
+    Mvge per child), so the parent runner is a separate object; a child
+    reload must never mutate it. The parent agent here stands in for
+    that separate runner."""
+    _write_gateway_probe_rune(tmp_path)
+    _write_function_spell(tmp_path, "bash")
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    parent = _make_agent(tmp_path, monkeypatch)
+    await parent.initialize()
+    child = _make_agent(tmp_path, monkeypatch, allowed_spells=["bash"])
+    await child.initialize()
+    try:
+        assert parent.runner is not None
+        assert parent.runner.get_global_spell_allowlist() == ["probe_spell"]
+        assert child.enabled_spells == ["bash"]
+        result = await child.reload()
+        assert result.ok
+        assert child.enabled_spells == ["bash"]
+        assert parent.runner.get_global_spell_allowlist() == ["probe_spell"]
+    finally:
+        await child.close()
+        await parent.close()
+
+
+@pytest.mark.asyncio
+async def test_d1_child_reload_drops_ephemeral_activations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 6c: the reload candidate is widened with the child's
+    _allowed_spells ONLY, never by copying the live allowlist, so a
+    seeker-discovered ephemeral activation does not survive reload
+    while the host-declared allowed names do."""
+    _write_gateway_probe_rune(tmp_path)
+    _write_function_spell(tmp_path, "bash")
+    _write_function_spell(tmp_path, "extra_spell")
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch, allowed_spells=["bash"])
+    await agent.initialize()
+    try:
+        assert agent.enabled_spells == ["bash"]
+        assert agent.runner is not None
+        # Ephemeral activation shape: seeker discovery widens the live
+        # allowlist with a spell that is NOT in _allowed_spells.
+        agent.runner.widen_global_allowlist(["extra_spell"])
+        assert agent.runner.get_global_spell_allowlist() is not None
+        assert "extra_spell" in agent.runner.get_global_spell_allowlist()
+        result = await agent.reload()
+        assert result.ok
+        assert agent.enabled_spells == ["bash"]
+        assert agent.runner is not None
+        assert "extra_spell" not in (agent.runner.get_global_spell_allowlist() or [])
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
+async def test_d1_gateway_missing_dep_fails_initialize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D1 test 4 at the initialize level: a gateway rune whose declared
+    dependency is missing fails startup loudly instead of running
+    ungated, and no tome is created for the failed agent."""
+    from mvge.core.errors import GatewayLoadError
+
+    rune_dir = tmp_path / "runes" / "broken-gateway"
+    rune_dir.mkdir(parents=True, exist_ok=True)
+    (rune_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "broken-gateway",
+                "version": "1.0.0",
+                "description": "Broken gateway",
+                "entry_point": "rune.py",
+                "spell_gateway": True,
+                "python_deps": ["definitely_missing_package_d1_xyz"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (rune_dir / "rune.py").write_text(
+        "from mvge.runes.types import SpellDefinition\n"
+        "\n"
+        "\n"
+        "def rune_factory(api):\n"
+        "    api.register_spell(SpellDefinition(name='gw_spell', description=''))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
+    agent = _make_agent(tmp_path, monkeypatch)
+    with pytest.raises(GatewayLoadError) as exc_info:
+        await agent.initialize()
+    assert "broken-gateway" in str(exc_info.value)
+    assert "mvge setup install" in str(exc_info.value)
+    assert agent.tome_id is None
+    await agent.close()
