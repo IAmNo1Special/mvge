@@ -74,23 +74,39 @@ async def _safe_call_handler_async(
     data: Any,
     diagnostics: list[Diagnostic] | None = None,
     timeout_seconds: float = DEFAULT_HOOK_TIMEOUT_SECONDS,
+    rune_name: str | None = None,
 ) -> Any | None:
+    # Attribution for logs/diagnostics: the registered rune name when
+    # known, else the handler's own __name__ (the historical behavior).
+    display_name = (
+        rune_name
+        if rune_name is not None
+        else getattr(handler, "__name__", "sigil_handler")
+    )
     try:
         return await asyncio.wait_for(
             _call_handler_async(handler, hook, data),
             timeout=timeout_seconds,
         )
     except TimeoutError:
-        logger.warning(
-            "Sigil handler for hook %s timed out after %.2fs",
-            hook.value,
-            timeout_seconds,
-        )
+        if rune_name is not None:
+            logger.warning(
+                "Sigil handler for hook %s (rune %s) timed out after %.2fs",
+                hook.value,
+                rune_name,
+                timeout_seconds,
+            )
+        else:
+            logger.warning(
+                "Sigil handler for hook %s timed out after %.2fs",
+                hook.value,
+                timeout_seconds,
+            )
         if diagnostics is not None:
             diagnostics.append(
                 Diagnostic(
                     kind=DiagnosticKind.LOAD_FAILURE,
-                    rune_name=getattr(handler, "__name__", "sigil_handler"),
+                    rune_name=display_name,
                     message=(
                         f"Sigil handler timeout on {hook.value} after "
                         f"{timeout_seconds}s"
@@ -102,17 +118,26 @@ async def _safe_call_handler_async(
         raise
     except Exception as err:
         tb = traceback.format_exc()
-        logger.warning(
-            "Sigil handler for hook %s raised an exception: %s\n%s",
-            hook.value,
-            err,
-            tb,
-        )
+        if rune_name is not None:
+            logger.warning(
+                "Sigil handler for hook %s (rune %s) raised an exception: %s\n%s",
+                hook.value,
+                rune_name,
+                err,
+                tb,
+            )
+        else:
+            logger.warning(
+                "Sigil handler for hook %s raised an exception: %s\n%s",
+                hook.value,
+                err,
+                tb,
+            )
         if diagnostics is not None:
             diagnostics.append(
                 Diagnostic(
                     kind=DiagnosticKind.LOAD_FAILURE,
-                    rune_name=getattr(handler, "__name__", "sigil_handler"),
+                    rune_name=display_name,
                     message=f"Sigil handler error on {hook.value}: {err}\n{tb}",
                 )
             )
@@ -738,6 +763,28 @@ class RuneRunner:
     def get_sigil_handlers(self, hook: SigilHook) -> list[Handler]:
         return list(self._sigil_handlers.get(hook, []))
 
+    def get_sigil_handlers_with_runes(
+        self, hook: SigilHook
+    ) -> list[tuple[Handler, str | None]]:
+        """Return ``(handler, rune_name)`` pairs for ``hook`` in emit order.
+
+        The pairs are derived from ``_rune_handlers`` at call time — no
+        second mutable index — so rune unload pruning that removes a
+        handler from both structures can never leave a stale attribution
+        behind. Handlers registered without a rune name pair with
+        ``None``. A single function object registered by several runes is
+        attributed per registration occurrence, in claim order.
+        """
+        claims: dict[int, list[str]] = {}
+        for owner, by_hook in self._rune_handlers.items():
+            for claimed in by_hook.get(hook, []):
+                claims.setdefault(id(claimed), []).append(owner)
+        pairs: list[tuple[Handler, str | None]] = []
+        for handler in self._sigil_handlers.get(hook, []):
+            queue = claims.get(id(handler))
+            pairs.append((handler, queue.pop(0) if queue else None))
+        return pairs
+
     @property
     def sigil_handlers(self) -> dict[SigilHook, list[Handler]]:
         return {k: list(v) for k, v in self._sigil_handlers.items()}
@@ -1098,34 +1145,54 @@ class RuneRunner:
     async def emit_async(self, hook: SigilHook, data: Any) -> None:
         # Payloads arrive typed from mvge.agent.sigil_payloads; the runner
         # fans them out unchanged. Rune *returns* are never re-validated.
-        for handler in self.get_sigil_handlers(hook):
+        for handler, rune_name in self.get_sigil_handlers_with_runes(hook):
             await _safe_call_handler_async(
-                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+                handler,
+                hook,
+                data,
+                self._diagnostics,
+                self._hook_timeout_seconds,
+                rune_name=rune_name,
             )
 
     async def emit_chain(self, hook: SigilHook, initial: Any) -> Any:
         current = initial
-        for handler in self.get_sigil_handlers(hook):
+        for handler, rune_name in self.get_sigil_handlers_with_runes(hook):
             result = await _safe_call_handler_async(
-                handler, hook, current, self._diagnostics, self._hook_timeout_seconds
+                handler,
+                hook,
+                current,
+                self._diagnostics,
+                self._hook_timeout_seconds,
+                rune_name=rune_name,
             )
             if result is not None:
                 current = result
         return current
 
     async def emit_first(self, hook: SigilHook, data: Any) -> Any | None:
-        for handler in self.get_sigil_handlers(hook):
+        for handler, rune_name in self.get_sigil_handlers_with_runes(hook):
             result = await _safe_call_handler_async(
-                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+                handler,
+                hook,
+                data,
+                self._diagnostics,
+                self._hook_timeout_seconds,
+                rune_name=rune_name,
             )
             if result is not None:
                 return result
         return None
 
     async def emit_block(self, hook: SigilHook, data: Any) -> dict[str, Any] | None:
-        for handler in self.get_sigil_handlers(hook):
+        for handler, rune_name in self.get_sigil_handlers_with_runes(hook):
             result = await _safe_call_handler_async(
-                handler, hook, data, self._diagnostics, self._hook_timeout_seconds
+                handler,
+                hook,
+                data,
+                self._diagnostics,
+                self._hook_timeout_seconds,
+                rune_name=rune_name,
             )
             if isinstance(result, dict) and result.get("block"):
                 return result

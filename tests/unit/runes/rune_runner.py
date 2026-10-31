@@ -504,6 +504,84 @@ class TestRuneRunnerDispatch:
         assert any("timeout" in d.message.lower() for d in runner.diagnostics)
 
     @pytest.mark.asyncio
+    async def test_emit_async_timeout_names_rune(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        runner = RuneRunner(hook_timeout_seconds=0.05)
+
+        async def slow_handler(data: Any) -> None:
+            await asyncio.sleep(10.0)
+
+        runner.register_handler(
+            SigilHook.TURN_END, slow_handler, rune_name="probe-rune"
+        )
+        with caplog.at_level(logging.WARNING, logger="mvge.runes.rune_runner"):
+            await runner.emit_async(SigilHook.TURN_END, {})
+        assert any(d.rune_name == "probe-rune" for d in runner.diagnostics)
+        assert any("turn_end" in d.message for d in runner.diagnostics)
+        assert "probe-rune" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_emit_async_continues_past_timed_out_handler(self) -> None:
+        runner = RuneRunner(hook_timeout_seconds=0.05)
+        ran: list[str] = []
+
+        async def slow_handler(data: Any) -> None:
+            await asyncio.sleep(10.0)
+
+        async def fast_handler(data: Any) -> None:
+            ran.append("fast")
+
+        runner.register_handler(SigilHook.TURN_END, slow_handler, rune_name="slow-rune")
+        runner.register_handler(SigilHook.TURN_END, fast_handler, rune_name="fast-rune")
+        start = asyncio.get_running_loop().time()
+        await runner.emit_async(SigilHook.TURN_END, {})
+        elapsed = asyncio.get_running_loop().time() - start
+        assert ran == ["fast"]
+        assert elapsed < 5.0
+
+    @pytest.mark.asyncio
+    async def test_emit_async_timeout_unregistered_keeps_name_fallback(self) -> None:
+        runner = RuneRunner(hook_timeout_seconds=0.05)
+
+        async def hung_handler(data: Any) -> None:
+            await asyncio.sleep(10.0)
+
+        runner.register_handler(SigilHook.TURN_START, hung_handler)
+        await runner.emit_async(SigilHook.TURN_START, {})
+        assert any(d.rune_name == "hung_handler" for d in runner.diagnostics)
+
+    @pytest.mark.asyncio
+    async def test_emit_async_exception_names_rune_and_propagates(self) -> None:
+        runner = RuneRunner()
+
+        def boom_handler(data: Any) -> None:
+            raise RuntimeError("boom")
+
+        runner.register_handler(
+            SigilHook.TURN_START, boom_handler, rune_name="crash-rune"
+        )
+        # _safe_call appends the diagnostic and then re-raises, so the
+        # emit must surface both: the diagnostic and the raise.
+        with pytest.raises(RuntimeError, match="boom"):
+            await runner.emit_async(SigilHook.TURN_START, {})
+        assert any(d.rune_name == "crash-rune" for d in runner.diagnostics)
+
+    def test_sigil_handlers_with_runes_pairs_in_emit_order(self) -> None:
+        runner = RuneRunner()
+
+        def first_handler(data: Any) -> None:
+            return None
+
+        def second_handler(data: Any) -> None:
+            return None
+
+        runner.register_handler(SigilHook.TURN_START, first_handler, rune_name="rune-a")
+        runner.register_handler(SigilHook.TURN_START, second_handler)
+        pairs = runner.get_sigil_handlers_with_runes(SigilHook.TURN_START)
+        assert pairs == [(first_handler, "rune-a"), (second_handler, None)]
+
+    @pytest.mark.asyncio
     async def test_emit_chain_transforms_data(self) -> None:
         runner = RuneRunner()
 
