@@ -27,6 +27,7 @@ class SubMvgeState(StrEnum):
     IDLE = "idle"
     WAITING_FOR_APPROVAL = "waiting_for_approval"
     CANCELING = "canceling"
+    TERMINATED = "terminated"
     COMPLETED = "completed"
     ERRORED = "errored"
 
@@ -131,7 +132,8 @@ class SubMvgeManager:
         self._worktrees: dict[str, Path] = {}
 
     def list_active(self) -> list[SubMvgeRecord]:
-        """Return records for all tracked sub-Mvges."""
+        """Return records for all tracked sub-Mvges, including terminal
+        records (completed, errored, terminated)."""
         return list(self._records.values())
 
     async def summon(
@@ -332,6 +334,11 @@ class SubMvgeManager:
         rec = self._records.get(sub_mvge_id)
         if rec is None:
             raise KeyError(f"No sub-Mvge with id '{sub_mvge_id}' found.")
+        if rec.state == SubMvgeState.TERMINATED:
+            raise RuntimeError(
+                f"Sub-Mvge '{sub_mvge_id}' was terminated and cannot "
+                "receive messages; summon a new sub-Mvge to continue."
+            )
         mvge = self._instances.get(sub_mvge_id)
         if mvge is None:
             raise RuntimeError(f"Sub-Mvge instance '{sub_mvge_id}' is not available.")
@@ -397,8 +404,9 @@ class SubMvgeManager:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
 
-            rec.state = SubMvgeState.CANCELING
+            rec.state = SubMvgeState.TERMINATED
             rec.state_detail = "Terminated"
+            rec.error = "Terminated"
 
             mvge = self._instances.get(sub_id)
             if mvge is not None:

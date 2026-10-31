@@ -499,7 +499,7 @@ async def test_sub_mvge_kill_and_kill_all(tmp_path: Path) -> None:
 
         killed = await manager.kill([sub_id])
         assert len(killed) == 1
-        assert killed[0].state == SubMvgeState.CANCELING
+        assert killed[0].state == SubMvgeState.TERMINATED
 
         # kill unknown id
         killed_none = await manager.kill(["unknown_id"])
@@ -511,6 +511,180 @@ async def test_sub_mvge_kill_and_kill_all(tmp_path: Path) -> None:
         )
         killed_all = await manager.kill_all()
         assert len(killed_all) >= 1
+
+
+@pytest.mark.asyncio
+async def test_kill_sets_terminated_terminal_state(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def slow_run(*args: object, **kwargs: object) -> MvgeResponse:
+        await asyncio.sleep(5.0)
+        return MvgeResponse(role="assistant", content=[])
+
+    with MockChildMvgeContext(custom_run=slow_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="to_kill", prompt="Long work", wait=False)]
+        )
+        sub_id = records[0].sub_mvge_id
+
+        killed = await manager.kill([sub_id])
+        assert len(killed) == 1
+        assert killed[0].state == SubMvgeState.TERMINATED
+        assert killed[0].state_detail == "Terminated"
+        assert killed[0].error == "Terminated"
+
+        listed = manager.list_active()
+        assert len(listed) == 1
+        assert listed[0].sub_mvge_id == sub_id
+        assert listed[0].state == SubMvgeState.TERMINATED
+
+        await asyncio.sleep(0.1)
+        listed_again = manager.list_active()
+        assert len(listed_again) == 1
+        assert listed_again[0].state == SubMvgeState.TERMINATED
+        assert listed_again[0].state_detail == "Terminated"
+
+
+@pytest.mark.asyncio
+async def test_kill_is_idempotent(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def slow_run(*args: object, **kwargs: object) -> MvgeResponse:
+        await asyncio.sleep(5.0)
+        return MvgeResponse(role="assistant", content=[])
+
+    with MockChildMvgeContext(custom_run=slow_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="to_kill", prompt="Long work", wait=False)]
+        )
+        sub_id = records[0].sub_mvge_id
+
+        first = await manager.kill([sub_id])
+        second = await manager.kill([sub_id])
+        assert len(second) == 1
+        assert second[0].sub_mvge_id == first[0].sub_mvge_id
+        assert second[0].state == SubMvgeState.TERMINATED
+
+        listed = manager.list_active()
+        assert len(listed) == 1
+        assert listed[0].state == SubMvgeState.TERMINATED
+
+
+@pytest.mark.asyncio
+async def test_kill_all_terminates_all(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def slow_run(*args: object, **kwargs: object) -> MvgeResponse:
+        await asyncio.sleep(5.0)
+        return MvgeResponse(role="assistant", content=[])
+
+    with MockChildMvgeContext(custom_run=slow_run):
+        records = await manager.summon(
+            [
+                SubMvgeSpec(role="worker", prompt="Work 1", wait=False),
+                SubMvgeSpec(role="worker", prompt="Work 2", wait=False),
+            ]
+        )
+        assert len(records) == 2
+
+        killed = await manager.kill_all()
+        assert len(killed) == 2
+        for rec in killed:
+            assert rec.state == SubMvgeState.TERMINATED
+            assert rec.state_detail == "Terminated"
+
+
+@pytest.mark.asyncio
+async def test_message_to_terminated_child_is_rejected(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    async def slow_run(*args: object, **kwargs: object) -> MvgeResponse:
+        await asyncio.sleep(5.0)
+        return MvgeResponse(role="assistant", content=[])
+
+    with MockChildMvgeContext(custom_run=slow_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="to_kill", prompt="Long work", wait=False)]
+        )
+        sub_id = records[0].sub_mvge_id
+        await manager.kill([sub_id])
+        summary_before = manager.list_active()[0].summary
+
+        with pytest.raises(RuntimeError, match="terminated"):
+            await manager.send_message(sub_id, "Are you still there?")
+
+        listed = manager.list_active()
+        assert len(listed) == 1
+        assert listed[0].state == SubMvgeState.TERMINATED
+        assert listed[0].summary == summary_before
+
+
+@pytest.mark.asyncio
+async def test_parent_abort_still_canceling_not_terminated(tmp_path: Path) -> None:
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    parent_controller = AbortController()
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        subsessions_dir=subsessions_dir,
+    )
+
+    started = asyncio.Event()
+
+    async def abortable_run(prompt: str, *, signal: object = None) -> MvgeResponse:
+        started.set()
+        if signal is not None:
+            await signal.wait()  # type: ignore[attr-defined]
+        else:
+            await asyncio.sleep(10.0)
+        return MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "Done"}],
+        )
+
+    with MockChildMvgeContext(custom_run=abortable_run):
+        records = await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="Sleep", wait=False)],
+            parent_signal=parent_controller.signal,
+        )
+        sub_id = records[0].sub_mvge_id
+        await asyncio.wait_for(started.wait(), timeout=5.0)
+
+        parent_controller.abort()
+
+        async def _await_canceling() -> SubMvgeRecord:
+            while True:
+                rec = manager.list_active()[0]
+                if rec.state == SubMvgeState.CANCELING:
+                    return rec
+                await asyncio.sleep(0.01)
+
+        rec = await asyncio.wait_for(_await_canceling(), timeout=5.0)
+        assert rec.sub_mvge_id == sub_id
+        assert rec.state == SubMvgeState.CANCELING
+        assert rec.state_detail == "Cancelled"
+        assert rec.state != SubMvgeState.TERMINATED
 
 
 @pytest.mark.asyncio
