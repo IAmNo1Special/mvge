@@ -394,6 +394,24 @@ class Mvge:
             sys.path.insert(0, agents_root)
 
         self._spells_arg = spells
+        # The project spell discovery runs before the environment exists,
+        # so it cannot read the environment's project_dir yet. Stash the
+        # explicitly named project here -- a supplied environment's
+        # project_dir first (it is the project the running agent will
+        # actually use, per _effective_cwd), else an explicitly supplied
+        # caller_dir (the summoned workspace for an embedded child).
+        # A stack-inferred caller_dir is deliberately NOT stashed: the
+        # comment above says it must never move the project off the
+        # process cwd for a directly constructed agent, and discovery
+        # honours the same rule -- an unnamed project keeps the cwd
+        # fallback below, exactly as before.
+        self._explicit_project_dir: Path | None = None
+        supplied_config_manager = getattr(environment, "config_manager", None)
+        supplied_project_dir = getattr(supplied_config_manager, "project_dir", None)
+        if supplied_project_dir is not None:
+            self._explicit_project_dir = Path(supplied_project_dir)
+        elif supplied_caller_dir is not None:
+            self._explicit_project_dir = resolved_caller_dir
         self._spells, self._active_spells_dir = self._discover_spells()
 
         self._plan_mode = False
@@ -504,6 +522,46 @@ class Mvge:
         self._enabled_spells_filter: set[str] | None = None
         self._initialized = False
 
+    def _project_spells_base(self) -> Path:
+        """The directory whose ``.agents/spells`` is the project layer.
+
+        The authoritative project location is the one the running agent
+        already uses everywhere else: the config manager's project_dir,
+        which ``_effective_cwd`` returns and which names the project for
+        tomes, runes, and prompts. At construction the environment does
+        not exist yet, so the explicitly stashed project (a supplied
+        environment's project_dir, else an explicitly supplied caller_dir)
+        stands in for it. On reload the live environment's project_dir
+        wins: it was anchored at construction, so a process that has
+        since changed directory does not move the project with it.
+
+        Only when no project was named anywhere -- a directly
+        constructed agent with neither an environment nor an explicit
+        caller_dir -- does the process cwd serve, exactly as before:
+        that is the normal case of invoking from inside the project
+        directory, and it is the same default ConfigManager itself
+        applies (``project_dir or Path.cwd()``). A named project never
+        falls back to the cwd: its spells come from the named project
+        or, failing that, from the agent config directory below -- never
+        from an unrelated directory the process happens to be in.
+
+        This mirrors Pi, which resolves cwd once at startup, stores it
+        on the session (``AgentSessionConfig.cwd``), and lets the
+        resource loader and tool definitions read that stored value
+        rather than re-reading ``process.cwd()``; and dsh, which
+        refuses a cwd default for its session root for the same reason
+        a later cwd change must not scatter one backend across roots.
+        """
+        environment = getattr(self, "_environment", None)
+        config_manager = getattr(environment, "config_manager", None)
+        live_project_dir = getattr(config_manager, "project_dir", None)
+        if live_project_dir is not None:
+            return Path(live_project_dir)
+        explicit = getattr(self, "_explicit_project_dir", None)
+        if explicit is not None:
+            return Path(explicit)
+        return Path.cwd()
+
     def _discover_spells(self) -> tuple[list[SpellUnion], Path | None]:
         """Run the construction-time spell discovery branches (strict)."""
         return self._discover_spells_impl(on_file_error=None)
@@ -551,15 +609,11 @@ class Mvge:
         if caller_dir is not None and (caller_dir / "spells").is_dir():
             caller_spells = caller_dir / "spells"
             return _from_dir(caller_spells), caller_spells
-        project_spells = Path.cwd() / ".agents" / "spells"
+        project_base = self._project_spells_base()
+        project_spells = project_base / ".agents" / "spells"
         if project_spells.is_dir():
-            from mvge.runes.trust import (
-                WorkspaceTrustStatus,
-                WorkspaceTrustStore,
-            )
-
-            store = WorkspaceTrustStore()
-            if store.check_trust(Path.cwd()) == WorkspaceTrustStatus.TRUSTED:
+            store = self._trust_store or WorkspaceTrustStore()
+            if store.check_trust(project_base) == WorkspaceTrustStatus.TRUSTED:
                 return _from_dir(project_spells), project_spells
             logger.warning(
                 "Skipping project-level spells at %s: workspace is untrusted",
