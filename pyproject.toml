@@ -1,6 +1,6 @@
 [project]
 name = "mvge"
-version = "0.2.24"
+version = "0.2.25"
 description = "mvge — a Python-based AI coding agent"
 requires-python = ">=3.13"
 license = "MIT"
