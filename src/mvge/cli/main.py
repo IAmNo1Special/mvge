@@ -214,6 +214,14 @@ def _maybe_bootstrap_profile(
     step a fresh install could silently skip, leaving the empty default
     agent with no spells. ``--no-bootstrap`` (``bootstrap is False``) still
     opts out, and a non-terminal session never installs on its own.
+
+    An explicit ``--bootstrap`` in a non-terminal session is the one
+    exception to the dep-install gate: the flag itself is the user's
+    instruction to install the profile, so its declared python dependencies
+    (e.g. the seeker rune's ``aiohttp``) are installed as part of bootstrap
+    rather than skipped, which previously left a freshly bootstrapped home
+    whose session could not start. At a terminal the per-dependency prompts
+    are preserved, and the automatic (non-explicit) path is unchanged.
     """
     from mvge.agent.agent_name import installed_agent_names
     from mvge.agent.installer import install_profile
@@ -235,7 +243,13 @@ def _maybe_bootstrap_profile(
     if should_install:
         console.print("[dim]Bootstrapping 'coding' profile from marketplace...[/dim]")
         try:
-            res = install_profile("coding")
+            # Explicit --bootstrap in a non-terminal session: the flag is
+            # the consent to install, so do not let the dep gate skip the
+            # profile's dependencies and strand the session on a gateway
+            # rune's missing dep. Every other path keeps the prompt gate.
+            non_terminal = not (sys.stdin.isatty() and sys.stdout.isatty())
+            confirm_python_deps = True if (bootstrap is True and non_terminal) else None
+            res = install_profile("coding", confirm_python_deps=confirm_python_deps)
             console.print(
                 f"[green]Successfully bootstrapped 'coding' profile "
                 f"({len(res.installed_mvges)} mvges, "
