@@ -65,12 +65,29 @@ def test_maybe_bootstrap_profile_explicit_true() -> None:
     mock_res = ProfileInstallResult("coding", ["coding_mvge"], ["seeker"], [], [])
     with (
         patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
+        patch("sys.stdin.isatty", return_value=False),
+        patch("sys.stdout.isatty", return_value=False),
         patch(
             "mvge.agent.installer.install_profile", return_value=mock_res
         ) as mock_install,
     ):
         assert _maybe_bootstrap_profile(bootstrap=True) is True
-        mock_install.assert_called_once_with("coding")
+        mock_install.assert_called_once_with("coding", confirm_python_deps=True)
+
+
+def test_maybe_bootstrap_profile_explicit_true_terminal_keeps_prompt_gate() -> None:
+    """Explicit --bootstrap at a terminal still gates deps on prompts."""
+    mock_res = ProfileInstallResult("coding", ["coding_mvge"], ["seeker"], [], [])
+    with (
+        patch("mvge.agent.agent_name.installed_agent_names", return_value=[]),
+        patch("sys.stdin.isatty", return_value=True),
+        patch("sys.stdout.isatty", return_value=True),
+        patch(
+            "mvge.agent.installer.install_profile", return_value=mock_res
+        ) as mock_install,
+    ):
+        assert _maybe_bootstrap_profile(bootstrap=True) is True
+        mock_install.assert_called_once_with("coding", confirm_python_deps=None)
 
 
 def test_maybe_bootstrap_profile_interactive_auto_installs() -> None:
@@ -85,7 +102,7 @@ def test_maybe_bootstrap_profile_interactive_auto_installs() -> None:
         ) as mock_install,
     ):
         assert _maybe_bootstrap_profile(bootstrap=None, is_interactive=True) is True
-        mock_install.assert_called_once_with("coding")
+        mock_install.assert_called_once_with("coding", confirm_python_deps=None)
 
 
 def test_maybe_bootstrap_profile_non_terminal_installs_nothing() -> None:
@@ -119,7 +136,7 @@ def test_maybe_bootstrap_profile_failure_returns_false() -> None:
         ) as mock_install,
     ):
         assert _maybe_bootstrap_profile(bootstrap=None, is_interactive=True) is False
-        mock_install.assert_called_once_with("coding")
+        mock_install.assert_called_once_with("coding", confirm_python_deps=None)
 
 
 @pytest.mark.asyncio
