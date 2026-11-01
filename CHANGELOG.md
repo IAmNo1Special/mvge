@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.40] - 2026-11-01
+
+
+### Bug Fixes
+
+- **cli:** install profile deps on explicit non-terminal --bootstrap (582bec5)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (9d1711a)
+
+- **release:** v0.2.40 (71e8c55)
+
+
 ## [0.2.39] - 2026-10-31
 
 
