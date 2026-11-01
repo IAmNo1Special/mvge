@@ -717,8 +717,23 @@ class SSEStreamingRealm(Realm, ABC):
         if text_parts:
             blocks.append({"type": "text", "text": "".join(text_parts)})
 
+        dropped: list[tuple[int, str]] = []
+        emitted_casts = 0
         for index in sorted(tool_calls_acc):
             acc = tool_calls_acc[index]
+            name = _sanitize_tool_name(acc["name"])
+            call_id = acc["id"]
+            # An empty id (missing, "", or whitespace-only) is unpairable:
+            # dispatch would execute the spell, if any, and emit a result
+            # no provider can pair back to a call. Drop the entry here,
+            # at build time only -- an early delta for an index may
+            # legitimately carry neither id nor name yet, with the id
+            # arriving in a later delta for the same index. The name is
+            # irrelevant to the decision: an id-present cast is preserved
+            # even when its name sanitizes to "".
+            if call_id is None or (isinstance(call_id, str) and not call_id.strip()):
+                dropped.append((index, name))
+                continue
             try:
                 arguments = json.loads(acc["arguments"]) if acc["arguments"] else {}
             except json.JSONDecodeError:
@@ -727,14 +742,25 @@ class SSEStreamingRealm(Realm, ABC):
                 {
                     "type": "spell_cast",
                     "spell_cast": {
-                        "id": acc["id"],
-                        "name": _sanitize_tool_name(acc["name"]),
+                        "id": call_id,
+                        "name": name,
                         "arguments": arguments,
                     },
                 }
             )
+            emitted_casts += 1
 
-        if tool_calls_acc:
+        if dropped:
+            logger.warning(
+                "Dropped %d tool-call delta(s) with an empty id: %s",
+                len(dropped),
+                ", ".join(
+                    f"index {index}" + (f" (name {name!r})" if name else "")
+                    for index, name in dropped
+                ),
+            )
+
+        if emitted_casts:
             stop_reason = StopReason.SPELL_USE
         elif finish_reason == "length":
             stop_reason = StopReason.LENGTH

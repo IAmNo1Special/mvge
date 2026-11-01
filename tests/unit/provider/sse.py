@@ -1415,3 +1415,155 @@ async def test_sse_realm_constructs_owned_client_under_bracketed_no_proxy(
         assert os.environ[name] == "localhost"
     finally:
         await realm.close()
+
+
+def _tool_call_stream_lines(
+    calls: list[dict[str, Any]], finish_reason: str = "tool_calls"
+) -> list[bytes]:
+    """Build SSE lines for one tool-call delta per entry, then a finish.
+
+    Each entry: ``index`` plus optional ``id``, ``name``, ``arguments``.
+    Omitting a key models a delta that never carried that field.
+    """
+    lines: list[bytes] = []
+    for entry in calls:
+        function: dict[str, Any] = {}
+        if "name" in entry:
+            function["name"] = entry["name"]
+        if "arguments" in entry:
+            function["arguments"] = entry["arguments"]
+        tool_call: dict[str, Any] = {
+            "index": entry["index"],
+            "type": "function",
+            "function": function,
+        }
+        if "id" in entry:
+            tool_call["id"] = entry["id"]
+        chunk = {"choices": [{"delta": {"tool_calls": [tool_call]}}]}
+        lines.append(f"data: {json.dumps(chunk)}\n\n".encode())
+    finish_chunk = {"choices": [{"delta": {}, "finish_reason": finish_reason}]}
+    lines.append(f"data: {json.dumps(finish_chunk)}\n\n".encode())
+    lines.append(b"data: [DONE]\n\n")
+    return lines
+
+
+def _spell_casts(responses: list[RealmResponse]) -> list[dict[str, Any]]:
+    final = responses[-1]
+    assert final.invocation is not None
+    return [
+        block["spell_cast"]
+        for block in final.invocation.content
+        if block.get("type") == "spell_cast"
+    ]
+
+
+async def _stream_final(
+    calls: list[dict[str, Any]], finish_reason: str = "tool_calls"
+) -> list[RealmResponse]:
+    realm = DummySSERealm(
+        client=_make_client(_tool_call_stream_lines(calls, finish_reason))
+    )
+    return await _collect(
+        realm.stream(_test_model(), [], ChannelConfig(model=_test_model()))
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_drops_empty_id_tool_call_keeps_valid_call() -> None:
+    """T1: a valid call plus a stray empty delta yields only the valid cast."""
+    responses = await _stream_final(
+        [
+            {"index": 0, "id": "call_1", "name": "search", "arguments": "{}"},
+            {"index": 1, "id": "", "name": "", "arguments": "{}"},
+        ]
+    )
+    casts = _spell_casts(responses)
+    assert len(casts) == 1
+    assert casts[0]["id"] == "call_1"
+    assert casts[0]["name"] == "search"
+    assert responses[-1].stop_reason == StopReason.SPELL_USE.value
+    assert responses[-1].invocation is not None
+    assert responses[-1].invocation.stop_reason == StopReason.SPELL_USE
+
+
+@pytest.mark.asyncio
+async def test_stream_drops_named_but_idless_tool_call() -> None:
+    """T2: a named delta with no id is dropped before dispatch, not cast.
+
+    With no other call, the response is a cast-free STOP, never SPELL_USE:
+    dispatching it would execute a real spell and emit an unpairable
+    empty-id result.
+    """
+    responses = await _stream_final([{"index": 1, "name": "search", "arguments": "{}"}])
+    assert _spell_casts(responses) == []
+    assert not any(cast.get("id", "") == "" for cast in _spell_casts(responses))
+    assert responses[-1].stop_reason == StopReason.STOP.value
+    assert responses[-1].invocation is not None
+    assert responses[-1].invocation.stop_reason == StopReason.STOP
+
+
+@pytest.mark.asyncio
+async def test_stream_preserves_id_present_name_empty_tool_call() -> None:
+    """T3: an id-present, name-empty cast is preserved verbatim."""
+    responses = await _stream_final(
+        [{"index": 0, "id": "call_9", "name": "", "arguments": "{}"}]
+    )
+    casts = _spell_casts(responses)
+    assert len(casts) == 1
+    assert casts[0]["id"] == "call_9"
+    assert casts[0]["name"] == ""
+    assert responses[-1].stop_reason == StopReason.SPELL_USE.value
+
+
+@pytest.mark.asyncio
+async def test_stream_only_empty_tool_call_yields_no_cast() -> None:
+    """T4: a noise-only response yields no cast; stop follows finish reason."""
+    responses = await _stream_final(
+        [{"index": 0, "id": "", "name": "", "arguments": "{}"}]
+    )
+    assert _spell_casts(responses) == []
+    assert responses[-1].stop_reason == StopReason.STOP.value
+
+    responses = await _stream_final(
+        [{"index": 0, "id": "", "name": "", "arguments": "{}"}],
+        finish_reason="length",
+    )
+    assert _spell_casts(responses) == []
+    assert responses[-1].stop_reason == StopReason.LENGTH.value
+
+
+@pytest.mark.asyncio
+async def test_stream_empty_delta_then_later_id_same_index_preserved() -> None:
+    """T5: filtering is build-time only. An early empty delta for an index
+    that later carries id + name + arguments still becomes a cast."""
+    responses = await _stream_final(
+        [
+            {"index": 0},
+            {"index": 0, "id": "call_5", "name": "search", "arguments": "{}"},
+        ]
+    )
+    casts = _spell_casts(responses)
+    assert len(casts) == 1
+    assert casts[0]["id"] == "call_5"
+    assert casts[0]["name"] == "search"
+    assert responses[-1].stop_reason == StopReason.SPELL_USE.value
+
+
+@pytest.mark.asyncio
+async def test_stream_framing_only_name_sanitized_but_cast_preserved() -> None:
+    """T6: an id-present call whose name sanitizes to "" is still a cast."""
+    responses = await _stream_final(
+        [
+            {
+                "index": 0,
+                "id": "call_7",
+                "name": "<|channel|>commentary",
+                "arguments": "{}",
+            }
+        ]
+    )
+    casts = _spell_casts(responses)
+    assert len(casts) == 1
+    assert casts[0]["id"] == "call_7"
+    assert casts[0]["name"] == ""
+    assert responses[-1].stop_reason == StopReason.SPELL_USE.value
