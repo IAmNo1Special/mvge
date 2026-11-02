@@ -205,7 +205,9 @@ async def test_remaining_methods_gate_and_deny() -> None:
     assert granted["shortcut"] is True
     assert granted["provider"] is True
     assert granted["gate_denied"] is True
-    assert "/tmp/cap-skills" in granted["skill_paths"]  # type: ignore[operator]
+    # The engine resolves the path (symlinked /tmp on macOS,
+    # drive-lettered paths on Windows), so compare resolved forms.
+    assert str(Path("/tmp/cap-skills").resolve()) in granted["skill_paths"]  # type: ignore[operator]
     assert "cap_key" in granted["shortcuts"]  # type: ignore[operator]
     assert "cap_prov" in granted["providers"]  # type: ignore[operator]
 
