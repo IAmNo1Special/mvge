@@ -24,7 +24,11 @@ from mvge.core.layers import scope_rank
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
 from mvge.runes.installer import read_or_create_install_id
-from mvge.runes.loader import load_factory_from_manifest
+from mvge.runes.loader import (
+    _inject_rune_paths,
+    load_factory_from_manifest,
+    remove_injected_rune_paths,
+)
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneAPI
 from mvge.runes.skill_catalog import SkillCatalog
@@ -374,6 +378,10 @@ class RuneRunner:
         ]
         self._rune_instances.pop(rune_name, None)
         self._skill_catalog.clear_rune(rune_name)
+        # Unload / clear is the only place injected sys.path entries
+        # are removed. Modules already imported stay in sys.modules,
+        # and site.addsitedir .pth effects are not undone.
+        remove_injected_rune_paths(rune_name)
         self._spell_version += 1
 
     def clear_rune(self, rune_name: str) -> None:
@@ -471,6 +479,7 @@ class RuneRunner:
         """
         diagnostics: list[Diagnostic] = []
         candidates: list[tuple[RuneManifest, Path, Any]] = []
+        seen_names: dict[str, Path] = {}
         for extensions_dir in extensions_dirs:
             if not extensions_dir.is_dir():
                 continue
@@ -489,6 +498,24 @@ class RuneRunner:
                         )
                     )
                     continue
+                # Dedupe BEFORE module execution, as in
+                # load_runes_from_paths: the first candidate wins
+                # and a shadowed candidate's module must never run.
+                if manifest.name in seen_names:
+                    diagnostics.append(
+                        Diagnostic(
+                            kind=DiagnosticKind.SHADOWED_RUNE,
+                            rune_name=manifest.name,
+                            message=(
+                                f"Rune '{manifest.name}' from "
+                                f"({extensions_dir}) shadowed by "
+                                f"({seen_names[manifest.name]})"
+                            ),
+                            path=str(extensions_dir),
+                        )
+                    )
+                    continue
+                seen_names[manifest.name] = extensions_dir
                 factory = load_factory_from_manifest(
                     manifest, child, diagnostics=diagnostics
                 )
@@ -501,6 +528,15 @@ class RuneRunner:
         ]
         for manifest, child, factory in partitioned:
             self.clear_rune(manifest.name)
+            # clear_rune removed this rune's injected sys.path
+            # entries; reload re-adds them before the factory runs,
+            # so lazy imports at spell-call time keep working.
+            if manifest.entry_point:
+                _inject_rune_paths(
+                    child,
+                    (child / manifest.entry_point).resolve(),
+                    manifest.name,
+                )
             self._loaded_manifests = [
                 m for m in self._loaded_manifests if m.name != manifest.name
             ]

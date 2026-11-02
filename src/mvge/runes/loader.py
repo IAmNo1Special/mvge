@@ -199,13 +199,60 @@ def inject_dependency_site_packages(
         site.addsitedir(str(sp))
 
 
-def _inject_rune_paths(rune_dir: Path, entry: Path) -> None:
-    """Put rune-local import roots on ``sys.path`` so bundled deps resolve."""
+# Bookkeeping for sys.path entries injected by rune loads, keyed by the
+# path string to the set of rune names claiming it. This mirrors the
+# sys.path / sys.modules registries: it exists only so unload can undo
+# what load did. Entries are removed on unload / clear_rune only, never
+# after module execution: runes import lazily at spell-call time, and
+# removing an entry parent after exec_module would break those imports.
+# site.addsitedir .pth side effects cannot be undone by popping sys.path
+# and are deliberately not claimed here, so removal never claims to
+# restore more than the recorded entries. Removing a path does not
+# unload modules already imported from it (sys.modules is untouched);
+# cross-rune module shadowing is therefore NOT closed by this phase.
+_injected_path_claims: dict[str, set[str]] = {}
+
+
+def _inject_rune_paths(
+    rune_dir: Path, entry: Path, rune_name: str | None = None
+) -> None:
+    """Put rune-local import roots on ``sys.path`` so bundled deps resolve.
+
+    Records every intended import root this rune claims, including
+    roots already on sys.path from an earlier rune, so removal on
+    unload drops a root only once its last claimant is gone.
+    """
     inject_dependency_site_packages([rune_dir])
     entry_parent = entry.parent.resolve()
     entry_parent_str = str(entry_parent)
     if entry_parent_str not in sys.path:
         sys.path.insert(0, entry_parent_str)
+    claim_name = rune_name if rune_name is not None else rune_dir.name
+    intended = (
+        {str(p) for p in discover_rune_site_packages(rune_dir)}
+        | {entry_parent_str}
+        | {str(p) for p in shared_extensions_site_packages()}
+    )
+    for path_str in intended:
+        if path_str in sys.path:
+            _injected_path_claims.setdefault(path_str, set()).add(claim_name)
+
+
+def remove_injected_rune_paths(rune_name: str) -> None:
+    """Remove sys.path entries claimed only by ``rune_name``.
+
+    Called from the runner's unload / clear path. Entries still
+    claimed by another loaded rune are left in place.
+    """
+    for path_str, claimants in list(_injected_path_claims.items()):
+        if rune_name not in claimants:
+            continue
+        claimants.discard(rune_name)
+        if claimants:
+            continue
+        del _injected_path_claims[path_str]
+        with contextlib.suppress(ValueError):
+            sys.path.remove(path_str)
 
 
 def preflight_rune_deps(
@@ -221,6 +268,31 @@ def load_factory_from_manifest(
     diagnostics: list[Diagnostic] | None = None,
 ) -> RuneFactory | None:
     if not manifest.entry_point:
+        return None
+
+    # Containment first, before any side effect on disk or sys.path:
+    # an entry point that resolves outside the rune directory is
+    # refused outright. The check is after .resolve() so absolute
+    # paths (Path / absolute discards the left side) and symlink
+    # escapes are both caught. A refused rune gets no .install-id,
+    # no injected paths, and no module execution.
+    rune_dir_resolved = rune_dir.resolve()
+    entry = (rune_dir / manifest.entry_point).resolve()
+    if not entry.is_relative_to(rune_dir_resolved):
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=(
+                        f"Entry point '{manifest.entry_point}' for rune "
+                        f"'{manifest.name}' resolves outside the rune "
+                        f"directory and was refused"
+                    ),
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
         return None
 
     # The install id is installer-owned: if the rune was not installed
@@ -253,12 +325,11 @@ def load_factory_from_manifest(
             )
         return None
 
-    entry = (rune_dir / manifest.entry_point).resolve()
-
     # Inject rune-local import roots (including any bundled venv) BEFORE
     # dependency inspection, so deps shipped inside the rune are not
-    # falsely reported as missing.
-    _inject_rune_paths(rune_dir, entry)
+    # falsely reported as missing. Removal happens on unload /
+    # clear_rune only, never here after module execution.
+    _inject_rune_paths(rune_dir, entry, manifest.name)
 
     missing = preflight_rune_deps(manifest)
     if missing:
@@ -484,11 +555,9 @@ def load_runes_from_paths(
                 continue
         manifests = load_manifests(path, scope=scope, diagnostics=diagnostics)
         for manifest in manifests:
-            factory = None
-            if manifest.path:
-                factory = load_factory_from_manifest(
-                    manifest, Path(manifest.path), diagnostics=diagnostics
-                )
+            # Dedupe BEFORE module execution: a shadowed rune's module
+            # must never run, and it must not gain an .install-id or
+            # injected sys.path entries. The winner is the first load.
             if manifest.name in seen_names:
                 winner_scope, winner_path = seen_names[manifest.name]
                 diagnostics.append(
@@ -506,6 +575,11 @@ def load_runes_from_paths(
                 )
                 continue
             seen_names[manifest.name] = (scope, str(path))
+            factory = None
+            if manifest.path:
+                factory = load_factory_from_manifest(
+                    manifest, Path(manifest.path), diagnostics=diagnostics
+                )
             loads.append(RuneLoad(manifest=manifest, factory=factory))
 
     partitioned_loads = [r for r in loads if not r.manifest.spell_gateway] + [

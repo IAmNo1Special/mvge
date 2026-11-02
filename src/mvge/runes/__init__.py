@@ -12,6 +12,7 @@ from mvge.runes.loader import (
     load_factory_from_manifest,
     load_manifests,
     load_runes_from_paths,
+    remove_injected_rune_paths,
 )
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneAPI, RuneFactory
@@ -100,6 +101,7 @@ __all__ = [
     "read_or_create_install_id",
     "load_manifests",
     "load_runes_from_paths",
+    "remove_injected_rune_paths",
     "set_rune_enabled",
     "install_skill",
     "uninstall_rune",
