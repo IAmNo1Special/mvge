@@ -14,6 +14,7 @@ from mvge.core.approval import (
 )
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
+from mvge.runes.capabilities import CapabilityGate
 from mvge.runes.rune_audit import (
     AuditError,
     RuneAuditLog,
@@ -56,11 +57,15 @@ class RuneAPI:
         override: bool = False,
         install_id: str | None = None,
         audit_log: RuneAuditLog | None = None,
+        capability_gate: CapabilityGate | None = None,
     ) -> None:
         self._facade = facade
         self._rune_name = rune_name
         self._override = override
         self._install_id = install_id
+        # Phase 2B: None means ungated (ad-hoc API use); a gate
+        # denies every capability it does not grant, fail-closed.
+        self._capability_gate = capability_gate
         # Engine-owned: the rune-op audit log. Defaults to the user-scope
         # ``.agents/extensions/audit.jsonl``; injectable for tests.
         self._audit_log = audit_log or RuneAuditLog(default_rune_ops_dir())
@@ -69,6 +74,12 @@ class RuneAPI:
             if rune_name is not None
             else RuneDisposableScope(rune_name="anonymous")
         )
+
+    def _allows(self, capability: str) -> bool:
+        """Phase 2B gate check; ungated APIs allow everything."""
+        if self._capability_gate is None:
+            return True
+        return self._capability_gate.allows(self._rune_name, capability)
 
     @property
     def scope(self) -> RuneDisposableScope:
@@ -121,6 +132,8 @@ class RuneAPI:
         return sanitize_no_proxy_env()
 
     def on(self, hook: SigilHook, handler: Any) -> None:
+        if not self._allows("hook"):
+            return
         self._disposable_scope.sigil_handlers.append((hook, handler))
         self._facade.register_handler(hook, handler, rune_name=self._rune_name)
 
@@ -132,6 +145,8 @@ class RuneAPI:
         malformed response denies the cast. This is the approval path; the
         fail-open ``BEFORE_SPELL_CAST`` hook cannot substitute for it.
         """
+        if not self._allows("hook"):
+            return
         self._disposable_scope.installed_spell_gate = True
         self._facade.register_spell_gate(handler, rune_name=self._rune_name)
 
@@ -147,6 +162,8 @@ class RuneAPI:
     def register_spell(
         self, spell: SpellDefinition | MvgeSpell, override: bool = False
     ) -> bool:
+        if not self._allows("spell"):
+            return False
         ok = self._facade.register_spell(
             spell, self._rune_name, override=override or self._override
         )
@@ -161,6 +178,8 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
+        if not self._allows("command"):
+            return False
         ok = self._facade.register_command(
             RegisteredCommand(name=name, description=description, handler=handler),
             override=override or self._override,
@@ -176,6 +195,8 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
+        if not self._allows("command"):
+            return False
         ok = self._facade.register_shortcut(
             RuneShortcut(key=key, description=description, handler=handler),
             override=override or self._override,
@@ -190,6 +211,8 @@ class RuneAPI:
         config: dict[str, Any],
         override: bool = False,
     ) -> bool:
+        if not self._allows("realm"):
+            return False
         ok = self._facade.register_provider(
             name, config, override=override or self._override
         )
@@ -208,6 +231,8 @@ class RuneAPI:
         factory: Any,
         override: bool = False,
     ) -> bool:
+        if not self._allows("realm"):
+            return False
         ok = self._facade.register_realm_factory(
             prefix,
             factory,
@@ -283,10 +308,14 @@ class RuneAPI:
 
     def register_skill_path(self, path: Path | str) -> None:
         """Dynamically register an additional skill directory path."""
+        if not self._allows("skill"):
+            return
         self._facade.register_skill_path(path)
 
     def register_skill(self, manifest: SkillManifest) -> None:
         """Dynamically register an in-memory SkillManifest."""
+        if not self._allows("skill"):
+            return
         self._facade.register_skill(manifest, source_rune=self._rune_name)
 
     def clear_skills_for_rune(self) -> None:

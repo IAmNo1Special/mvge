@@ -18,6 +18,7 @@ from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneFactory
+from mvge.runes.source_audit import audit_rune_dir, blocking_findings
 from mvge.runes.trust import (
     WorkspaceTrustStatus,
     WorkspaceTrustStore,
@@ -289,6 +290,33 @@ def load_factory_from_manifest(
                         f"'{manifest.name}' resolves outside the rune "
                         f"directory and was refused"
                     ),
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
+        return None
+
+    # Phase 2B admission audit, before any side effect on disk or
+    # sys.path and before any module execution: a rune with a
+    # blocking source-audit finding is refused outright, with no
+    # .install-id, no injected paths, and no executed code. The
+    # audit is an AST scan only — it never imports or executes
+    # the rune. Advisory findings (e.g. sys.modules use) are
+    # flagged by the audit API for review, not reported here,
+    # so a sanctioned importlib pattern does not fail a load.
+    blocking = blocking_findings(audit_rune_dir(rune_dir, manifest.capabilities))
+    if blocking:
+        if diagnostics is not None:
+            summary = "; ".join(
+                f"{f.file}:{f.line} {f.kind} {f.message}" for f in blocking[:5]
+            )
+            if len(blocking) > 5:
+                summary += f" (and {len(blocking) - 5} more)"
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=(f"Rune '{manifest.name}' refused at admission: {summary}"),
                     scope=manifest.scope,
                     path=manifest.path,
                 )

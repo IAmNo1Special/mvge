@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from mvge.core.spells import ExecutionMode
+from mvge.runes.capabilities import parse_capabilities
 from mvge.runes.types import (
     RuneManifest,
     RuneShortcut,
@@ -115,6 +116,17 @@ def load_manifest(path: Path) -> RuneManifest | None:
     session_codecs = _extract_string_list(data, "session_codecs")
     ui = _parse_ui_contributions(data.get("ui"))
 
+    # Phase 2B: capabilities are declared, validated, and unknown
+    # ids dropped (fail-closed). Absence of the field stays None
+    # (legacy, ungated); a present-but-malformed field becomes
+    # an empty declaration (gated, grants nothing).
+    if "capabilities" in data:
+        capabilities, dropped_capabilities = parse_capabilities(
+            data.get("capabilities")
+        )
+    else:
+        capabilities, dropped_capabilities = None, []
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -132,4 +144,6 @@ def load_manifest(path: Path) -> RuneManifest | None:
         commands=commands,
         session_codecs=session_codecs,
         ui=ui,
+        capabilities=capabilities,
+        dropped_capabilities=dropped_capabilities,
     )
