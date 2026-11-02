@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.43] - 2026-11-02
+
+
+### Bug Fixes
+
+- **runes:** format runner facade and fix mypy types in lint set (1192b3d)
+
+- **runes:** gate stream_model_text factories to RealmProvider runes and guard approval presenter source (3a829bc)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (37ed259)
+
+- **release:** v0.2.43 (acf0c7a)
+
+
+### Features
+
+- **runes:** narrow RuneAPI behind a facade, remove key from RuneContext (5cbd79d)
+
+
 ## [0.2.42] - 2026-11-02
 
 
