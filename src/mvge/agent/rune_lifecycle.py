@@ -218,7 +218,6 @@ class RuneLifecycle:
                     project_root=str(Path(self._cwd).resolve()),
                     mode=self._mode,
                     agent_name=self._agent_name,
-                    api_key=self._api_key,
                     # The agent's resolved model, including a runtime
                     # --model override: runes read inherit-model from
                     # here, and without it a submvge summon with
@@ -226,4 +225,7 @@ class RuneLifecycle:
                     model_id=self._model_id,
                 )
             )
+            # Phase 2A: credential bound on the runner for engine-held
+            # model calls only; it is not in the context rune code reads.
+            self._runner.bind_model_key(self._api_key)
         return self._runner

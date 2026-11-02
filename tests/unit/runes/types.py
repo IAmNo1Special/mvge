@@ -12,7 +12,8 @@ class TestRuneContext:
         assert ctx.mode == "cli"
         assert ctx.has_ui is False
         assert ctx.agent_name == ""
-        assert ctx.api_key == ""
+        # Phase 2A: the context carries no credential at all.
+        assert not hasattr(ctx, "api_key")
 
     def test_custom_values(self) -> None:
         ctx = RuneContext(
@@ -20,13 +21,11 @@ class TestRuneContext:
             mode="gui",
             has_ui=True,
             agent_name="tester",
-            api_key="secret-key",
         )
         assert ctx.cwd == "/workspace"
         assert ctx.mode == "gui"
         assert ctx.has_ui is True
         assert ctx.agent_name == "tester"
-        assert ctx.api_key == "secret-key"
 
     def test_rune_context_is_frozen(self) -> None:
         ctx = RuneContext(cwd="/workspace", mode="cli", agent_name="tester")
@@ -39,7 +38,7 @@ class TestRuneContext:
         with pytest.raises(FrozenInstanceError):
             ctx.agent_name = "other"  # type: ignore[misc]
         with pytest.raises(FrozenInstanceError):
-            ctx.api_key = "other-key"  # type: ignore[misc]
+            ctx.model_id = "other-model"  # type: ignore[misc]
 
     def test_replace_creates_new_instance(self) -> None:
         original = RuneContext(cwd="/workspace", mode="cli", agent_name="tester")

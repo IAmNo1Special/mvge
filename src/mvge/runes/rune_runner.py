@@ -31,6 +31,7 @@ from mvge.runes.loader import (
 )
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneAPI
+from mvge.runes.runner_facade import RunnerFacade
 from mvge.runes.skill_catalog import SkillCatalog
 from mvge.runes.types import (
     Diagnostic,
@@ -240,6 +241,23 @@ class RuneRunner:
     @property
     def context(self) -> RuneContext:
         return self._context
+
+    @property
+    def model_key(self) -> str:
+        """Model credential bound by the embedding layer, engine-only.
+
+        Never exposed through RuneAPI or RuneContext: the facade's
+        stream_model_text is the only rune-reachable use of it.
+        """
+        return getattr(self, "_model_key", "")
+
+    def bind_model_key(self, api_key: str | None) -> None:
+        """Bind the agent's model credential for engine-held model calls.
+
+        Called by the embedding layer (RuneLifecycle) only, never by
+        rune code. An empty or missing key means keyless realms only.
+        """
+        self._model_key = api_key or ""
 
     @property
     def sandbox(self) -> Sandbox:
@@ -897,6 +915,27 @@ class RuneRunner:
         """Return dict of prefix -> factory without rune attribution tuple."""
         return {k: v[0] for k, v in self._realm_factories.items()}
 
+    def get_realm_provider_factories(self) -> dict[str, Any]:
+        """Return only factories registered by RealmProvider runes.
+
+        Attribution is the gate: a factory counts only when the rune
+        that registered it has a loaded manifest whose types include
+        "RealmProvider" (the three marketplace realm runes). A factory
+        registered by any other rune — or with no loaded manifest at
+        all — is excluded, so engine-held-key capabilities built on
+        this set never hand the key to arbitrary rune code.
+        """
+        provider_names = {
+            manifest.name
+            for manifest in self._loaded_manifests
+            if "RealmProvider" in manifest.types
+        }
+        return {
+            prefix: factory
+            for prefix, (factory, rune_name) in self._realm_factories.items()
+            if rune_name in provider_names
+        }
+
     def get_all_registered_spells(self) -> list[SpellDefinition | MvgeSpell]:
         return list(self._spells.values())
 
@@ -1032,7 +1071,7 @@ class RuneRunner:
         if rune_name is None:
             rune_name = self._current_loading_rune
         return RuneAPI(
-            self,
+            RunnerFacade(self),
             rune_name,
             override=override,
             install_id=self._install_id_for_rune(rune_name),

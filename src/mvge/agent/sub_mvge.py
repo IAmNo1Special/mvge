@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
@@ -98,6 +98,7 @@ class SubMvgeManager:
         parent_agent_name: str | None = None,
         shared_realm_registry: RealmRegistry | None = None,
         shared_runner: RuneRunner | None = None,
+        approval_presenter_source: Callable[[RuneRunner], None] | None = None,
         subsessions_dir: Path | None = None,
     ) -> None:
         self._parent_mvge = parent_mvge
@@ -127,6 +128,10 @@ class SubMvgeManager:
         self._shared_runner = shared_runner or (
             getattr(parent_mvge, "runner", None) if parent_mvge is not None else None
         )
+        # Phase 2A: a rune-facing facade supplies this callable so the
+        # bridge can share the parent approval presenter without ever
+        # receiving the parent runner itself.
+        self._approval_presenter_source = approval_presenter_source
         self._subsessions_dir = subsessions_dir or (sessions_dir() / "subsessions")
         self._subsessions_dir.mkdir(parents=True, exist_ok=True)
 
@@ -179,7 +184,10 @@ class SubMvgeManager:
             await child_mvge.initialize()
 
             # Share approval presenter mutex from parent runner if available
-            if self._shared_runner is not None and child_mvge.runner is not None:
+            source = self._approval_presenter_source
+            if source is not None and child_mvge.runner is not None:
+                source(child_mvge.runner)
+            elif self._shared_runner is not None and child_mvge.runner is not None:
                 child_mvge.runner.share_approval_presenter_from(self._shared_runner)
 
             child_tome = child_mvge.agent_tome

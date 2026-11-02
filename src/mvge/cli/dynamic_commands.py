@@ -20,6 +20,7 @@ from mvge.runes.loader import _inject_rune_paths
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_api import RuneAPI
 from mvge.runes.rune_runner import RuneRunner
+from mvge.runes.runner_facade import RunnerFacade
 from mvge.runes.types import RuneManifest
 
 #: Environment variable naming one extra Rune directory for CLI command
@@ -276,7 +277,7 @@ def load_rune_cli_command(
                 # Check rune_factory registering commands
                 if hasattr(mod, "rune_factory"):
                     runner = RuneRunner()
-                    api = RuneAPI(runner, rune_name=manifest.name)
+                    api = RuneAPI(RunnerFacade(runner), rune_name=manifest.name)
                     factory_res = mod.rune_factory(api)
                     if inspect.iscoroutine(factory_res):
                         asyncio.run(factory_res)

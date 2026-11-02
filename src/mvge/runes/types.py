@@ -453,12 +453,16 @@ class RuneManifest:
 
 @dataclass(frozen=True)
 class RuneContext:
+    # Phase 2A: no credential field. The agent's model key is held by
+    # the embedding layer and bound on the runner (see
+    # RuneRunner.bind_model_key); rune code reaches a model only
+    # through the engine-held RuneAPI.stream_model_text capability,
+    # never through a context field.
     cwd: str = ""
     project_root: str = ""
     mode: str = "cli"
     has_ui: bool = False
     agent_name: str = ""
-    api_key: str = ""
     session_id: str = ""
     tome_dir: str = ""
     model_id: str = ""

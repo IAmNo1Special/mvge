@@ -269,7 +269,10 @@ class TestRuneAPISkillRegistration:
         assert api.get_skills() == [manifest]
 
     def test_context_property_delegates(self, api: RuneAPI, runner: RuneRunner) -> None:
-        assert api.context is runner.context
+        # Phase 2A: the API hands runes a copy of the context, never
+        # the runner's live object, so a rune cannot mutate it.
+        assert api.context == runner.context
+        assert api.context is not runner.context
 
     def test_realm_factory_delegates(self, api: RuneAPI, runner: RuneRunner) -> None:
         def dummy_factory(model_id: str) -> str:

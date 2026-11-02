@@ -91,7 +91,8 @@ async def test_standalone_load_builds_full_runner(runes_dir: Path) -> None:
     assert "echo_spell" in state["active_spells"]
     assert registry.configs == {"acme": {"baseUrl": "https://acme.test/v1"}}
     assert runner.context.agent_name == "tester"
-    assert runner.context.api_key == "key-1"
+    assert runner.model_key == "key-1"
+    assert not hasattr(runner.context, "api_key")
 
 
 @pytest.mark.asyncio

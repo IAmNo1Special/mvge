@@ -161,8 +161,8 @@ class TestLoad:
             project_root=str(Path("/proj").resolve()),
             mode="cli",
             agent_name="tester",
-            api_key="secret",
         )
+        assert runner.model_key == lifecycle._api_key
 
     @pytest.mark.asyncio
     async def test_load_binds_model_id_into_runner_context(self) -> None:
