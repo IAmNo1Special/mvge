@@ -26,6 +26,7 @@ from mvge.core.approval import (
 from mvge.core.channel import MvgeResponse
 from mvge.core.errors import GatewayLoadError
 from mvge.core.spells import MvgeSpell, SpellResult, SpellStatus
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import RuneRunner
 
 
@@ -805,6 +806,10 @@ def _d1_write_rune(
         manifest["python_deps"] = ["definitely_missing_package_d1_xyz"]
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
 
 def _d1_workspace(tmp_path: Path, *, gateway_missing_dep: bool = False) -> Path:

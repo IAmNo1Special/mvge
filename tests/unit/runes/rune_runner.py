@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from mvge.runes.loader import load_runes_from_paths
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.types import (
     Diagnostic,
@@ -1073,6 +1074,10 @@ def _write_rune(ext_dir: Path, name: str, body: str) -> Path:
     }
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
     return rune_dir
 
 
@@ -1354,6 +1359,11 @@ class TestRuneRunnerNoProxy:
             'description="Second"))\n',
             encoding="utf-8",
         )
+        for _dir in (dirty_dir, client_dir):
+            write_pin(
+                _dir,
+                RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(_dir)),
+            )
         runner = RuneRunner()
         diagnostics = await runner.refresh_runes([extensions_dir])
         assert diagnostics == []

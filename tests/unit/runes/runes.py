@@ -19,6 +19,7 @@ from mvge.runes.loader import (
     load_runes_from_paths,
 )
 from mvge.runes.manifest import load_manifest
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -584,6 +585,7 @@ def test_load_factory_supports_module_level_dataclass() -> None:
                 encoding="utf-8",
             )
 
+            _pin(rune_dir)
             manifest = load_manifest(rune_dir)
             assert manifest is not None
             diagnostics: list[Diagnostic] = []
@@ -619,6 +621,7 @@ def test_failed_entry_point_does_not_leave_module_in_sys_modules() -> None:
                 "raise RuntimeError('boom')\n", encoding="utf-8"
             )
 
+            _pin(rune_dir)
             manifest = load_manifest(rune_dir)
             assert manifest is not None
             diagnostics: list[Diagnostic] = []
@@ -652,6 +655,7 @@ def test_load_factory_from_manifest_with_local_import() -> None:
                 encoding="utf-8",
             )
 
+            _pin(rune_dir)
             manifest = load_manifest(rune_dir)
             assert manifest is not None
             factory = load_factory_from_manifest(manifest, rune_dir)
@@ -690,6 +694,7 @@ def test_load_factory_from_manifest_nested_entrypoint_with_imports() -> None:
                 encoding="utf-8",
             )
 
+            _pin(rune_dir)
             manifest = load_manifest(rune_dir)
             assert manifest is not None
             factory = load_factory_from_manifest(manifest, rune_dir)
@@ -727,6 +732,7 @@ def test_load_factory_skips_incompatible_runtime() -> None:
         rune_dir.mkdir()
         ts_file = rune_dir / "index.ts"
         ts_file.write_text("console.log('hi');", encoding="utf-8")
+        _pin(rune_dir)
 
         manifest = RuneManifest(
             name="ts_rune",
@@ -787,6 +793,14 @@ def test_load_manifest_spell_gateway_non_bool_defaults_false() -> None:
 def _write_rune_entry(rune_dir: Path, entry_name: str, code: str) -> None:
     rune_dir.mkdir(parents=True, exist_ok=True)
     (rune_dir / entry_name).write_text(code, encoding="utf-8")
+
+
+def _pin(rune_dir: Path) -> None:
+    """Phase 3: fixture runes load only with a matching pin."""
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
 
 def _basic_manifest(
@@ -881,6 +895,7 @@ def test_load_factory_survives_vanishing_stale_bytecode() -> None:
             cfile=cache_from_source(str(entry)),
             doraise=True,
         )
+        _pin(rune_dir)
         with patch.object(Path, "unlink", _vanishing_unlink):
             factory = load_factory_from_manifest(manifest, rune_dir)
 
@@ -894,6 +909,7 @@ def test_load_factory_concurrent_loads_do_not_race_bytecode_cleanup() -> None:
         rune_dir = Path(tmpdir) / "r"
         _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
         manifest = _basic_manifest()
+        _pin(rune_dir)
         errors: list[BaseException] = []
 
         def _load() -> None:
@@ -936,6 +952,7 @@ def test_load_factory_signature_probe_error_is_tolerated() -> None:
         rune_dir = Path(tmpdir) / "r"
         _write_rune_entry(rune_dir, "rune.py", "def rune_factory(api):\n    pass\n")
         manifest = _basic_manifest()
+        _pin(rune_dir)
 
         with patch(
             "mvge.runes.loader.inspect.signature",
@@ -1078,6 +1095,7 @@ def _write_noproxy_rune(rune_dir: Path, source: str) -> None:
         encoding="utf-8",
     )
     (rune_dir / "rune.py").write_text(source, encoding="utf-8")
+    _pin(rune_dir)
 
 
 @pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
@@ -1108,6 +1126,7 @@ def test_load_factory_sanitizes_before_module_top_level_client(
                 "def rune_factory(api):\n"
                 "    pass\n",
             )
+            _pin(rune_dir)
             manifest = load_manifest(rune_dir)
             assert manifest is not None
             diagnostics: list[Diagnostic] = []

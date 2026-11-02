@@ -16,6 +16,7 @@ from mvge.runes.installer import (
     set_rune_enabled,
     uninstall_rune,
 )
+from mvge.runes.pinning import read_pin
 
 
 def _create_mock_rune_dir(
@@ -81,8 +82,14 @@ def test_install_rune_git_url(tmp_path: Path) -> None:
 
     assert dest == target_dir / "sample-rune"
     assert (dest / "manifest.json").is_file()
-    mock_run.assert_called_once()
-    assert mock_run.call_args[0][0][:2] == ["git", "clone"]
+    # One clone plus the HEAD probe that records the pin's commit.
+    clone_calls = [
+        c for c in mock_run.call_args_list if c[0][0][:2] == ["git", "clone"]
+    ]
+    assert len(clone_calls) == 1
+    assert clone_calls[0][0][0][:2] == ["git", "clone"]
+    assert read_pin(dest) is not None
+    assert read_pin(dest).source_kind == "git"
 
 
 def test_install_rune_marketplace_success(tmp_path: Path) -> None:
@@ -117,7 +124,13 @@ def test_install_rune_marketplace_success(tmp_path: Path) -> None:
     assert dest == target_dir / "openrouter-realm"
     assert (dest / "manifest.json").is_file()
     mock_get.assert_called_once_with(DEFAULT_MARKETPLACE_URL, timeout=15.0)
-    mock_subproc.assert_called_once()
+    # One clone plus the HEAD probe that records the pin's commit.
+    clone_calls = [
+        c for c in mock_subproc.call_args_list if c[0][0][:2] == ["git", "clone"]
+    ]
+    assert len(clone_calls) == 1
+    assert read_pin(dest) is not None
+    assert read_pin(dest).source_kind == "catalog"
 
 
 def test_install_rune_marketplace_with_subpath_success(tmp_path: Path) -> None:
@@ -156,9 +169,14 @@ def test_install_rune_marketplace_with_subpath_success(tmp_path: Path) -> None:
     assert (dest / "manifest.json").is_file()
     assert (dest / "main.py").is_file()
     mock_get.assert_called_once_with(DEFAULT_MARKETPLACE_URL, timeout=15.0)
-    mock_subproc.assert_called_once()
-    called_cmd = mock_subproc.call_args[0][0]
-    assert called_cmd[:4] == ["git", "clone", "--depth", "1"]
+    # One clone plus the HEAD probe that records the pin's commit.
+    clone_calls = [
+        c[0][0] for c in mock_subproc.call_args_list if c[0][0][:2] == ["git", "clone"]
+    ]
+    assert len(clone_calls) == 1
+    assert clone_calls[0][:4] == ["git", "clone", "--depth", "1"]
+    assert read_pin(dest) is not None
+    assert read_pin(dest).source_kind == "catalog"
 
 
 def test_install_rune_marketplace_not_found(tmp_path: Path) -> None:
@@ -476,7 +494,9 @@ def test_install_rune_git_url_overwrite(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         # Clone targets the staging dir (last arg), not the final dest.
-        _create_mock_rune_dir(Path(cmd[-1]), "git-rune")
+        # Other git calls (e.g. the HEAD probe for the pin) are no-ops.
+        if cmd[:2] == ["git", "clone"]:
+            _create_mock_rune_dir(Path(cmd[-1]), "git-rune")
         return MagicMock(returncode=0)
 
     with patch("subprocess.run", side_effect=fake_git_clone):
@@ -517,7 +537,9 @@ def test_install_rune_marketplace_overwrite(tmp_path: Path) -> None:
 
     def fake_git_clone(cmd: list[str], **kwargs: object) -> MagicMock:
         # Clone targets the staging dir (last arg), not the final dest.
-        _create_mock_rune_dir(Path(cmd[-1]), "market-rune")
+        # Other git calls (e.g. the HEAD probe for the pin) are no-ops.
+        if cmd[:2] == ["git", "clone"]:
+            _create_mock_rune_dir(Path(cmd[-1]), "market-rune")
         return MagicMock(returncode=0)
 
     with (

@@ -21,12 +21,23 @@ from mvge.runes.catalog import (
     section_of,
 )
 from mvge.runes.deps import install_python_deps
+from mvge.runes.pinning import (
+    RunePin,
+    adopt_rune_pin,
+    compute_rune_tree_hash,
+    write_pin,
+)
 
 logger = logging.getLogger(__name__)
 
 # Re-exported because every caller of this module has always spelled it this
 # way, and the rune installer's public signature names it as its default.
-__all__ = ["DEFAULT_MARKETPLACE_URL", "install_rune", "uninstall_rune"]
+__all__ = [
+    "DEFAULT_MARKETPLACE_URL",
+    "adopt_installed_rune",
+    "install_rune",
+    "uninstall_rune",
+]
 
 # Allowlist for install/uninstall directory names. Anything outside this set
 # (path separators, "..", URL-encoded tricks) is rejected before it can reach
@@ -36,6 +47,57 @@ _INSTALL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 # Name of the installer-owned install-id file written into every rune dir.
 INSTALL_ID_FILENAME = ".install-id"
+
+# A recorded HEAD SHA is a full hex object id (SHA-1 today, SHA-256 where
+# a repo uses it). Anything else -- including a mocked subprocess result
+# in tests -- is not a commit and records as None, never as garbage.
+_HEX_SHA_RE = re.compile(r"^[0-9a-f]{40}$|^[0-9a-f]{64}$")
+
+
+def _git_head(repo_dir: Path) -> str | None:
+    """HEAD SHA of a checkout, or None when it cannot be proven.
+
+    Best-effort on purpose: a rune installed from a source without a
+    usable HEAD still gets a tree-hash pin, which is what load verifies.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, OSError):
+        return None
+    head = result.stdout.strip() if isinstance(result.stdout, str) else ""
+    return head if _HEX_SHA_RE.fullmatch(head) else None
+
+
+def _clone_pinned(git_url: str, dest: Path, commit: str) -> None:
+    """Clone a catalog repo and detach it at the pinned commit.
+
+    A depth-1 clone cannot check out an older commit, so pinned installs
+    take a full clone. After checkout the HEAD must equal the pin: a
+    branch that moved since the index was cut still yields the pinned
+    tree, never the new HEAD.
+    """
+    subprocess.run(
+        ["git", "clone", "--", git_url, str(dest)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(dest), "checkout", "--detach", commit],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    if _git_head(dest) != commit:
+        raise ValueError(
+            f"Catalog checkout for pinned commit {commit} did not yield that commit."
+        )
+
 
 # Manifest name of the approval rune: uninstalling it purges its policy file.
 APPROVAL_RUNE_NAME = "approval-rune"
@@ -287,6 +349,24 @@ def uninstall_rune(name: str, target_dir: Path | None = None) -> bool:
     return False
 
 
+def adopt_installed_rune(name: str, target_dir: Path | None = None) -> Path:
+    """Record an operator review of an installed rune's current tree.
+
+    The ``mvge rune trust --adopt`` remedy for sidecar-less legacy runes
+    and deliberate local edits: writes a ``manual`` sidecar for the tree
+    as it stands. Refuses unknown runes and revoked runes.
+
+    Raises:
+        ValueError: If the rune is not installed, or is revoked.
+    """
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
+    rune_dir = _dest_within_target(target, _validate_install_name(name, kind="rune"))
+    if not rune_dir.is_dir() or not (rune_dir / "manifest.json").is_file():
+        raise ValueError(f"Rune '{name}' is not installed.")
+    adopt_rune_pin(rune_dir, name)
+    return rune_dir
+
+
 def set_rune_enabled(name: str, enabled: bool, target_dir: Path | None = None) -> bool:
     """Set the enabled flag in an installed rune's manifest.json.
 
@@ -339,10 +419,31 @@ def install_rune(
         name = _manifest_install_name(source_path, kind="rune")
         dest = _dest_within_target(target, name)
         if source_path.resolve() != dest.resolve():
+            # Hash the staged source before copying and before any
+            # python_deps install: the pin records the source tree,
+            # never generated state.
+            staged_hash = compute_rune_tree_hash(source_path)
             _install_tree(source_path, dest)
+            write_pin(
+                dest,
+                RunePin(
+                    source_kind="local",
+                    tree_hash=staged_hash,
+                    local_path=str(source_path.resolve()),
+                ),
+            )
         else:
-            # Installing in place: just ensure the install id exists.
+            # Installing in place: just ensure the install id exists,
+            # and record the current tree as a local pin.
             read_or_create_install_id(dest)
+            write_pin(
+                dest,
+                RunePin(
+                    source_kind="local",
+                    tree_hash=compute_rune_tree_hash(dest),
+                    local_path=str(dest.resolve()),
+                ),
+            )
     elif stripped_source.startswith(
         ("git@", "git://", "http://", "https://", "ssh://")
     ) or stripped_source.endswith(".git"):
@@ -363,7 +464,17 @@ def install_rune(
             )
             name = _manifest_install_name(staged, kind="rune")
             dest = _dest_within_target(target, name)
+            staged_hash = compute_rune_tree_hash(staged)
             _install_tree(staged, dest)
+            write_pin(
+                dest,
+                RunePin(
+                    source_kind="git",
+                    tree_hash=staged_hash,
+                    git_url=stripped_source,
+                    commit=_git_head(staged),
+                ),
+            )
     else:
         rune_entry = resolve_artifact(
             stripped_source, section=RUNES_SECTION, marketplace_url=marketplace_url
@@ -371,6 +482,17 @@ def install_rune(
         git_url = rune_entry.get("git")
         if not git_url or not isinstance(git_url, str):
             raise ValueError(f"Rune '{stripped_source}' not found in marketplace.")
+        # Revocation is enforced here, before any clone: a version later
+        # found malicious must not install even though its hash would match.
+        if rune_entry.get("revoked") is True:
+            raise ValueError(
+                f"Rune '{stripped_source}' is revoked in the marketplace "
+                "index and cannot be installed."
+            )
+        raw_commit = rune_entry.get("commit")
+        pinned_commit = raw_commit if isinstance(raw_commit, str) else None
+        raw_tree = rune_entry.get("tree_hash")
+        pinned_tree = raw_tree if isinstance(raw_tree, str) else None
 
         _validate_install_name(stripped_source, kind="rune")
         subpath = rune_entry.get("path") if isinstance(rune_entry, dict) else None
@@ -378,30 +500,67 @@ def install_rune(
         # key) decides the install directory.
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp_dir:
             if subpath:
-                try:
+                if pinned_commit is not None:
+                    # A failed pinned checkout is a hard error, never a
+                    # fallback: falling back to a local checkout would
+                    # install unpinned content under a pinned commit.
+                    _clone_pinned(git_url, Path(tmp_dir), pinned_commit)
+                    staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                else:
+                    try:
+                        subprocess.run(
+                            [
+                                "git",
+                                "clone",
+                                "--depth",
+                                "1",
+                                "--",
+                                git_url,
+                                str(tmp_dir),
+                            ],
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                        )
+                        staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
+                    except (subprocess.CalledProcessError, OSError):
+                        candidate = local_catalog_candidate(subpath)
+                        if candidate is None:
+                            raise
+                        staged = candidate
+            else:
+                if pinned_commit is not None:
+                    _clone_pinned(git_url, Path(tmp_dir), pinned_commit)
+                else:
                     subprocess.run(
-                        ["git", "clone", "--depth", "1", "--", git_url, str(tmp_dir)],
+                        ["git", "clone", "--", git_url, str(tmp_dir)],
                         check=True,
                         capture_output=True,
                         text=True,
                     )
-                    staged = Path(tmp_dir) / str(subpath).strip().strip("/\\")
-                except (subprocess.CalledProcessError, OSError):
-                    candidate = local_catalog_candidate(subpath)
-                    if candidate is None:
-                        raise
-                    staged = candidate
-            else:
-                subprocess.run(
-                    ["git", "clone", "--", git_url, str(tmp_dir)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
                 staged = Path(tmp_dir)
             name = _manifest_install_name(staged, kind="rune")
             dest = _dest_within_target(target, name)
+            # Hash the staged artifact before copying and before any
+            # python_deps install. A pinned tree_hash that disagrees
+            # refuses the install before anything is copied into place.
+            staged_hash = compute_rune_tree_hash(staged)
+            if pinned_tree is not None and staged_hash != pinned_tree:
+                raise ValueError(
+                    f"Rune '{stripped_source}' refused: staged tree_hash "
+                    f"{staged_hash} does not match the marketplace index "
+                    f"tree_hash {pinned_tree}."
+                )
             _install_tree(staged, dest)
+            write_pin(
+                dest,
+                RunePin(
+                    source_kind="catalog",
+                    tree_hash=staged_hash,
+                    git_url=git_url,
+                    commit=pinned_commit or _git_head(staged),
+                ),
+            )
 
     # The manifest was already validated from the staged source; dest carries
     # an identical copy.

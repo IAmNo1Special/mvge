@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from mvge.cli.agent_factory import create_agent
 from mvge.cli.main import _run_agent, app
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 
 runner = CliRunner()
 
@@ -457,6 +458,10 @@ async def test_bug4_single_registry_and_rune_providers(tmp_path: Path) -> None:
         "    api.register_realm_factory('openrouter', lambda **kw: AsyncMock())\n"
     )
     (rune_dir / "index.py").write_text(index_code, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
     tome_dir = tmp_path / "tomes"
 

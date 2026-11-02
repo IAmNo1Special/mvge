@@ -6,6 +6,7 @@ import pytest
 from mvge.core.spells import ExecutionMode
 from mvge.runes.loader import load_factory_from_manifest
 from mvge.runes.manifest import load_manifest
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import _safe_call_handler_async
 from mvge.runes.types import (
     RuneManifest,
@@ -66,6 +67,10 @@ def test_load_factory_from_manifest_signature_validation(tmp_path: Path) -> None
         entry_point="rune.py",
     )
 
+    write_pin(
+        tmp_path,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(tmp_path)),
+    )
     diagnostics = []
     factory = load_factory_from_manifest(manifest, tmp_path, diagnostics)
     assert factory is None
