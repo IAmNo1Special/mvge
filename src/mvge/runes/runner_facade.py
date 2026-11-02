@@ -57,7 +57,7 @@ class RunnerFacade:
         self._wrapped_runner = runner
 
     # -- identity / scope -------------------------------------------------
-    def get_or_create_scope(self, rune_name: str | None) -> RuneDisposableScope:
+    def get_or_create_scope(self, rune_name: str) -> RuneDisposableScope:
         return self._wrapped_runner.get_or_create_scope(rune_name)
 
     # -- context / session ------------------------------------------------
@@ -99,14 +99,10 @@ class RunnerFacade:
     def get_discoverable_spells(self) -> list[Any]:
         return self._wrapped_runner.get_discoverable_spells()
 
-    def register_command(
-        self, command: RegisteredCommand, override: bool
-    ) -> bool:
+    def register_command(self, command: RegisteredCommand, override: bool) -> bool:
         return self._wrapped_runner.register_command(command, override=override)
 
-    def register_shortcut(
-        self, shortcut: RuneShortcut, override: bool
-    ) -> bool:
+    def register_shortcut(self, shortcut: RuneShortcut, override: bool) -> bool:
         return self._wrapped_runner.register_shortcut(shortcut, override=override)
 
     def get_shortcuts(self) -> list[RuneShortcut]:
@@ -231,8 +227,11 @@ class RunnerFacade:
         factories = self._wrapped_runner.get_registered_realm_factories()
         for prefix, factory in factories.items():
             registry.register_realm_factory(prefix, factory)
-        for name, config in self._wrapped_runner.get_registered_providers().items():
-            registry.register_provider(name, config)
+        for (
+            name,
+            provider_config,
+        ) in self._wrapped_runner.get_registered_providers().items():
+            registry.register_provider(name, provider_config)
         model = registry.compose_model(
             model_id=model_id,
             api_key=self._wrapped_runner.model_key,
@@ -240,9 +239,7 @@ class RunnerFacade:
         )
         if model is None:
             raise RuntimeError(f"No Realm factory registered for model '{model_id}'")
-        realm = registry.create_realm(
-            model, api_key=self._wrapped_runner.model_key
-        )
+        realm = registry.create_realm(model, api_key=self._wrapped_runner.model_key)
         config = ChannelConfig(
             model=model, temperature=temperature, max_tokens=max_tokens
         )
