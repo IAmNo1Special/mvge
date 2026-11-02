@@ -10,7 +10,7 @@ from typing import Any
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from mvge.runes.loader import load_factory_from_manifest
+from mvge.runes.loader import _inject_rune_paths, load_factory_from_manifest
 from mvge.runes.manifest import load_manifest
 from mvge.runes.rune_runner import RuneRunner
 
@@ -244,6 +244,15 @@ class RuneWatcher:
 
         logger.info("Reloading rune: %s (%s)", rune_name, manifest.version)
         self._runner.clear_rune(rune_name)
+        # clear_rune removed this rune's injected sys.path entries;
+        # reload re-adds them before the factory runs, so lazy
+        # imports at spell-call time keep working.
+        if manifest.entry_point:
+            _inject_rune_paths(
+                rune_dir,
+                (rune_dir / manifest.entry_point).resolve(),
+                rune_name,
+            )
         api = self._runner.create_api(rune_name=rune_name, override=True)
         result = factory(api)
         if isinstance(result, Awaitable):
