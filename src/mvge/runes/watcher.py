@@ -253,7 +253,9 @@ class RuneWatcher:
                 (rune_dir / manifest.entry_point).resolve(),
                 rune_name,
             )
-        api = self._runner.create_api(rune_name=rune_name, override=True)
+        api = self._runner.create_api(
+            rune_name=rune_name, override=True, manifest=manifest
+        )
         result = factory(api)
         if isinstance(result, Awaitable):
             await result

@@ -449,6 +449,12 @@ class RuneManifest:
     commands: list[str] = field(default_factory=list)
     session_codecs: list[str] = field(default_factory=list)
     ui: RuneUIContributions = field(default_factory=RuneUIContributions)
+    # Phase 2B: declared capabilities (None = legacy manifest with
+    # no field, ungated; a list, even empty, is gated strictly).
+    # Unknown ids never reach this field: the parser drops them
+    # into dropped_capabilities instead.
+    capabilities: list[str] | None = None
+    dropped_capabilities: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

@@ -23,6 +23,7 @@ from mvge.core.approval import (
 from mvge.core.layers import scope_rank
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
+from mvge.runes.capabilities import CapabilityGate, CapabilityStore
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.loader import (
     _inject_rune_paths,
@@ -174,7 +175,13 @@ class RuneRunner:
         self,
         sandbox_factory: Callable[[], Sandbox] | None = None,
         hook_timeout_seconds: float = DEFAULT_HOOK_TIMEOUT_SECONDS,
+        capability_store: CapabilityStore | None = None,
     ) -> None:
+        # Phase 2B: engine-owned grant storage. The default is an
+        # in-memory store (per session); a host that wants grants
+        # to persist passes a file-backed CapabilityStore with a
+        # user-owned directory (see default_capability_store_dir).
+        self._capability_store = capability_store or CapabilityStore()
         self._hook_timeout_seconds = hook_timeout_seconds
         self._sigil_handlers: dict[SigilHook, list[Handler]] = {}
         self._spells: dict[str, SpellDefinition | MvgeSpell] = {}
@@ -288,6 +295,34 @@ class RuneRunner:
     @property
     def diagnostics(self) -> list[Diagnostic]:
         return list(self._diagnostics)
+
+    @property
+    def capability_store(self) -> CapabilityStore:
+        """Engine-owned grant storage for this runner (never rune code)."""
+        return self._capability_store
+
+    def consent_capabilities(self, rune_name: str, capabilities: list[str]) -> None:
+        """Host-only: record user consent for a rune's capabilities.
+
+        The only way a declared capability becomes granted. A
+        later declaration change never grants a capability that
+        was not consented to here.
+        """
+        self._capability_store.consent(rune_name, capabilities)
+
+    def capability_gate(self, manifest: RuneManifest | None = None) -> CapabilityGate:
+        """Gate for the currently loaded manifests, plus one override.
+
+        The override covers the watcher reload path, where the
+        manifest is known but not yet re-added to loaded manifests.
+        """
+        declared = {m.name: m.capabilities for m in self._loaded_manifests}
+        if manifest is not None:
+            declared[manifest.name] = manifest.capabilities
+        for name, caps in declared.items():
+            if caps is not None:
+                self._capability_store.ensure_declaration(name, caps)
+        return CapabilityGate(self._capability_store, declared)
 
     @property
     def skill_catalog(self) -> SkillCatalog:
@@ -563,7 +598,9 @@ class RuneRunner:
             for sc in manifest.shortcuts:
                 self.register_shortcut(sc, override=True)
             self._current_loading_rune = manifest.name
-            api = self.create_api(rune_name=manifest.name, override=True)
+            api = self.create_api(
+                rune_name=manifest.name, override=True, manifest=manifest
+            )
             # Candidates were all loaded before any factory ran, so an
             # earlier factory that re-dirtied NO_PROXY would otherwise
             # break a later factory's httpx client. Sanitize again
@@ -1066,7 +1103,10 @@ class RuneRunner:
                 logger.warning("Session-name listener failed", exc_info=True)
 
     def create_api(
-        self, rune_name: str | None = None, override: bool = False
+        self,
+        rune_name: str | None = None,
+        override: bool = False,
+        manifest: RuneManifest | None = None,
     ) -> RuneAPI:
         if rune_name is None:
             rune_name = self._current_loading_rune
@@ -1075,6 +1115,7 @@ class RuneRunner:
             rune_name,
             override=override,
             install_id=self._install_id_for_rune(rune_name),
+            capability_gate=self.capability_gate(manifest),
         )
 
     def _install_id_for_rune(self, rune_name: str | None) -> str | None:
@@ -1113,7 +1154,7 @@ class RuneRunner:
                 self.register_shortcut(sc)
             if load.factory is not None:
                 self._current_loading_rune = load.manifest.name
-                api = self.create_api()
+                api = self.create_api(manifest=load.manifest)
                 # Hand-built loads bypass the loader entirely, and a
                 # previous factory may have re-dirtied the environment
                 # since load time. Sanitize before every factory so a
