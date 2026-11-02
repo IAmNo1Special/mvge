@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.44] - 2026-11-02
+
+
+### Bug Fixes
+
+- **runes:** refuse facade-chain and bare-import audit bypasses (227b64b)
+
+- **runes:** compare resolved skill path in capability gate test (f17bdbf)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (a29be29)
+
+- **release:** v0.2.44 (9f1e819)
+
+
+### Features
+
+- **runes:** add capability model and static source audit (Phase 2B) (00007cf)
+
+
 ## [0.2.43] - 2026-11-02
 
 
