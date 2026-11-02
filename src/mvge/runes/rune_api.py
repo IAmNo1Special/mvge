@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from mvge.runes.rune_runner import RuneRunner
+    from mvge.runes.runner_facade import RunnerFacade
 
 from mvge.core.approval import (
     ApprovalDecision,
@@ -40,15 +40,24 @@ RuneFactory = Callable[["RuneAPI"], None | Awaitable[None] | Any]
 
 
 class RuneAPI:
+    """The narrow API a rune factory receives.
+
+    Phase 2A: this object holds a RunnerFacade, never a RuneRunner.
+    A factory that reaches for ``api._runner`` gets AttributeError:
+    that attribute no longer exists. This is narrowing, not a
+    sandbox — in-process code can still introspect objects — and
+    the docs must never claim otherwise.
+    """
+
     def __init__(
         self,
-        runner: RuneRunner,
+        facade: RunnerFacade,
         rune_name: str | None = None,
         override: bool = False,
         install_id: str | None = None,
         audit_log: RuneAuditLog | None = None,
     ) -> None:
-        self._runner = runner
+        self._facade = facade
         self._rune_name = rune_name
         self._override = override
         self._install_id = install_id
@@ -56,7 +65,7 @@ class RuneAPI:
         # ``.agents/extensions/audit.jsonl``; injectable for tests.
         self._audit_log = audit_log or RuneAuditLog(default_rune_ops_dir())
         self._disposable_scope = (
-            runner.get_or_create_scope(rune_name)
+            facade.get_or_create_scope(rune_name)
             if rune_name is not None
             else RuneDisposableScope(rune_name="anonymous")
         )
@@ -72,7 +81,7 @@ class RuneAPI:
     def unregister_spell(self, name: str) -> bool:
         """Unregister a single spell previously registered by this rune."""
         self._disposable_scope.spell_names.discard(name)
-        return self._runner.unregister_spell(name, rune_name=self._rune_name)
+        return self._facade.unregister_spell(name, rune_name=self._rune_name)
 
     @property
     def install_id(self) -> str | None:
@@ -88,11 +97,11 @@ class RuneAPI:
 
     @property
     def sandbox(self) -> Sandbox:
-        return self._runner.sandbox
+        return self._facade.sandbox
 
     @property
     def context(self) -> RuneContext:
-        return self._runner.context
+        return self._facade.context
 
     def sanitize_no_proxy_env(self) -> bool:
         """Strip bracketed IPv6 tokens from NO_PROXY before building a client.
@@ -113,7 +122,7 @@ class RuneAPI:
 
     def on(self, hook: SigilHook, handler: Any) -> None:
         self._disposable_scope.sigil_handlers.append((hook, handler))
-        self._runner.register_handler(hook, handler, rune_name=self._rune_name)
+        self._facade.register_handler(hook, handler, rune_name=self._rune_name)
 
     def register_spell_gate(self, handler: SpellGateHandler) -> None:
         """Register a security-critical spell gate.
@@ -124,7 +133,7 @@ class RuneAPI:
         fail-open ``BEFORE_SPELL_CAST`` hook cannot substitute for it.
         """
         self._disposable_scope.installed_spell_gate = True
-        self._runner.register_spell_gate(handler, rune_name=self._rune_name)
+        self._facade.register_spell_gate(handler, rune_name=self._rune_name)
 
     async def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
         """Await the host-bound presenter for one approval request.
@@ -133,12 +142,12 @@ class RuneAPI:
         (headless/CI) the request is denied; the presenter slot itself is
         host-privileged and is never exposed through this API.
         """
-        return await self._runner.request_approval(request)
+        return await self._facade.request_approval(request)
 
     def register_spell(
         self, spell: SpellDefinition | MvgeSpell, override: bool = False
     ) -> bool:
-        ok = self._runner.register_spell(
+        ok = self._facade.register_spell(
             spell, self._rune_name, override=override or self._override
         )
         if ok:
@@ -152,7 +161,7 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
-        ok = self._runner.register_command(
+        ok = self._facade.register_command(
             RegisteredCommand(name=name, description=description, handler=handler),
             override=override or self._override,
         )
@@ -167,7 +176,7 @@ class RuneAPI:
         handler: Any = None,
         override: bool = False,
     ) -> bool:
-        ok = self._runner.register_shortcut(
+        ok = self._facade.register_shortcut(
             RuneShortcut(key=key, description=description, handler=handler),
             override=override or self._override,
         )
@@ -181,7 +190,7 @@ class RuneAPI:
         config: dict[str, Any],
         override: bool = False,
     ) -> bool:
-        ok = self._runner.register_provider(
+        ok = self._facade.register_provider(
             name, config, override=override or self._override
         )
         if ok:
@@ -191,7 +200,7 @@ class RuneAPI:
     def get_registered_providers(
         self,
     ) -> dict[str, dict[str, Any]]:
-        return self._runner.get_registered_providers()
+        return self._facade.get_registered_providers()
 
     def register_realm_factory(
         self,
@@ -199,7 +208,7 @@ class RuneAPI:
         factory: Any,
         override: bool = False,
     ) -> bool:
-        ok = self._runner.register_realm_factory(
+        ok = self._facade.register_realm_factory(
             prefix,
             factory,
             rune_name=self._rune_name,
@@ -212,13 +221,13 @@ class RuneAPI:
     def get_registered_realm_factories(
         self,
     ) -> dict[str, Any]:
-        return self._runner.get_registered_realm_factories()
+        return self._facade.get_registered_realm_factories()
 
     def get_active_spells(self) -> list[str]:
-        return self._runner.get_active_spells()
+        return self._facade.get_active_spells()
 
     def set_active_spells(self, spell_names: list[str]) -> None:
-        self._runner.set_active_spells(spell_names, self._rune_name)
+        self._facade.set_active_spells(spell_names, self._rune_name)
 
     def get_global_spell_allowlist(self) -> list[str] | None:
         """Get the engine-owned global spell allowlist, or None if unset.
@@ -228,7 +237,7 @@ class RuneAPI:
         configures it directly on the runner. Runes narrow the model's
         view of their own spells via ``set_active_spells``.
         """
-        return self._runner.get_global_spell_allowlist()
+        return self._facade.get_global_spell_allowlist()
 
     def widen_global_allowlist(self, spell_names: list[str]) -> None:
         """Widen the engine's global spell filter (additive-only).
@@ -242,55 +251,102 @@ class RuneAPI:
         method. The filter itself is engine-owned -- runes cannot replace
         or drop it (see ``get_global_spell_allowlist``).
         """
-        if self._runner.get_global_spell_allowlist() is None:
+        if self._facade.get_global_spell_allowlist() is None:
             return
-        self._runner.widen_global_allowlist(spell_names)
+        self._facade.widen_global_allowlist(spell_names)
 
     def narrow_global_allowlist(self, spell_names: Iterable[str]) -> list[str]:
         """Narrow the engine's global spell filter by removing names.
 
         Names belonging to the designated gateway rune cannot be removed.
         """
-        return self._runner.narrow_global_allowlist(spell_names)
+        return self._facade.narrow_global_allowlist(spell_names)
 
     @property
     def has_spell_gateway(self) -> bool:
         """Whether a spell-gateway rune has been designated on the runner."""
-        return self._runner.has_spell_gateway
+        return self._facade.has_spell_gateway
 
     def get_discoverable_spells(self) -> list[Any]:
         """All non-gateway builtin spells + all enabled non-gateway Rune spells."""
-        return self._runner.get_discoverable_spells()
+        return self._facade.get_discoverable_spells()
 
     def get_all_spells(self) -> list[SpellDefinition | MvgeSpell]:
-        return self._runner.get_all_registered_spells()
+        return self._facade.get_all_registered_spells()
 
     def get_shortcuts(self) -> list[RuneShortcut]:
-        return self._runner.get_shortcuts()
+        return self._facade.get_shortcuts()
 
     def get_skills(self) -> list[SkillManifest]:
-        """Get all registered skills."""
-        return self._runner.skill_catalog.get_skills()
+        """Get all registered skills (a fresh list, not the live catalog)."""
+        return self._facade.get_skills()
 
     def register_skill_path(self, path: Path | str) -> None:
         """Dynamically register an additional skill directory path."""
-        self._runner.skill_catalog.register_skill_path(path)
+        self._facade.register_skill_path(path)
 
     def register_skill(self, manifest: SkillManifest) -> None:
         """Dynamically register an in-memory SkillManifest."""
-        self._runner.skill_catalog.register_skill(manifest, source_rune=self._rune_name)
+        self._facade.register_skill(manifest, source_rune=self._rune_name)
+
+    def clear_skills_for_rune(self) -> None:
+        """Drop every skill loaded on behalf of this rune only."""
+        self._facade.clear_skills_for_rune(self._rune_name)
 
     def send_message(self, content: str) -> None:
-        self._runner.send_message(content)
+        self._facade.send_message(content)
 
     def set_session_name(self, name: str) -> None:
-        self._runner.set_session_name(name)
+        self._facade.set_session_name(name)
+
+    def get_session_name(self) -> str | None:
+        """The current session title, if a rune has set one."""
+        return self._facade.get_session_name()
+
+    def get_spell(self, name: str) -> SpellDefinition | MvgeSpell | None:
+        """A single registered spell by name, or None."""
+        return self._facade.get_spell(name)
+
+    def gateway_spell_names(self) -> list[str]:
+        """Spell names registered by the designated gateway rune."""
+        return self._facade.gateway_spell_names()
+
+    def approval_presenter_source(self) -> Callable[[Any], None]:
+        """Bound callback for a submvge manager to share the parent
+        approval presenter into a child runner. For manager use only;
+        pass it through, never call it with a runner of your own.
+        """
+        return self._facade.approval_presenter_source()
+
+    async def stream_model_text(
+        self,
+        model_id: str,
+        prompt: str,
+        *,
+        temperature: float = 0.1,
+        max_tokens: int = 1024,
+        timeout_seconds: float = 30.0,
+    ) -> str:
+        """One engine-held model completion, returned as text.
+
+        The realm is built inside the engine from runner-registered
+        factories using the embedding layer's bound key. The key and
+        the realm object never reach rune code. This replaces reading
+        a credential from the rune context.
+        """
+        return await self._facade.stream_model_text(
+            model_id,
+            prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
 
     def on_event(self, channel: str, handler: Any) -> None:
-        self._runner.on_event(channel, handler)
+        self._facade.on_event(channel, handler)
 
     def emit_event(self, channel: str, data: Any) -> None:
-        self._runner.emit_event(channel, data)
+        self._facade.emit_event(channel, data)
 
     def audit(
         self,

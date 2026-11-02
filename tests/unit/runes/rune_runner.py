@@ -945,12 +945,18 @@ class TestRuneRunnerContext:
             mode="cli",
             has_ui=False,
             agent_name="tester",
-            api_key="key-123",
         )
         runner.bind_context(ctx)
         assert runner.context == ctx
         assert runner.context.agent_name == "tester"
-        assert runner.context.api_key == "key-123"
+        # Phase 2A: the context carries no credential at all.
+        assert not hasattr(runner.context, "api_key")
+
+    def test_bind_model_key_is_engine_only(self) -> None:
+        runner = RuneRunner()
+        runner.bind_model_key("key-123")
+        assert runner.model_key == "key-123"
+        assert not hasattr(runner.context, "api_key")
 
 
 class TestRealmFactoryRegistration:

@@ -22,6 +22,7 @@ from mvge.runes.rune_audit import (
     default_rune_ops_dir,
 )
 from mvge.runes.rune_runner import RuneRunner
+from mvge.runes.runner_facade import RunnerFacade
 from mvge.runes.skill_catalog import SkillCatalog
 from mvge.runes.skill_installer import install_skill
 from mvge.runes.trust import (
@@ -75,6 +76,7 @@ __all__ = [
     "RuneDisposableScope",
     "RuneFactory",
     "RuneLoad",
+    "RunnerFacade",
     "RuneManifest",
     "RuneRunner",
     "RuneScope",
