@@ -37,6 +37,7 @@ from mvge.core.layers import ResolvedLayer, Scope
 from mvge.provider.base import Realm
 from mvge.provider.realms import realm_for_model_id
 from mvge.provider.registry import RealmRegistry
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 
 BASE_PERSONA = "# PERSONA_BASE\nYou are the base persona.\n"
 
@@ -183,6 +184,10 @@ def _write_probe_rune(
         encoding="utf-8",
     )
     (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
 
 def _write_function_spell(tmp_path: Path, name: str) -> None:
@@ -1679,6 +1684,10 @@ async def test_d1_gateway_missing_dep_fails_initialize(
         "def rune_factory(api):\n"
         "    api.register_spell(SpellDefinition(name='gw_spell', description=''))\n",
         encoding="utf-8",
+    )
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
     )
     monkeypatch.setenv("MVGE_GLOBAL_DIR", str(tmp_path / "global"))
     agent = _make_agent(tmp_path, monkeypatch)

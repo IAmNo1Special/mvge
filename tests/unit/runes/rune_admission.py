@@ -7,6 +7,7 @@ from pathlib import Path
 
 from mvge.runes.loader import load_factory_from_manifest
 from mvge.runes.manifest import load_manifest
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.types import DiagnosticKind
 
 
@@ -22,6 +23,10 @@ def _write_rune(parent: Path, name: str, body: str, capabilities=None) -> Path:
         manifest["capabilities"] = capabilities
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / "rune.py").write_text(body, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
     return rune_dir
 
 

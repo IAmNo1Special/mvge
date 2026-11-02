@@ -10,6 +10,7 @@ from mvge.runes.loader import (
     load_factory_from_manifest,
     load_runes_from_paths,
 )
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.types import (
     Diagnostic,
     DiagnosticKind,
@@ -47,6 +48,11 @@ def _write_rune(
         ),
         encoding="utf-8",
     )
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
+    return manifest
     return manifest
 
 
@@ -161,6 +167,10 @@ def test_preflight_does_not_flag_venv_bundled_dep(tmp_path: Path) -> None:
             }
         ),
         encoding="utf-8",
+    )
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
     )
     diagnostics: list[Diagnostic] = []
     factory = load_factory_from_manifest(

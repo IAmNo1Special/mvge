@@ -4,11 +4,20 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mvge.runes.loader import load_factory_from_manifest
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.types import (
     DiagnosticKind,
     RuneManifest,
     RuneScope,
 )
+
+
+def _pin(rune_dir: Path) -> None:
+    """Phase 3: fixture runes load only with a matching pin."""
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
 
 def test_auto_discover_venv_site_packages_windows() -> None:
@@ -41,6 +50,7 @@ def test_auto_discover_venv_site_packages_windows() -> None:
             scope=RuneScope.PROJECT,
         )
 
+        _pin(rune_dir)
         factory = load_factory_from_manifest(manifest, rune_dir)
 
         assert factory is not None
@@ -78,6 +88,7 @@ def test_auto_discover_venv_site_packages_posix() -> None:
             scope=RuneScope.PROJECT,
         )
 
+        _pin(rune_dir)
         factory = load_factory_from_manifest(manifest, rune_dir)
 
         assert factory is not None
@@ -106,6 +117,7 @@ def test_diagnostic_message_includes_declared_python_deps() -> None:
         )
 
         diagnostics: list = []
+        _pin(rune_dir)
         factory = load_factory_from_manifest(
             manifest, rune_dir, diagnostics=diagnostics
         )
@@ -148,6 +160,7 @@ def test_auto_discover_parent_venv_site_packages() -> None:
             scope=RuneScope.PROJECT,
         )
 
+        _pin(rune_dir)
         factory = load_factory_from_manifest(manifest, rune_dir)
 
         assert factory is not None
@@ -191,6 +204,7 @@ def test_agent_layer_rune_sees_shared_extensions_venv() -> None:
         )
         with patch("mvge.runes.loader.extensions_dir", return_value=shared):
             diagnostics: list = []
+            _pin(rune_dir)
             factory = load_factory_from_manifest(
                 manifest, rune_dir, diagnostics=diagnostics
             )

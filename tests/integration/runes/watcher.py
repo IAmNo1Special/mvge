@@ -11,8 +11,17 @@ import pytest
 from watchdog.events import FileModifiedEvent, FileMovedEvent
 
 import mvge.runes.watcher as watcher_module
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.watcher import RuneWatcher, _RuneReloadHandler
+
+
+def _pin(rune_dir: Path) -> None:
+    """Phase 3: fixture runes load only with a matching pin."""
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
 
 
 class TestRuneWatcher:
@@ -44,6 +53,7 @@ class TestRuneWatcher:
                 "def rune_factory(api):\n"
                 "    api.register_shortcut('ctrl+r', 'Reload')\n"
             )
+            _pin(rune_dir)
 
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("test_rune")
@@ -98,6 +108,7 @@ class TestRuneWatcher:
                 "fromlist=['SpellDefinition'])."
                 "SpellDefinition('hot_reload_spell', 'Hot reloaded'))\n"
             )
+            _pin(rune_dir)
 
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("test_rune")
@@ -390,6 +401,7 @@ class TestRuneWatcherStartStop:
                 "async def rune_factory(api):\n"
                 "    api.register_shortcut('ctrl+a', 'Async Shortcut')\n"
             )
+            _pin(rune_dir)
 
             watcher = RuneWatcher(ext_dir, runner)
             await watcher._reload_rune("async_rune")

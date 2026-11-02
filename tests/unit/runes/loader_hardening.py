@@ -9,6 +9,7 @@ from mvge.runes.loader import (
     load_factory_from_manifest,
     load_runes_from_paths,
 )
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.types import (
     DiagnosticKind,
@@ -30,6 +31,12 @@ def _write_rune(
     }
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / entry_point).write_text(body, encoding="utf-8")
+    # Phase 3: fixture runes load only with a matching pin. Tests that
+    # add files after building re-pin explicitly below.
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
     return rune_dir
 
 
@@ -216,6 +223,12 @@ class TestLazyImportAndSysPathRemoval:
             (rune_dir / "lazy_helper.py").write_text(
                 "VALUE = 'lazy-ok'\n", encoding="utf-8"
             )
+            write_pin(
+                rune_dir,
+                RunePin(
+                    source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)
+                ),
+            )
 
             loads, _ = load_runes_from_paths([(tmp, RuneScope.USER)])
             await runner.load_rune_loads(loads)
@@ -234,6 +247,12 @@ class TestLazyImportAndSysPathRemoval:
             rune_dir = _write_rune(ext_dir, "lazy_rune", _lazy_spell_body())
             (rune_dir / "lazy_helper.py").write_text(
                 "VALUE = 'lazy-ok'\n", encoding="utf-8"
+            )
+            write_pin(
+                rune_dir,
+                RunePin(
+                    source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)
+                ),
             )
 
             await runner.refresh_runes([ext_dir])

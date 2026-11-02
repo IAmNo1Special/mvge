@@ -9,6 +9,7 @@ import pytest
 from mvge.agent.mvge import Mvge
 from mvge.agent.rune_lifecycle import RuneLifecycle
 from mvge.core.layers import ResolvedLayer, Scope
+from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.rune_runner import RuneRunner
 
 _RUNE_PY = """
@@ -41,6 +42,10 @@ def runes_dir(tmp_path: Path) -> Path:
     }
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / "rune.py").write_text(_RUNE_PY, encoding="utf-8")
+    write_pin(
+        rune_dir,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(rune_dir)),
+    )
     return root
 
 
@@ -217,6 +222,10 @@ def rune_factory(api):
     api.on(SigilHook.RESOURCES_DISCOVER, on_discover)
 """,
         encoding="utf-8",
+    )
+    write_pin(
+        disc_rune,
+        RunePin(source_kind="local", tree_hash=compute_rune_tree_hash(disc_rune)),
     )
 
     lifecycle = RuneLifecycle(

@@ -17,6 +17,7 @@ from mvge.core.layers import extensions_dir
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.manifest import load_manifest
+from mvge.runes.pinning import verify_rune_pin
 from mvge.runes.rune_api import RuneFactory
 from mvge.runes.source_audit import audit_rune_dir, blocking_findings
 from mvge.runes.trust import (
@@ -289,6 +290,29 @@ def load_factory_from_manifest(
                         f"Entry point '{manifest.entry_point}' for rune "
                         f"'{manifest.name}' resolves outside the rune "
                         f"directory and was refused"
+                    ),
+                    scope=manifest.scope,
+                    path=manifest.path,
+                )
+            )
+        return None
+
+    # Phase 3 pin verification, before any side effect on disk or
+    # sys.path and before any module execution: a rune whose tree no
+    # longer matches its recorded hash, that has no sidecar, or that is
+    # revoked is refused outright. A refused rune gets no .install-id,
+    # no injected paths, and no module execution. Pinned means
+    # unmodified, not benign.
+    pin_verdict = verify_rune_pin(rune_dir, manifest.name)
+    if pin_verdict.status != "ok":
+        if diagnostics is not None:
+            diagnostics.append(
+                Diagnostic(
+                    kind=DiagnosticKind.LOAD_FAILURE,
+                    rune_name=manifest.name,
+                    message=(
+                        f"Rune '{manifest.name}' refused: "
+                        f"{pin_verdict.message} {pin_verdict.remedy}"
                     ),
                     scope=manifest.scope,
                     path=manifest.path,
