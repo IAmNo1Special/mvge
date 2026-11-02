@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.42] - 2026-11-02
+
+
+### Bug Fixes
+
+- **runes:** harden rune loader against shadowed execution and entry-point escape (44b8f8a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (c6352b0)
+
+- **release:** v0.2.42 (c6385bd)
+
+
 ## [0.2.41] - 2026-11-01
 
 
