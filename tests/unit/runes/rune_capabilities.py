@@ -163,6 +163,62 @@ async def test_capability_matrix_end_to_end() -> None:
 
 
 @pytest.mark.asyncio
+async def test_remaining_methods_gate_and_deny() -> None:
+    # The matrix test covers spell/hook/command/realm/skill;
+    # this one covers the second method of each multi-method
+    # gate (shortcut, provider, spell gate, skill path).
+    from mvge.core.approval import ApprovalReasonCode, ApprovalRequest, deny
+
+    async def run(consented: bool) -> dict[str, object]:
+        runner = RuneRunner()
+        if consented:
+            runner.consent_capabilities(
+                "full-rune", ["spell", "hook", "command", "realm", "skill"]
+            )
+        manifest = RuneManifest(
+            name="full-rune",
+            version="0.1.0",
+            description="",
+            capabilities=["spell", "hook", "command", "realm", "skill"],
+        )
+        results: dict[str, object] = {}
+
+        def factory(api):  # type: ignore[no-untyped-def]
+            results["shortcut"] = api.register_shortcut("cap_key")
+            results["provider"] = api.register_provider("cap_prov", {})
+            api.register_spell_gate(lambda req: deny(req, ApprovalReasonCode.FAILURE))
+            api.register_skill_path("/tmp/cap-skills")
+            return None
+
+        await runner.load_rune_loads([RuneLoad(manifest=manifest, factory=factory)])
+        request = ApprovalRequest(cast_id="c1", spell_name="s")
+        decision = await runner.evaluate_spell_gates(request)
+        results["gate_denied"] = decision.outcome.name == "DENY"
+        results["skill_paths"] = [
+            str(p) for p in runner.skill_catalog.get_registered_skill_paths()
+        ]
+        results["shortcuts"] = [s.key for s in runner.get_shortcuts()]
+        results["providers"] = list(runner.get_registered_providers())
+        return results
+
+    granted = await run(True)
+    assert granted["shortcut"] is True
+    assert granted["provider"] is True
+    assert granted["gate_denied"] is True
+    assert "/tmp/cap-skills" in granted["skill_paths"]  # type: ignore[operator]
+    assert "cap_key" in granted["shortcuts"]  # type: ignore[operator]
+    assert "cap_prov" in granted["providers"]  # type: ignore[operator]
+
+    denied = await run(False)
+    assert denied["shortcut"] is False
+    assert denied["provider"] is False
+    assert denied["gate_denied"] is False
+    assert denied["skill_paths"] == []
+    assert denied["shortcuts"] == []
+    assert denied["providers"] == []
+
+
+@pytest.mark.asyncio
 async def test_declared_but_unconsented_is_denied() -> None:
     runner = RuneRunner()
     manifest = RuneManifest(

@@ -11,10 +11,15 @@ audit. The two concerns must not be conflated.
 Findings are blocking or advisory:
 
 - Blocking (refused at admission by the loader):
-  - ``private_runner_access`` — ``._runner`` attribute access or
-    ``getattr(..., "_runner")``. The Phase 2A facade closed this
-    as a documented path; source that still reaches for it is
-    refused before it runs.
+  - ``private_runner_access`` — ``._runner``, ``._facade``, or
+    ``._wrapped_runner`` attribute access, or ``getattr`` for
+    any of those names. The Phase 2A facade closed ``._runner``
+    as a documented path, but ``api._facade`` reaches the same
+    live runner and bypasses the capability gate, so the
+    facade chain is refused on the same terms. Deliberate
+    boundary: dynamically constructed attribute names
+    (concatenated ``getattr``, ``exec``, ``vars``) are not
+    detected — the audit is a review aid, not a proof.
   - ``private_install_id_access`` — ``api._install_id`` or
     ``context._install_id`` (a rune's own gate object carrying
     its own ``_install_id`` is not this pattern and is not
@@ -24,10 +29,12 @@ Findings are blocking or advisory:
     ``mvge.runes.runner_facade``, ``mvge.runes.loader``,
     ``mvge.runes.installer``, ``mvge.runes.watcher``,
     ``mvge.runes.skill_installer``, ``mvge.runes.catalog``,
-    ``mvge.runes.deps``). Public API modules (``rune_api``,
-    ``types``, ``rune_audit``, ``capabilities``,
-    ``source_audit``) and bare ``mvge.runes`` re-exports are
-    allowed.
+    ``mvge.runes.deps``), in dotted, bare-submodule
+    (``from mvge.runes import rune_runner``), and bare-object
+    (``from mvge.runes import RuneRunner``) spellings. Public
+    API modules (``rune_api``, ``types``, ``rune_audit``,
+    ``capabilities``, ``source_audit``) and other bare
+    ``mvge.runes`` re-exports are allowed.
   - ``registry_mutation`` — assignment into a runner's internal
     registries (``._spells``, ``._realm_factories``,
     ``._sigil_handlers``, ``._commands``, ``._handlers``,
@@ -155,11 +162,11 @@ class _Visitor(ast.NodeVisitor):
         return names
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if node.attr == "_runner":
+        if node.attr in ("_runner", "_facade", "_wrapped_runner"):
             self._add(
                 "private_runner_access",
                 node,
-                "Access to a private _runner attribute is refused at admission",
+                f"Access to a private {node.attr} attribute is refused at admission",
                 True,
             )
         elif node.attr == "_install_id" and self._base_name(node.value) in (
@@ -182,18 +189,20 @@ class _Visitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
-        # getattr(obj, "_runner" | "_install_id")
+        # getattr(obj, "_runner" | "_facade" | "_wrapped_runner"
+        # | "_install_id")
         if (
             isinstance(func, ast.Name)
             and func.id == "getattr"
             and len(node.args) >= 2
             and isinstance(node.args[1], ast.Constant)
-            and node.args[1].value in ("_runner", "_install_id")
+            and node.args[1].value
+            in ("_runner", "_facade", "_wrapped_runner", "_install_id")
         ):
             kind = (
-                "private_runner_access"
-                if node.args[1].value == "_runner"
-                else "private_install_id_access"
+                "private_install_id_access"
+                if node.args[1].value == "_install_id"
+                else "private_runner_access"
             )
             self._add(kind, node, "getattr escape to a private attribute", True)
         if isinstance(func, ast.Attribute):
@@ -349,7 +358,7 @@ class _Visitor(ast.NodeVisitor):
             )
         elif module == "mvge.runes":
             for alias in node.names:
-                if alias.name in INTERNAL_BARE_IMPORTS:
+                if alias.name in INTERNAL_BARE_IMPORTS | INTERNAL_ENGINE_MODULES:
                     self._add(
                         "internal_engine_import",
                         node,

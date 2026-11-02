@@ -64,6 +64,27 @@ def test_clean_rune_admitted(tmp_path: Path) -> None:
     assert diagnostics == []
 
 
+def test_facade_bypass_refused_at_admission(tmp_path: Path) -> None:
+    # A rune declaring no capabilities that reaches the runner
+    # through api._facade is refused before its factory runs,
+    # even though the gate alone could not stop that spelling.
+    rune_dir = _write_rune(
+        tmp_path,
+        "facade-bypass",
+        "def rune_factory(api):\n    api._facade.register_spell(spell)\n",
+        capabilities=[],
+    )
+    manifest = load_manifest(rune_dir)
+    assert manifest is not None
+    diagnostics: list = []
+    factory = load_factory_from_manifest(manifest, rune_dir, diagnostics=diagnostics)
+    assert factory is None
+    assert any(
+        d.kind == DiagnosticKind.LOAD_FAILURE and "private_runner_access" in d.message
+        for d in diagnostics
+    )
+
+
 def test_undeclared_capability_use_refused_for_declared_rune(tmp_path: Path) -> None:
     rune_dir = _write_rune(
         tmp_path,

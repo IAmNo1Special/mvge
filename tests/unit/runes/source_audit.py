@@ -61,6 +61,38 @@ def test_internal_engine_import_is_blocking() -> None:
     assert blocking_findings(findings)
 
 
+def test_bare_internal_module_import_is_blocking() -> None:
+    # The bare spelling must not evade the dotted one.
+    findings = audit_source("from mvge.runes import rune_runner\n")
+    assert "internal_engine_import" in _flagged_kinds(findings)
+    assert blocking_findings(findings)
+    findings = audit_source("from mvge.runes import RunnerFacade\n")
+    assert "internal_engine_import" in _flagged_kinds(findings)
+    assert blocking_findings(findings)
+
+
+def test_facade_chain_access_is_blocking() -> None:
+    # api._facade reaches the live runner and bypasses the
+    # capability gate; it must be refused like api._runner.
+    findings = audit_source(
+        "def rune_factory(api):\n    return api._facade.register_spell(spell)\n"
+    )
+    assert "private_runner_access" in _flagged_kinds(findings)
+    assert blocking_findings(findings)
+    findings = audit_source(
+        "def rune_factory(api):\n"
+        "    runner = getattr(api, '_facade', None)\n"
+        "    return runner\n"
+    )
+    assert "private_runner_access" in _flagged_kinds(findings)
+    assert blocking_findings(findings)
+    findings = audit_source(
+        "def rune_factory(api):\n    return api._facade._wrapped_runner\n"
+    )
+    assert "private_runner_access" in _flagged_kinds(findings)
+    assert blocking_findings(findings)
+
+
 def test_public_api_imports_are_not_flagged() -> None:
     findings = audit_source(
         "from mvge.runes.rune_api import RuneAPI\n"
