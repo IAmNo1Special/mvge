@@ -915,6 +915,27 @@ class RuneRunner:
         """Return dict of prefix -> factory without rune attribution tuple."""
         return {k: v[0] for k, v in self._realm_factories.items()}
 
+    def get_realm_provider_factories(self) -> dict[str, Any]:
+        """Return only factories registered by RealmProvider runes.
+
+        Attribution is the gate: a factory counts only when the rune
+        that registered it has a loaded manifest whose types include
+        "RealmProvider" (the three marketplace realm runes). A factory
+        registered by any other rune — or with no loaded manifest at
+        all — is excluded, so engine-held-key capabilities built on
+        this set never hand the key to arbitrary rune code.
+        """
+        provider_names = {
+            manifest.name
+            for manifest in self._loaded_manifests
+            if "RealmProvider" in manifest.types
+        }
+        return {
+            prefix: factory
+            for prefix, (factory, rune_name) in self._realm_factories.items()
+            if rune_name in provider_names
+        }
+
     def get_all_registered_spells(self) -> list[SpellDefinition | MvgeSpell]:
         return list(self._spells.values())
 

@@ -13,9 +13,11 @@ a typed method instead of a private attribute.
 The facade also owns the engine-held model-call capability:
 ``stream_model_text`` builds a realm from the runner-registered
 factories using the key the embedding layer bound on the runner
-(see ``RuneRunner.bind_model_key``). The key never crosses into
-rune code, the realm object never crosses either — only the
-returned text does.
+(see ``RuneRunner.bind_model_key``). The key crosses only into
+factories registered by RealmProvider runes (see
+``RuneRunner.get_realm_provider_factories``); it never crosses
+into arbitrary rune code, and the realm object never crosses
+either — only the returned text does.
 """
 
 from __future__ import annotations
@@ -200,6 +202,19 @@ class RunnerFacade:
         runner = self._wrapped_runner
 
         def _share(child_runner: Any) -> None:
+            # Lazy import: a top-level import would close the
+            # runner -> facade -> runner cycle. This guard closes
+            # the documented-method capture (a non-runner object
+            # receiving the real parent runner); it does not close
+            # subclass abuse or introspection, and must not be
+            # claimed to.
+            from mvge.runes.rune_runner import RuneRunner
+
+            if not isinstance(child_runner, RuneRunner):
+                raise TypeError(
+                    "approval_presenter_source requires a real RuneRunner, "
+                    f"not {type(child_runner).__name__}"
+                )
             child_runner.share_approval_presenter_from(runner)
 
         return _share
@@ -216,15 +231,20 @@ class RunnerFacade:
     ) -> str:
         """Stream one model completion and return its text.
 
-        The realm is built inside the engine from the runner-registered
-        factories, using the key bound on the runner by the embedding
-        layer. Neither the key nor the realm object is returned: only
-        the collected text crosses back to the caller. This is the
-        Phase 2A replacement for runes reading ``context.api_key``
-        and building their own realm.
+        The realm is built inside the engine from RealmProvider
+        factories only (see ``get_realm_provider_factories``),
+        using the key bound on the runner by the embedding
+        layer. A factory registered by any other rune is never
+        built here, so it never receives the bound key; a model
+        id under such a prefix fails with the existing
+        "No Realm factory" error. Neither the key nor the realm
+        object is returned: only the collected text crosses
+        back to the caller. This is the Phase 2A replacement
+        for runes reading ``context.api_key`` and building
+        their own realm.
         """
         registry = RealmRegistry()
-        factories = self._wrapped_runner.get_registered_realm_factories()
+        factories = self._wrapped_runner.get_realm_provider_factories()
         for prefix, factory in factories.items():
             registry.register_realm_factory(prefix, factory)
         for (

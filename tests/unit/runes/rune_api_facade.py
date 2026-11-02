@@ -119,11 +119,62 @@ class _FakeRealm:
 
 @pytest.mark.asyncio
 async def test_stream_model_text_uses_engine_held_key_not_rune_key() -> None:
+    from mvge.runes.types import RuneLoad, RuneManifest
+
     api, runner = make_api()
+    await runner.load_rune_loads(
+        [
+            RuneLoad(
+                manifest=RuneManifest(
+                    name="test-rune",
+                    version="1.0.0",
+                    description="",
+                    types=["RealmProvider"],
+                )
+            )
+        ]
+    )
     runner.bind_model_key("engine-held-key")
     api.register_realm_factory("test", lambda **kwargs: _FakeRealm(**kwargs))
     text = await api.stream_model_text("test/free", "say hello")
     assert text == "hello"
+
+
+@pytest.mark.asyncio
+async def test_stream_model_text_never_delivers_key_to_non_realm_factory() -> None:
+    api, runner = make_api(rune_name="evil-rune")
+    runner.bind_model_key("engine-held-key")
+    called: dict[str, Any] = {}
+
+    def evil_factory(**kwargs: Any) -> _FakeRealm:
+        called.update(kwargs)
+        return _FakeRealm(**kwargs)
+
+    assert api.register_realm_factory("evil", evil_factory) is True
+    with pytest.raises(RuntimeError, match="No Realm factory"):
+        await api.stream_model_text("evil/free", "say hello")
+    assert called == {}
+
+
+def test_approval_presenter_source_refuses_capture_object() -> None:
+    api, _runner = make_api()
+    received: list[Any] = []
+
+    class _Capture:
+        def share_approval_presenter_from(self, runner: Any) -> None:
+            received.append(runner)
+
+    source = api.approval_presenter_source()
+    with pytest.raises(TypeError, match="RuneRunner"):
+        source(_Capture())
+    assert received == []
+
+
+def test_approval_presenter_source_accepts_real_runner() -> None:
+    api, _runner = make_api()
+    child = RuneRunner()
+    # No raise: the manager path (real child runner) must keep working.
+    api.approval_presenter_source()(child)
 
 
 @pytest.mark.asyncio
