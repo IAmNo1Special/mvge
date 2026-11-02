@@ -27,6 +27,7 @@ from mvge.runes.pinning import (
     RunePin,
     adopt_rune_pin,
     compute_rune_tree_hash,
+    is_dev_tree,
     read_pin,
     verify_rune_pin,
     write_pin,
@@ -384,6 +385,93 @@ class TestBranchDrift:
         assert pin is not None
         assert pin.commit == pinned_commit
         assert pin.tree_hash == pinned_hash
+
+
+class TestDevTreeExemption:
+    """Pin verification applies to installed trees, not dev checkouts.
+
+    A rune nested in a git checkout loads without a sidecar. A planted
+    ``.git`` at or inside the rune dir itself is not a checkout root
+    above the rune and must not exempt it. Revocation still wins even
+    in a dev tree, and a tampered installed tree is still refused.
+    """
+
+    def _write_dev_rune(self, tmp_path: Path) -> tuple[Path, Path]:
+        repo = tmp_path / "repo"
+        rune_dir = _write_rune(repo / "runes", "devrune", _factory_body())
+        (repo / ".git").mkdir()
+        return repo, rune_dir
+
+    def test_dev_tree_load_without_sidecar_passes(self, tmp_path: Path) -> None:
+        _, rune_dir = self._write_dev_rune(tmp_path)
+        assert read_pin(rune_dir) is None
+        assert is_dev_tree(rune_dir) is True
+        assert verify_rune_pin(rune_dir, "devrune").status == "ok"
+        factory, diagnostics = _load(rune_dir)
+        assert factory is not None, _messages(diagnostics)
+
+    def test_dev_tree_with_git_file_ancestor_passes(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        rune_dir = _write_rune(repo / "runes", "devrune", _factory_body())
+        (repo / ".git").write_text("gitdir: /elsewhere/worktree\n", encoding="utf-8")
+        assert is_dev_tree(rune_dir) is True
+        factory, _ = _load(rune_dir)
+        assert factory is not None
+
+    def test_installed_tree_without_sidecar_still_refused(self, tmp_path: Path) -> None:
+        rune_dir = _write_rune(tmp_path, "installed", _factory_body())
+        assert is_dev_tree(rune_dir) is False
+        assert verify_rune_pin(rune_dir, "installed").status == "missing"
+        factory, diagnostics = _load(rune_dir)
+        assert factory is None
+        assert "mvge rune trust --adopt installed" in _messages(diagnostics)
+
+    def test_installed_tree_with_matching_sidecar_passes(self, tmp_path: Path) -> None:
+        rune_dir = _write_rune(tmp_path, "installed", _factory_body())
+        _pin_dir(rune_dir, source_kind="catalog")
+        assert verify_rune_pin(rune_dir, "installed").status == "ok"
+        factory, _ = _load(rune_dir)
+        assert factory is not None
+
+    def test_planted_git_dir_inside_rune_does_not_exempt(self, tmp_path: Path) -> None:
+        rune_dir = _write_rune(tmp_path, "planted", _factory_body())
+        (rune_dir / ".git").mkdir()
+        assert is_dev_tree(rune_dir) is False
+        assert verify_rune_pin(rune_dir, "planted").status == "missing"
+        factory, _ = _load(rune_dir)
+        assert factory is None
+
+    def test_planted_git_file_inside_rune_does_not_exempt(self, tmp_path: Path) -> None:
+        rune_dir = _write_rune(tmp_path, "planted", _factory_body())
+        (rune_dir / ".git").write_text("gitdir: /elsewhere\n", encoding="utf-8")
+        assert is_dev_tree(rune_dir) is False
+        factory, _ = _load(rune_dir)
+        assert factory is None
+
+    def test_tamper_after_install_still_refused(self, tmp_path: Path) -> None:
+        rune_dir = _write_rune(tmp_path, "tampered", _factory_body())
+        _pin_dir(rune_dir, source_kind="catalog")
+        (rune_dir / "rune.py").write_text(
+            _factory_body() + "# attacker\n", encoding="utf-8"
+        )
+        assert verify_rune_pin(rune_dir, "tampered").status == "mismatch"
+        factory, _ = _load(rune_dir)
+        assert factory is None
+
+    def test_revoked_dev_tree_still_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        global_dir = tmp_path / "global"
+        monkeypatch.setenv("MVGE_GLOBAL_DIR", str(global_dir))
+        blocklist = global_dir / "approval" / "rune-blocklist.json"
+        blocklist.parent.mkdir(parents=True)
+        blocklist.write_text(
+            json.dumps({"version": 1, "revoked": ["devrune"]}), encoding="utf-8"
+        )
+        _, rune_dir = self._write_dev_rune(tmp_path)
+        assert verify_rune_pin(rune_dir, "devrune").status == "revoked"
+        factory, _ = _load(rune_dir)
+        assert factory is None
 
 
 class TestTrustCommand:

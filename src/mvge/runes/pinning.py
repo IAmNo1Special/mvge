@@ -27,6 +27,20 @@ a load even when its hash matches.
 The manifest ``RealmProvider`` gate is a declaration, not authentication:
 pinning makes that declaration reviewable (the recorded tree is the
 reviewed tree), it does not authenticate the declarer.
+
+Dev-tree exemption: pin verification applies to installed trees only.
+A rune nested inside a git checkout is a developer's working tree, not
+an install: the installer copies only the rune subpath out of a staged
+clone, so an installed rune never sits under a checkout root, while a
+source tree (for example the marketplace repo itself) always does.
+The exemption therefore keys on a ``.git`` entry in an ancestor
+strictly above the rune directory, never on one at or inside the rune
+directory itself, so planting ``.git`` inside an installed rune does
+not exempt it. The exemption is a load-time convenience for developers,
+not a trust claim: revocation still refuses a dev tree, and the Phase
+2B source audit still runs after pin verification. A rune that is
+itself a checkout root (``.git`` at the rune directory) is not
+exempt: its root is not strictly above it.
 """
 
 from __future__ import annotations
@@ -216,6 +230,27 @@ def is_revoked(rune_name: str, blocklist_path: Path | None = None) -> bool:
     return rune_name in read_blocklist(blocklist_path)
 
 
+def is_dev_tree(rune_dir: Path) -> bool:
+    """Whether a rune directory is nested inside a git checkout.
+
+    Walks ancestors strictly above the resolved rune directory and
+    returns True on the first ancestor carrying a ``.git`` entry, dir
+    or file (a worktree's ``.git`` is a file, not a dir). A ``.git``
+    at the rune directory itself, or anywhere inside it, is never
+    counted: that is the planted-``.git`` case, and it must not exempt
+    an installed rune. No git subprocess is run and nothing is cached:
+    the walk is bounded by path depth and stays cheap for loader use,
+    and a cached answer could go stale if a checkout is created after
+    the first load attempt.
+    """
+    resolved = Path(rune_dir).resolve()
+    for ancestor in resolved.parents:
+        git_entry = ancestor / ".git"
+        if git_entry.exists() or git_entry.is_symlink():
+            return True
+    return False
+
+
 @dataclass
 class PinVerdict:
     """The outcome of verifying one installed rune against its sidecar."""
@@ -228,10 +263,15 @@ class PinVerdict:
 def verify_rune_pin(
     rune_dir: Path, rune_name: str, *, blocklist_path: Path | None = None
 ) -> PinVerdict:
-    """Verify an installed rune: revocation, sidecar, then tree hash.
+    """Verify an installed rune: revocation, dev-tree exemption, sidecar,
+    then tree hash.
 
-    Revocation is checked first and wins over a matching hash: a version
-    later found malicious must stay refused even though it is unmodified.
+    Revocation is checked first and wins over a matching hash and over
+    the dev-tree exemption: a version later found malicious must stay
+    refused even though it is unmodified, and even in a developer's
+    checkout. A dev tree then loads without a sidecar; every other
+    tree still needs one, and a recorded hash that no longer matches
+    is still refused.
     """
     if is_revoked(rune_name, blocklist_path):
         return PinVerdict(
@@ -244,6 +284,17 @@ def verify_rune_pin(
                 f"Remove '{rune_name}' from the revocation blocklist only if "
                 "you have reviewed the revocation, or uninstall the rune."
             ),
+        )
+    if is_dev_tree(rune_dir):
+        return PinVerdict(
+            status="ok",
+            message=(
+                f"Rune '{rune_name}' loads from a developer checkout "
+                "(a git root above its directory), so no install-time "
+                "pin is required. This is not a trust claim: revocation "
+                "above still applies, and the source audit still runs."
+            ),
+            remedy="",
         )
     try:
         pin = read_pin(rune_dir)
@@ -331,6 +382,7 @@ __all__ = [
     "adopt_rune_pin",
     "compute_rune_tree_hash",
     "default_blocklist_path",
+    "is_dev_tree",
     "is_revoked",
     "read_blocklist",
     "read_pin",
