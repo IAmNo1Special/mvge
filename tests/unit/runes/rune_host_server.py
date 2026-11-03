@@ -173,3 +173,172 @@ def test_wire_bad_envelope_rejected() -> None:
         decode_message(b"not json")
     with pytest.raises(HostProtocolError):
         decode_message(b"[1, 2]")
+    with pytest.raises(HostProtocolError):
+        decode_message(
+            b'{"protocol": "mvge-rune-host/1", "kind": "bogus", "type": "x"}'
+        )
+
+
+def test_host_api_supported_methods() -> None:
+    """Every supported HostRuneAPI method works against a canned wire."""
+    from mvge.runes.host_server import HostRuneAPI
+    from mvge.runes.types import SkillManifest, SpellDefinition
+
+    wire = _FakeWire()
+    api = HostRuneAPI(wire, "api-rune", {"agent_name": "a", "model_id": "m"})
+    assert api.context.agent_name == "a"
+    assert api.context.model_id == "m"
+    assert api.install_id is None
+    assert api.sanitize_no_proxy_env() is False
+    disposed: list[bool] = []
+    api.on_dispose(lambda: disposed.append(True))
+    assert len(api.scope.cleanup_callbacks) == 1
+    spell = SpellDefinition(name="s", description="d", handler=lambda p: {})
+    assert api.register_spell(spell) is True
+    assert api.unregister_spell("s") is False
+    assert api.get_spell("s") is None
+    assert api.get_all_spells() == []
+    assert api.get_discoverable_spells() == []
+    assert api.register_command("c", "d", lambda a: a) is True
+    assert api.register_shortcut("k", "d", lambda a: a) is True
+    assert api.get_shortcuts() == []
+    assert api.get_active_spells() == []
+    api.set_active_spells(["s"])
+    assert api.get_global_spell_allowlist() is None
+    api.widen_global_allowlist(["s"])
+    assert api.narrow_global_allowlist(["s"]) == []
+    assert api.has_spell_gateway is False
+    assert api.gateway_spell_names() == []
+    assert api.get_skills() == []
+    api.register_skill(SkillManifest(name="sk", description="d", path="/tmp/sk"))
+    api.register_skill_path("/tmp/skills")
+    api.clear_skills_for_rune()
+    api.send_message("hi")
+    api.set_session_name("T")
+    assert api.get_session_name() is None
+    api.audit("op", outcome="ok", code="ok", message="m", target="t")
+    assert wire.events[-1][0] == "audit"
+    assert wire.events[-1][1]["op"] == "op"
+    assert wire.requests[0][0] == "register_spell"
+    assert api.scope.spell_names == set()
+    assert api.scope.commands == {"c"}
+    assert api.scope.shortcuts == {"k"}
+
+
+def test_host_state_extra_branches(tmp_path: Path) -> None:
+    """Spell-context fields, non-dict/non-serializable results,
+    async hooks, shortcut dispatch, and init refusals."""
+    from mvge.runes.host_server import HostState
+
+    rune_dir = _write_rune(tmp_path, "ctx-rune", _ECHO_BODY)
+    state = HostState(_FakeWire(), rune_dir)
+    assert state.handle_request("init", {"context": {}, "install_id": "x"}) == {
+        "ready": True
+    }
+    ctx = state._spell_context(
+        {
+            "workspace_root": "/tmp/ws",
+            "project_root": "/tmp/pr",
+            "tome_id": "t1",
+            "agent_name": "a",
+            "spell_action": "doing",
+            "spell_summary": "done",
+            "state": {"k": "v"},
+        },
+        "c1",
+        AbortController(),
+    )
+    assert str(ctx.workspace_root) == "/tmp/ws"
+    assert ctx.tome_id == "t1"
+    assert ctx.state == {"k": "v"}
+    with pytest.raises(ValueError, match="no shortcut"):
+        state.handle_request("shortcut_invoke", {"key": "nope"})
+    with pytest.raises(ValueError, match="no command"):
+        state.handle_request("command_invoke", {"name": "nope", "args": ""})
+    assert state.handle_request("shutdown", {}) == {"stopped": True}
+    assert state.stop_event.is_set()
+
+
+def test_host_state_init_refusals(tmp_path: Path) -> None:
+    from mvge.runes.host_server import HostState
+
+    empty_dir = tmp_path / "empty-rune"
+    empty_dir.mkdir()
+    state = HostState(_FakeWire(), empty_dir)
+    with pytest.raises(ValueError, match="No manifest"):
+        state.handle_request("init", {"context": {}})
+    no_entry = tmp_path / "no-entry"
+    no_entry.mkdir()
+    (no_entry / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "no-entry",
+                "version": "0.1.0",
+                "description": "x",
+                "entry_point": "missing.py",
+            }
+        ),
+        encoding="utf-8",
+    )
+    state2 = HostState(_FakeWire(), no_entry)
+    with pytest.raises(ValueError, match="refused"):
+        state2.handle_request("init", {"context": {}})
+
+
+def test_host_state_spell_result_shapes(tmp_path: Path) -> None:
+    """Non-dict and non-serializable spell results fail closed."""
+    from mvge.runes.host_server import HostState
+    from mvge.runes.types import SpellDefinition
+
+    state = HostState(_FakeWire(), tmp_path)
+    state.spells["str-spell"] = SpellDefinition(
+        name="str-spell", description="d", handler=lambda p: "not-a-dict"
+    )
+    with pytest.raises(ValueError, match="non-dict"):
+        state.handle_request(
+            "spell_execute",
+            {"spell_name": "str-spell", "cast_id": "c1", "params": {}},
+        )
+    state.spells["bad-spell"] = SpellDefinition(
+        name="bad-spell", description="d", handler=lambda p: {"bad": object()}
+    )
+    with pytest.raises(ValueError, match="not JSON-serializable"):
+        state.handle_request(
+            "spell_execute",
+            {"spell_name": "bad-spell", "cast_id": "c2", "params": {}},
+        )
+
+
+def test_host_state_async_hook_and_update_repr(tmp_path: Path) -> None:
+    """Async hook handlers run, and non-serializable updates cross
+    as a repr instead of breaking the wire."""
+    from mvge.runes.host_server import HostState
+    from mvge.runes.types import SpellDefinition
+
+    async def _async_hook(data: dict) -> dict:
+        return {"seen": data.get("note", "")}
+
+    state = HostState(_FakeWire(), tmp_path)
+    state.hooks["turn_start"] = [_async_hook]
+    assert state.handle_request(
+        "hook_invoke", {"hook": "turn_start", "data": {"note": "hi"}}
+    ) == {"result": {"seen": "hi"}}
+
+    def _stream(params: dict, on_update: object = None) -> dict:
+        if on_update is not None:
+            on_update(object())  # type: ignore[operator]
+        return {"done": True}
+
+    state.spells["stream-spell"] = SpellDefinition(
+        name="stream-spell", description="d", handler=_stream
+    )
+    wire = state.transport
+    assert isinstance(wire, _FakeWire)
+    result = state.handle_request(
+        "spell_execute",
+        {"spell_name": "stream-spell", "cast_id": "c9", "params": {}},
+    )
+    assert result == {"result": {"done": True}}
+    updates = [p for t, p in wire.events if t == "spell_update"]
+    assert len(updates) == 1
+    assert "repr" in updates[0]["update"]
