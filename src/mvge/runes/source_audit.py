@@ -68,6 +68,15 @@ reach objects through introspection, and no diagnostic or doc
 string here says otherwise. The parity test (same declaration
 table for audit and runtime) prepares Phase 4, where
 unsupported calls fail closed from the same table.
+
+Phase 4 hosted mode (``audit_hosted_source`` /
+``audit_source(..., hosted=True)``): in addition to the checks
+above, any ``api.<method>`` use of a method in the ONE hosted
+table (``mvge.runes.host_classification.HOST_UNSUPPORTED_METHODS``)
+is a blocking ``host_unsupported_method`` finding. The hosted
+runtime (``HostRuneAPI``) refuses the same methods from the
+same table, and the parity test asserts the two verdicts agree
+for every method in it.
 """
 
 from __future__ import annotations
@@ -77,6 +86,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mvge.runes.capabilities import METHOD_TO_CAPABILITY
+from mvge.runes.host_classification import HOST_UNSUPPORTED_METHODS
 
 INTERNAL_ENGINE_MODULES: frozenset[str] = frozenset(
     {
@@ -127,9 +137,15 @@ def blocking_findings(findings: list[AuditFinding]) -> list[AuditFinding]:
 
 
 class _Visitor(ast.NodeVisitor):
-    def __init__(self, filename: str, declared: list[str] | None) -> None:
+    def __init__(
+        self,
+        filename: str,
+        declared: list[str] | None,
+        hosted: bool = False,
+    ) -> None:
         self._filename = filename
         self._declared = declared
+        self._hosted = hosted
         self.findings: list[AuditFinding] = []
 
     def _add(self, kind: str, node: ast.AST, message: str, blocking: bool) -> None:
@@ -162,6 +178,18 @@ class _Visitor(ast.NodeVisitor):
         return names
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
+        if (
+            self._hosted
+            and node.attr in HOST_UNSUPPORTED_METHODS
+            and "api" in self._chain_names(node)
+        ):
+            self._add(
+                "host_unsupported_method",
+                node,
+                f"Hosted use of api.{node.attr} is refused in v1: "
+                f"{HOST_UNSUPPORTED_METHODS[node.attr]}",
+                True,
+            )
         if node.attr in ("_runner", "_facade", "_wrapped_runner"):
             self._add(
                 "private_runner_access",
@@ -205,6 +233,22 @@ class _Visitor(ast.NodeVisitor):
                 else "private_runner_access"
             )
             self._add(kind, node, "getattr escape to a private attribute", True)
+        if (
+            self._hosted
+            and isinstance(func, ast.Name)
+            and func.id == "getattr"
+            and len(node.args) >= 2
+            and isinstance(node.args[1], ast.Constant)
+            and node.args[1].value in HOST_UNSUPPORTED_METHODS
+        ):
+            self._add(
+                "host_unsupported_method",
+                node,
+                f"Hosted getattr use of api.{node.args[1].value} is "
+                "refused in v1: "
+                f"{HOST_UNSUPPORTED_METHODS[str(node.args[1].value)]}",
+                True,
+            )
         if isinstance(func, ast.Attribute):
             chain = self._chain_names(func)
             # sys.path.append/insert/extend/remove/pop
@@ -373,8 +417,14 @@ def audit_source(
     *,
     declared_capabilities: list[str] | None = None,
     filename: str = "<source>",
+    hosted: bool = False,
 ) -> list[AuditFinding]:
-    """Audit one source string. Parses only; never imports or executes."""
+    """Audit one source string. Parses only; never imports or executes.
+
+    With ``hosted=True`` the Phase 4 hosted table also applies:
+    use of a hosted-unsupported facade method is a blocking
+    ``host_unsupported_method`` finding.
+    """
     try:
         tree = ast.parse(source, filename=filename)
     except SyntaxError as err:
@@ -387,14 +437,23 @@ def audit_source(
                 blocking=True,
             )
         ]
-    visitor = _Visitor(filename, declared_capabilities)
+    visitor = _Visitor(filename, declared_capabilities, hosted=hosted)
     visitor.visit(tree)
     return visitor.findings
+
+
+def audit_hosted_source(
+    source: str, *, filename: str = "<source>"
+) -> list[AuditFinding]:
+    """Audit one source string as a hosted rune (Phase 4 v1)."""
+    return audit_source(source, filename=filename, hosted=True)
 
 
 def audit_rune_dir(
     rune_dir: Path,
     declared_capabilities: list[str] | None = None,
+    *,
+    hosted: bool = False,
 ) -> list[AuditFinding]:
     """Audit every Python file under a rune dir, except vendored/test dirs.
 
@@ -415,6 +474,7 @@ def audit_rune_dir(
                 source,
                 declared_capabilities=declared_capabilities,
                 filename=relative,
+                hosted=hosted,
             )
         )
     return findings

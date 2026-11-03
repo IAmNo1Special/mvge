@@ -455,6 +455,12 @@ class RuneManifest:
     # into dropped_capabilities instead.
     capabilities: list[str] | None = None
     dropped_capabilities: list[str] = field(default_factory=list)
+    # Phase 4: hosting declaration. None = unspecified (eligible,
+    # subject to the in-process-only tier rules). "hosted" =
+    # explicitly eligible. "in-process" = must stay in-process.
+    # Any other value is normalized to "in-process" by the parser
+    # (fail-closed), so an unknown value never hosts by accident.
+    hosting: str | None = None
 
 
 @dataclass(frozen=True)

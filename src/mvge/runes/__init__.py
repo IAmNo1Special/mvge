@@ -1,4 +1,26 @@
 from mvge.core.spells import ExecutionMode
+from mvge.runes.host import HostSession, host_rune_session
+from mvge.runes.host_classification import (
+    HOST_SUPPORTED_METHODS,
+    HOST_UNSUPPORTED_METHODS,
+    HostClassification,
+    classify_manifest,
+)
+from mvge.runes.host_protocol import (
+    PROTOCOL_NAME,
+    PROTOCOL_VERSION,
+    HostAbortedError,
+    HostCrashError,
+    HostError,
+    HostInProcessOnlyError,
+    HostProtocolError,
+    HostTimeoutError,
+    HostUnsupportedError,
+    OversizeMessageError,
+    VersionMismatchError,
+    scrub_env,
+)
+from mvge.runes.host_server import HostRuneAPI, HostState
 from mvge.runes.installer import (
     DEFAULT_MARKETPLACE_URL,
     fetch_marketplace_runes,
@@ -74,6 +96,26 @@ from mvge.runes.watcher import RuneWatcher
 __all__ = [
     "DEFAULT_MARKETPLACE_URL",
     "AuditError",
+    "HOST_SUPPORTED_METHODS",
+    "HOST_UNSUPPORTED_METHODS",
+    "HostAbortedError",
+    "HostClassification",
+    "HostCrashError",
+    "HostError",
+    "HostInProcessOnlyError",
+    "HostProtocolError",
+    "HostRuneAPI",
+    "HostSession",
+    "HostState",
+    "HostTimeoutError",
+    "HostUnsupportedError",
+    "OversizeMessageError",
+    "PROTOCOL_NAME",
+    "PROTOCOL_VERSION",
+    "VersionMismatchError",
+    "classify_manifest",
+    "host_rune_session",
+    "scrub_env",
     "Diagnostic",
     "DiagnosticKind",
     "default_rune_ops_dir",
