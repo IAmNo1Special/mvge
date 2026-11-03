@@ -248,7 +248,7 @@ def test_host_state_extra_branches(tmp_path: Path) -> None:
         "c1",
         AbortController(),
     )
-    assert str(ctx.workspace_root) == "/tmp/ws"
+    assert ctx.workspace_root == Path("/tmp/ws")
     assert ctx.tome_id == "t1"
     assert ctx.state == {"k": "v"}
     with pytest.raises(ValueError, match="no shortcut"):
