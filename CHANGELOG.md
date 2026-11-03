@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.47] - 2026-11-03
+
+
+### Bug Fixes
+
+- **runes:** gate host wire registrations on Phase 2B capabilities (8de7e1a)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (34f0553)
+
+- **release:** v0.2.47 (fb3c143)
+
+
+### Features
+
+- **runes:** out-of-process rune host v1 (Phase 4) (62c2888)
+
+
+### Tests
+
+- **runes:** cover host session, transport, and API branches (e3e7572)
+
+- **runes:** compare host workspace root as Path, not a POSIX string (a075a0c)
+
+
 ## [0.2.46] - 2026-11-02
 
 
