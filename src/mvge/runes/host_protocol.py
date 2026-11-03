@@ -71,6 +71,10 @@ _CREDENTIAL_EXACT: frozenset[str] = frozenset(
 _CREDENTIAL_TOKENS: tuple[str, ...] = (
     "API_KEY",
     "APIKEY",
+    # Underscore-prefixed, not bare "KEY"/"PAT": a bare "PAT"
+    # token would scrub PATH, which the host needs to run.
+    "_KEY",
+    "_PAT",
     "SECRET",
     "TOKEN",
     "PASSWORD",

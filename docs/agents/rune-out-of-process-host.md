@@ -93,6 +93,24 @@ uses any of them. The parity test
 two verdicts agree for every method in the table and is a
 release gate: do not duplicate the table anywhere else.
 
+## Capability gate (Phase 2B, engine-side)
+
+A hosted registration passes through the same Phase 2B
+capability gate as an in-process registration, enforced in
+`HostSession._handle_host_request` on the engine side —
+never only in `HostRuneAPI`, which a host speaking the wire
+directly bypasses. `register_spell` requires `spell`,
+`register_hook` requires `hook`, `register_command` and
+`register_shortcut` require `command`, and `register_skill`
+and `register_skill_path` require `skill`; a denied
+registration returns `{"registered": False}` and changes no
+engine state. Ungated wire calls (allowlist, messages,
+session name, queries) are ungated in-process too, so they
+stay ungated here. A manifest with no `capabilities` field
+is ungated, per the Phase 2B legacy rule.
+
+The Phase 3 dev-tree exemption applies to hosted loads too: a rune hosted from inside a git checkout skips pin verification, exactly as an in-process load from the same tree does.
+
 Unsupported in v1: `register_realm_factory`,
 `register_provider`, `get_registered_providers`,
 `get_registered_realm_factories`, `request_approval`,

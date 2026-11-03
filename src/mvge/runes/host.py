@@ -32,6 +32,14 @@ Fail-closed rules enforced here:
   and the cast fails with ``HostTimeoutError``.
 - A host that answers with an abort fails with
   ``HostAbortedError``, never with a success result.
+- A hosted registration is refused engine-side when the
+  Phase 2B capability gate denies it: ``HostSession``
+  checks ``runner.capability_gate(self.manifest)`` for
+  every gated wire registration, so a host speaking the
+  wire directly gains nothing over ``HostRuneAPI``. A
+  denied registration returns ``{"registered": False}``
+  and changes no engine state; a legacy manifest with no
+  ``capabilities`` field is ungated, exactly as in-process.
 
 Lifecycle is cross-platform by construction: the host is started
 with ``sys.executable -m mvge.runes.host_server`` (no shell, no
@@ -69,6 +77,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mvge.core.spells import ExecutionMode, MvgeSpell
+from mvge.runes.capabilities import METHOD_TO_CAPABILITY
 from mvge.runes.host_classification import classify_manifest
 from mvge.runes.host_protocol import (
     DEFAULT_CALL_TIMEOUT_SECONDS,
@@ -139,6 +148,21 @@ def _json_or_refuse(value: Any, what: str) -> None:
             f"{what} is not JSON-serializable, so it cannot cross to a "
             f"hosted rune in v1: {exc}"
         ) from exc
+
+
+# Wire request type -> RuneAPI method name, for the Phase 2B
+# capability gate. The wire's ``register_hook`` is RuneAPI's
+# ``on``; every other gated wire type shares its RuneAPI name.
+# The capability itself comes from the single Phase 2B table
+# ``METHOD_TO_CAPABILITY`` — never from a second mapping here.
+_HOST_REQUEST_TO_API_METHOD: dict[str, str] = {
+    "register_spell": "register_spell",
+    "register_hook": "on",
+    "register_command": "register_command",
+    "register_shortcut": "register_shortcut",
+    "register_skill": "register_skill",
+    "register_skill_path": "register_skill_path",
+}
 
 
 class HostSession:
@@ -424,11 +448,34 @@ class HostSession:
         with contextlib.suppress(Exception):
             self._audit_log.append_event(record)
 
+    def _wire_registration_allowed(self, msg_type: str) -> bool:
+        """Engine-side Phase 2B gate for one wire registration.
+
+        Mirrors in-process ``RuneAPI`` exactly: the gate is
+        built from this session's manifest (so a manifest with
+        no ``capabilities`` field is ungated, and a manifest
+        that declares the field is granted only its consented
+        capabilities), and ungated wire types are not in the
+        mapping, so they pass through as in-process. This check
+        lives here, on the engine side, because a host that
+        speaks the wire directly bypasses ``HostRuneAPI``.
+        """
+        api_method = _HOST_REQUEST_TO_API_METHOD.get(msg_type)
+        if api_method is None:
+            return True
+        capability = METHOD_TO_CAPABILITY[api_method]
+        gate = self.runner.capability_gate(self.manifest)
+        return gate.allows(self.rune_name, capability)
+
     def _handle_host_request(
         self, msg_type: str, payload: dict[str, Any]
     ) -> dict[str, Any]:
         runner = self.runner
         name = self.rune_name
+        if msg_type in _HOST_REQUEST_TO_API_METHOD and not (
+            self._wire_registration_allowed(msg_type)
+        ):
+            return {"registered": False}
         if msg_type == "register_spell":
             spell = self._proxy_spell(payload)
             registered = runner.register_spell(

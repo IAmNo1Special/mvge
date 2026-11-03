@@ -486,6 +486,151 @@ class TestHostedSpellExecution:
         session.stop()
 
 
+class TestHostCapabilityGate:
+    """B1: the host wire must enforce the Phase 2B capability gate.
+
+    In-process, RuneAPI refuses spell/hook/command/skill
+    registration when the manifest declares capabilities but the
+    consent store grants none of them. The engine-side wire
+    handler must refuse the same registrations, including a raw
+    wire request that bypasses HostRuneAPI entirely.
+    """
+
+    _ALL_BODY = (
+        "from mvge.runes.types import SigilHook, SkillManifest, SpellDefinition\n"
+        "\n"
+        "def _spell(params):\n"
+        "    return {'ok': True}\n"
+        "\n"
+        "def _hook(data):\n"
+        "    return {'seen': True}\n"
+        "\n"
+        "def _cmd(args):\n"
+        "    return 'got'\n"
+        "\n"
+        "def rune_factory(api):\n"
+        "    api.register_spell(SpellDefinition(\n"
+        "        name='gated-spell', description='g', handler=_spell))\n"
+        "    api.on(SigilHook.TURN_START, _hook)\n"
+        "    api.register_command('gated-cmd', 'g', _cmd)\n"
+        "    api.register_shortcut('ctrl-g', 'g', _cmd)\n"
+        "    api.register_skill(SkillManifest(\n"
+        "        name='gated-skill', description='g', path='/tmp/gated-skill'))\n"
+        "    api.register_skill_path('/tmp/gated-skills')\n"
+    )
+
+    def _assert_nothing_registered(self, runner: RuneRunner) -> None:
+        assert runner.get_spell("gated-spell") is None
+        assert runner.get_sigil_handlers(SigilHook.TURN_START) == []
+        assert {c.name for c in runner.get_commands()} == set()
+        assert {s.key for s in runner.get_shortcuts()} == set()
+        assert runner.skill_catalog.get_skills() == []
+        assert runner.skill_catalog.get_registered_skill_paths() == []
+
+    def test_gated_rune_registers_nothing_over_real_wire(self, tmp_path: Path) -> None:
+        # Declared but unconsented: the host-side source audit
+        # passes (every call is declared), so the host starts and
+        # the factory runs — the engine-side wire gate is the
+        # only thing that can refuse the registrations. A
+        # capabilities: [] rune never reaches this point (the
+        # audit refuses admission); the raw-wire test below
+        # covers that shape, which a hostile host can send
+        # directly.
+        rune_dir = _write_rune(
+            tmp_path,
+            "gated-rune",
+            self._ALL_BODY,
+            {"capabilities": ["spell", "hook", "command", "skill"]},
+        )
+        runner, session = _start(tmp_path, rune_dir)
+        try:
+            assert session.is_alive()
+            self._assert_nothing_registered(runner)
+        finally:
+            session.stop()
+
+    def test_consented_rune_registers_normally_over_real_wire(
+        self, tmp_path: Path
+    ) -> None:
+        rune_dir = _write_rune(
+            tmp_path,
+            "consented-rune",
+            self._ALL_BODY,
+            {"capabilities": ["spell", "hook", "command", "skill"]},
+        )
+        runner = RuneRunner()
+        manifest = _load(rune_dir)
+        runner.consent_capabilities(
+            manifest.name, ["spell", "hook", "command", "skill"]
+        )
+        session = HostSession(
+            manifest,
+            rune_dir,
+            runner,
+            stderr_log_path=tmp_path / "consented-rune.log",
+        )
+        session.start()
+        try:
+            assert session.is_alive()
+            assert runner.get_spell("gated-spell") is not None
+            assert runner.get_sigil_handlers(SigilHook.TURN_START)
+            assert "gated-cmd" in {c.name for c in runner.get_commands()}
+            assert "ctrl-g" in {s.key for s in runner.get_shortcuts()}
+            assert any(
+                s.name == "gated-skill" for s in runner.skill_catalog.get_skills()
+            )
+            assert runner.skill_catalog.get_registered_skill_paths()
+        finally:
+            session.stop()
+
+    def test_raw_wire_register_spell_denied_for_gated_rune(
+        self, tmp_path: Path
+    ) -> None:
+        # No HostRuneAPI, no host process: call the engine-side
+        # handler directly, exactly as a hostile host speaking the
+        # wire directly can.
+        rune_dir = _write_rune(
+            tmp_path,
+            "raw-gated-rune",
+            "def rune_factory(api):\n    return None\n",
+            {"capabilities": []},
+        )
+        runner = RuneRunner()
+        session = HostSession(
+            _load(rune_dir),
+            rune_dir,
+            runner,
+            stderr_log_path=tmp_path / "raw-gated-rune.log",
+        )
+        assert session._handle_host_request(
+            "register_spell",
+            {
+                "name": "gated-spell",
+                "description": "g",
+                "parameters": {},
+                "read_only": False,
+                "execution_mode": "parallel",
+            },
+        ) == {"registered": False}
+        assert session._handle_host_request(
+            "register_hook", {"hook": "turn_start"}
+        ) == {"registered": False}
+        assert session._handle_host_request(
+            "register_command", {"name": "gated-cmd", "description": "g"}
+        ) == {"registered": False}
+        assert session._handle_host_request(
+            "register_shortcut", {"key": "ctrl-g", "description": "g"}
+        ) == {"registered": False}
+        assert session._handle_host_request(
+            "register_skill",
+            {"name": "gated-skill", "description": "g", "path": "/tmp/gated-skill"},
+        ) == {"registered": False}
+        assert session._handle_host_request(
+            "register_skill_path", {"path": "/tmp/gated-skills"}
+        ) == {"registered": False}
+        self._assert_nothing_registered(runner)
+
+
 class TestWireProtocol:
     def _stub_session(
         self, tmp_path: Path, script: str
@@ -564,12 +709,23 @@ class TestWireProtocol:
             "MY_TOKEN": "x",
             "DB_PASSWORD": "x",
             "SECRET_SAUCE": "x",
+            "OPENAI_KEY": "x",
+            "AWS_ACCESS_KEY_ID": "x",
+            "GITHUB_PAT": "x",
             "NORMAL_VAR": "keep",
         }
         scrubbed = scrub_env(env)
         assert scrubbed["PATH"] == "/usr/bin"
         assert scrubbed["NORMAL_VAR"] == "keep"
-        for key in ("OPENAI_API_KEY", "MY_TOKEN", "DB_PASSWORD", "SECRET_SAUCE"):
+        for key in (
+            "OPENAI_API_KEY",
+            "MY_TOKEN",
+            "DB_PASSWORD",
+            "SECRET_SAUCE",
+            "OPENAI_KEY",
+            "AWS_ACCESS_KEY_ID",
+            "GITHUB_PAT",
+        ):
             assert key not in scrubbed
 
     def test_default_host_command_is_cross_platform(self, tmp_path: Path) -> None:
