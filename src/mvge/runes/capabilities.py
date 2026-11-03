@@ -15,10 +15,16 @@ Only gates that exist are minted:
 - ``command`` — register a command or shortcut
 - ``realm`` — register a realm factory or provider
 - ``skill`` — register a skill or skill path
+- ``filesystem`` — write files under declared roots, enforced
+  by the Phase 5a subprocess ladder
+  (``mvge.runes.subprocess_policy``). It governs no RuneAPI
+  method, so its entry in ``CAPABILITY_GATES`` is an empty
+  method tuple by design: its gate is the ladder, not a facade
+  method. A rune declaring ``filesystem`` without write roots
+  is granted nothing writable.
 
-Filesystem and network capabilities are deliberately NOT minted:
-no filesystem or network gate exists yet (those arrive with the
-Phase 5a gates). Unknown capability ids are dropped at parse
+Network capabilities are deliberately NOT minted: no network
+gate exists yet. Unknown capability ids are dropped at parse
 time, never granted — fail-closed.
 
 Legacy rule, stated plainly: a manifest with no ``capabilities``
@@ -54,6 +60,10 @@ from mvge.core.layers import extensions_dir
 
 # The single declaration table. Runtime gate and source audit
 # both import this; neither invents its own mapping.
+# ``filesystem`` maps to no RuneAPI method: its gate is the
+# Phase 5a subprocess ladder, not a facade call (see the module
+# docstring). It is listed here so declaration, consent, and
+# re-consent treat it exactly like every other capability.
 CAPABILITY_GATES: dict[str, tuple[str, ...]] = {
     "spell": ("register_spell",),
     # Method names are the RuneAPI-facing names (the API's hook
@@ -63,6 +73,7 @@ CAPABILITY_GATES: dict[str, tuple[str, ...]] = {
     "command": ("register_command", "register_shortcut"),
     "realm": ("register_realm_factory", "register_provider"),
     "skill": ("register_skill", "register_skill_path"),
+    "filesystem": (),
 }
 
 METHOD_TO_CAPABILITY: dict[str, str] = {
@@ -96,6 +107,31 @@ def parse_capabilities(raw: Any) -> tuple[list[str], list[str]]:
         else:
             dropped.append(item)
     return known, dropped
+
+
+def parse_filesystem_write_roots(raw: Any) -> tuple[list[str], list[str]]:
+    """Split a manifest ``filesystem_write_roots`` value into kept/dropped.
+
+    Roots are relative to the spell workspace root; ``"."`` means
+    the workspace itself. Absolute paths, ``..`` escapes, empty
+    strings, and non-strings are dropped, never granted —
+    fail-closed. Duplicates are removed, order preserved.
+    """
+    if not isinstance(raw, list):
+        return [], []
+    kept: list[str] = []
+    dropped: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or item == "":
+            dropped.append(str(item))
+            continue
+        candidate = Path(item)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            dropped.append(item)
+            continue
+        if item not in kept:
+            kept.append(item)
+    return kept, dropped
 
 
 def declaration_hash(capabilities: list[str] | None) -> str:

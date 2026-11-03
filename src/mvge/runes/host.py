@@ -113,6 +113,7 @@ def _spell_metadata(spell: SpellDefinition | MvgeSpell) -> dict[str, Any]:
         "description": spell.description,
         "parameters": spell.parameters or {},
         "read_only": bool(spell.read_only),
+        "write_roots": list(getattr(spell, "write_roots", ()) or ()),
         "source_rune": getattr(spell, "source_rune", None),
     }
 
@@ -644,6 +645,7 @@ class HostSession:
             handler=_hosted_handler,
             read_only=bool(payload.get("read_only", False)),
             timeout_ms=payload.get("timeout_ms"),
+            write_roots=list(payload.get("write_roots") or []),
         )
 
     def _proxy_hook(self, hook: SigilHook) -> Any:

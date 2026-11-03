@@ -93,6 +93,7 @@ def _spell_metadata(spell: SpellDefinition) -> dict[str, Any]:
         "description": spell.description,
         "parameters": spell.parameters or {},
         "read_only": bool(spell.read_only),
+        "write_roots": list(getattr(spell, "write_roots", ()) or ()),
         "execution_mode": str(getattr(execution_mode, "value", execution_mode)),
         "timeout_ms": spell.timeout_ms,
         "prompt_snippet": spell.prompt_snippet,

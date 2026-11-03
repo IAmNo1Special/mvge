@@ -307,6 +307,7 @@ class RuneSpellWrapper(MvgeSpell):
             ),
             read_only=getattr(spell_def, "read_only", False),
             timeout_ms=getattr(spell_def, "timeout_ms", None),
+            write_roots=tuple(getattr(spell_def, "write_roots", ()) or ()),
         )
         self._spell_def = spell_def
         # Engine-owned provenance mark: this wrapper was built by the engine

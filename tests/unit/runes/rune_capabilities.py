@@ -40,15 +40,25 @@ def _write_manifest(parent: Path, capabilities: object) -> Path:
 
 
 def test_capability_ids_are_only_existing_gates() -> None:
-    assert set(CAPABILITY_GATES) == {"spell", "hook", "command", "realm", "skill"}
-    assert "filesystem" not in CAPABILITY_GATES
+    assert set(CAPABILITY_GATES) == {
+        "spell",
+        "hook",
+        "command",
+        "realm",
+        "skill",
+        "filesystem",
+    }
+    # Phase 5a: filesystem is minted because its gate (the
+    # subprocess ladder) now exists. It governs no RuneAPI
+    # method, so its method tuple is empty by design.
+    assert CAPABILITY_GATES["filesystem"] == ()
     assert "network" not in CAPABILITY_GATES
 
 
 def test_parse_capabilities_drops_unknown_ids() -> None:
     known, dropped = parse_capabilities(["spell", "filesystem", "hook", "nope"])
-    assert known == ["spell", "hook"]
-    assert dropped == ["filesystem", "nope"]
+    assert known == ["spell", "filesystem", "hook"]
+    assert dropped == ["nope"]
 
 
 def test_parse_capabilities_dedupes_and_keeps_order() -> None:
@@ -61,8 +71,8 @@ def test_manifest_parser_keeps_known_and_dropped(tmp_path: Path) -> None:
     rune_dir = _write_manifest(tmp_path, ["spell", "filesystem"])
     manifest = load_manifest(rune_dir)
     assert manifest is not None
-    assert manifest.capabilities == ["spell"]
-    assert manifest.dropped_capabilities == ["filesystem"]
+    assert manifest.capabilities == ["spell", "filesystem"]
+    assert manifest.dropped_capabilities == []
 
 
 def test_manifest_without_capabilities_field_is_legacy(tmp_path: Path) -> None:
@@ -263,3 +273,33 @@ def test_gate_allows_ad_hoc_apis_without_a_manifest() -> None:
     gate = runner.capability_gate()
     assert gate.allows("no-such-rune", "spell") is True
     assert gate.allows(None, "spell") is True
+
+
+def test_manifest_parser_keeps_and_drops_filesystem_roots(tmp_path: Path) -> None:
+    # Phase 5a: relative roots are kept; absolute paths, parent
+    # escapes, and empty strings are dropped fail-closed.
+    rune_dir = tmp_path / "roots-rune"
+    rune_dir.mkdir()
+    (rune_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "roots-rune",
+                "version": "0.1.0",
+                "entry_point": "r.py",
+                "capabilities": ["spell", "filesystem"],
+                "filesystem_write_roots": [
+                    ".",
+                    "data",
+                    "/etc",
+                    "../escape",
+                    "",
+                    "data",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(rune_dir)
+    assert manifest is not None
+    assert manifest.filesystem_write_roots == [".", "data"]
+    assert manifest.dropped_filesystem_write_roots == ["/etc", "../escape", ""]

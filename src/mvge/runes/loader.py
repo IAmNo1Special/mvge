@@ -328,7 +328,13 @@ def load_factory_from_manifest(
     # the rune. Advisory findings (e.g. sys.modules use) are
     # flagged by the audit API for review, not reported here,
     # so a sanctioned importlib pattern does not fail a load.
-    blocking = blocking_findings(audit_rune_dir(rune_dir, manifest.capabilities))
+    blocking = blocking_findings(
+        audit_rune_dir(
+            rune_dir,
+            manifest.capabilities,
+            filesystem_write_roots=manifest.filesystem_write_roots,
+        )
+    )
     if blocking:
         if diagnostics is not None:
             summary = "; ".join(

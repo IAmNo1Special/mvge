@@ -292,6 +292,11 @@ class MvgeSpell:
     # agent turn, bounded by max_turns and provider timeouts) may use 0:
     # the parent turn's abort still cancels the cast.
     timeout_ms: int | None = None
+    # Phase 5a declared write roots, relative to the spell workspace
+    # root ("." = the workspace itself). Only the subprocess
+    # ladder enforces them; a read-only spell resolves to no roots.
+    # Kept last so existing positional constructions keep working.
+    write_roots: tuple[str, ...] = ()
     _schema_model: type[BaseModel] | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
