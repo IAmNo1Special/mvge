@@ -127,6 +127,18 @@ def load_manifest(path: Path) -> RuneManifest | None:
     else:
         capabilities, dropped_capabilities = None, []
 
+    # Phase 4: hosting declaration. Absent = unspecified (eligible
+    # subject to tier rules); "hosted" = explicitly eligible;
+    # "in-process" = in-process-only. Anything else fails closed
+    # to "in-process" rather than hosting on an unknown value.
+    raw_hosting = data.get("hosting")
+    if raw_hosting is None:
+        hosting: str | None = None
+    elif raw_hosting in ("hosted", "in-process"):
+        hosting = str(raw_hosting)
+    else:
+        hosting = "in-process"
+
     return RuneManifest(
         name=data["name"],
         version=data["version"],
@@ -146,4 +158,5 @@ def load_manifest(path: Path) -> RuneManifest | None:
         ui=ui,
         capabilities=capabilities,
         dropped_capabilities=dropped_capabilities,
+        hosting=hosting,
     )

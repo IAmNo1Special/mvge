@@ -24,6 +24,7 @@ from mvge.core.layers import scope_rank
 from mvge.core.proxy import sanitize_no_proxy_env
 from mvge.core.spells import MvgeSpell
 from mvge.runes.capabilities import CapabilityGate, CapabilityStore
+from mvge.runes.host import HostSession, host_rune_session
 from mvge.runes.installer import read_or_create_install_id
 from mvge.runes.loader import (
     _inject_rune_paths,
@@ -244,6 +245,10 @@ class RuneRunner:
         self._pending_approvals: set[tuple[asyncio.Future[None], str | None]] = set()
         self._presenter_lock: asyncio.Lock = asyncio.Lock()
         self._disposable_scopes: dict[str, RuneDisposableScope] = {}
+        # Phase 4: hosted sessions, one host process per hosted rune.
+        # Stopped explicitly via shutdown_hosted_runes (the runner
+        # has no general teardown hook for hosts to ride).
+        self._hosted_sessions: dict[str, HostSession] = {}
 
     @property
     def context(self) -> RuneContext:
@@ -328,6 +333,38 @@ class RuneRunner:
     def skill_catalog(self) -> SkillCatalog:
         """The SkillCatalog owning all skill-related state for this runner."""
         return self._skill_catalog
+
+    @property
+    def hosted_sessions(self) -> dict[str, HostSession]:
+        """Live Phase 4 host sessions, keyed by rune name."""
+        return self._hosted_sessions
+
+    def host_rune(
+        self, manifest: RuneManifest, rune_dir: Path, **kwargs: Any
+    ) -> HostSession:
+        """Start (or reuse) an out-of-process host for one rune.
+
+        Phase 4 v1: spell, hook, command, and skill runes only.
+        Realm, spell-gateway, approval, codec, and spell-modifier
+        runes, and any rune declaring ``hosting: "in-process"``,
+        raise ``HostInProcessOnlyError`` before any process is
+        started; their protection in v1 is Phase 3 pinning.
+        The in-process load path is untouched by this method.
+        """
+        return host_rune_session(self, manifest, rune_dir, **kwargs)
+
+    def shutdown_hosted_runes(self) -> None:
+        """Stop every hosted session on this runner."""
+        sessions = list(self._hosted_sessions.values())
+        self._hosted_sessions.clear()
+        for session in sessions:
+            try:
+                session.stop()
+            except Exception:
+                logger.warning(
+                    "Failed to stop hosted rune session",
+                    exc_info=True,
+                )
 
     def extend_diagnostics(self, diagnostics: list[Diagnostic]) -> None:
         """Append loader diagnostics for paths that produced no runes."""
