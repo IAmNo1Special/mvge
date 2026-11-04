@@ -25,6 +25,18 @@ empty method tuple by design. Declaring the capability without
 roots grants nothing writable. Network capabilities are still
 not minted: no network gate exists.
 
+Re-consent for write roots (Phase 5a fix): the stored
+declaration tracks `filesystem_write_roots` alongside
+capabilities, and the declaration hash covers both. Widening
+a rune's declared roots triggers `declaration_changed` and
+the same re-consent path as a capability change, and the
+store's `granted_write_roots` keeps only the roots consented
+at consent time until re-consent. Narrowing roots needs no
+new consent, and unchanged roots never re-trigger. Live-spell
+ladder wiring will consume `granted_write_roots` when it
+lands; until then the store-level grant is the mechanism
+the re-consent path enforces.
+
 ## Backends and enforcement reporting
 
 Every run reports `enforcement` explicitly on its result:

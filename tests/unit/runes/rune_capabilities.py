@@ -121,6 +121,43 @@ def test_declaration_hash_is_stable_and_order_independent() -> None:
     assert declaration_hash(["spell"]) != declaration_hash(["hook"])
 
 
+def test_declaration_hash_covers_write_roots() -> None:
+    # Phase 5a fix (F2): widening write roots changes the
+    # declaration hash exactly as a capability change does.
+    assert declaration_hash(["spell", "filesystem"], ["data"]) == declaration_hash(
+        ["filesystem", "spell"], ["data"]
+    )
+    assert declaration_hash(["spell", "filesystem"], ["data"]) != declaration_hash(
+        ["spell", "filesystem"], ["."]
+    )
+    assert declaration_hash(["spell", "filesystem"], ["data"]) != declaration_hash(
+        ["spell", "filesystem"]
+    )
+
+
+def test_write_roots_widening_triggers_reconsent_not_narrowing() -> None:
+    # Phase 5a fix (F2): widening triggers declaration_changed;
+    # narrowing and unchanged roots do not spuriously re-trigger.
+    store = CapabilityStore(None)
+    store.record_declaration("rune-a", ["spell", "filesystem"], ["data"])
+    store.consent("rune-a", ["spell", "filesystem"])
+    assert (
+        store.declaration_changed("rune-a", ["spell", "filesystem"], ["data"]) is False
+    )
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], ["."]) is True
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], []) is False
+    # The widening is not effective until re-consent.
+    assert store.granted_write_roots("rune-a", ["."]) == set()
+    assert store.granted_write_roots("rune-a", ["data"]) == {"data"}
+    # Narrowing takes effect immediately, without re-consent.
+    assert store.granted_write_roots("rune-a", []) == set()
+    # Re-consent to the widened declaration grants it and
+    # clears the widening signal.
+    store.consent("rune-a", ["spell", "filesystem"], ["."])
+    assert store.granted_write_roots("rune-a", ["."]) == {"."}
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], ["."]) is False
+
+
 def _factory_registering_everything(results: dict[str, bool]):
     def factory(api):  # type: ignore[no-untyped-def]
         results["spell"] = api.register_spell(
@@ -278,6 +315,10 @@ def test_gate_allows_ad_hoc_apis_without_a_manifest() -> None:
 def test_manifest_parser_keeps_and_drops_filesystem_roots(tmp_path: Path) -> None:
     # Phase 5a: relative roots are kept; absolute paths, parent
     # escapes, and empty strings are dropped fail-closed.
+    # "/etc" is not absolute on Windows (drive-relative), so the
+    # absolute example is spelled per-platform; the intent — an
+    # absolute path is dropped — is identical on every platform.
+    absolute_example = "/etc" if Path("/etc").is_absolute() else "C:/Windows"
     rune_dir = tmp_path / "roots-rune"
     rune_dir.mkdir()
     (rune_dir / "manifest.json").write_text(
@@ -290,7 +331,7 @@ def test_manifest_parser_keeps_and_drops_filesystem_roots(tmp_path: Path) -> Non
                 "filesystem_write_roots": [
                     ".",
                     "data",
-                    "/etc",
+                    absolute_example,
                     "../escape",
                     "",
                     "data",
@@ -302,4 +343,8 @@ def test_manifest_parser_keeps_and_drops_filesystem_roots(tmp_path: Path) -> Non
     manifest = load_manifest(rune_dir)
     assert manifest is not None
     assert manifest.filesystem_write_roots == [".", "data"]
-    assert manifest.dropped_filesystem_write_roots == ["/etc", "../escape", ""]
+    assert manifest.dropped_filesystem_write_roots == [
+        absolute_example,
+        "../escape",
+        "",
+    ]

@@ -401,7 +401,10 @@ def test_seatbelt_profile_denies_writes_outside_roots(tmp_path: Path) -> None:
     )
     profile = seatbelt_profile(policy)
     assert "(deny file-write* (subpath " in profile
-    assert f'(allow file-write* (subpath "{tmp_path / "data"}"))' in profile
+    # The profile escapes backslashes, so on Windows the root
+    # appears in its escaped form, not the raw path string.
+    escaped = str(tmp_path / "data").replace("\\", "\\\\").replace('"', '\\"')
+    assert f'(allow file-write* (subpath "{escaped}"))' in profile
     assert profile.count("(allow file-write*") == 2  # root + scratch
 
 
@@ -645,7 +648,11 @@ def test_bwrap_argv_resolves_symlinked_interpreter(tmp_path: Path) -> None:
     link.symlink_to(target)
     backend = BwrapBackend()
     policy = SubprocessPolicy(spell_name="s", read_only=False, workspace_root=tmp_path)
-    argv = backend.build_argv([str(link), "-c", "pass"], policy)
+    # bwrap receives POSIX-style argv on Linux; as_posix() spells
+    # the link the same way on every platform, including Windows,
+    # whose backslash paths would otherwise miss build_argv's
+    # "/" path-style check entirely.
+    argv = backend.build_argv([link.as_posix(), "-c", "pass"], policy)
     assert argv[-3] == str(target)
     # Bare command names are left alone for PATH resolution.
     argv = backend.build_argv(["python3", "-c", "pass"], policy)
@@ -860,7 +867,10 @@ def test_policy_post_init_drops_outside_roots(tmp_path: Path) -> None:
         write_roots=(tmp_path / "data", Path("/etc")),
     )
     assert policy.write_roots == (tmp_path / "data",)
-    assert "/etc" in policy.dropped_roots
+    # Dropped roots are stored as resolved strings, which render
+    # platform-dependently ("/etc" on POSIX, "\\etc" on Windows);
+    # compare as paths, not strings.
+    assert Path("/etc") in {Path(r) for r in policy.dropped_roots}
 
 
 def test_resolve_drops_symlink_escape(tmp_path: Path) -> None:
