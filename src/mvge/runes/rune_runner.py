@@ -306,14 +306,21 @@ class RuneRunner:
         """Engine-owned grant storage for this runner (never rune code)."""
         return self._capability_store
 
-    def consent_capabilities(self, rune_name: str, capabilities: list[str]) -> None:
+    def consent_capabilities(
+        self,
+        rune_name: str,
+        capabilities: list[str],
+        write_roots: list[str] | None = None,
+    ) -> None:
         """Host-only: record user consent for a rune's capabilities.
 
         The only way a declared capability becomes granted. A
         later declaration change never grants a capability that
-        was not consented to here.
+        was not consented to here. Phase 5a fix (F2): passing
+        the write roots being consented to likewise grants only
+        those roots until re-consent.
         """
-        self._capability_store.consent(rune_name, capabilities)
+        self._capability_store.consent(rune_name, capabilities, write_roots)
 
     def capability_gate(self, manifest: RuneManifest | None = None) -> CapabilityGate:
         """Gate for the currently loaded manifests, plus one override.
@@ -324,9 +331,19 @@ class RuneRunner:
         declared = {m.name: m.capabilities for m in self._loaded_manifests}
         if manifest is not None:
             declared[manifest.name] = manifest.capabilities
+        roots_by_rune = {
+            m.name: m.filesystem_write_roots for m in self._loaded_manifests
+        }
+        if manifest is not None:
+            roots_by_rune[manifest.name] = manifest.filesystem_write_roots
         for name, caps in declared.items():
             if caps is not None:
-                self._capability_store.ensure_declaration(name, caps)
+                # Phase 5a fix (F2): the stored declaration now
+                # tracks write roots too, so widening them is
+                # detectable via declaration_changed.
+                self._capability_store.ensure_declaration(
+                    name, caps, roots_by_rune.get(name)
+                )
         return CapabilityGate(self._capability_store, declared)
 
     @property

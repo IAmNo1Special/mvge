@@ -15,10 +15,16 @@ Only gates that exist are minted:
 - ``command`` — register a command or shortcut
 - ``realm`` — register a realm factory or provider
 - ``skill`` — register a skill or skill path
+- ``filesystem`` — write files under declared roots, enforced
+  by the Phase 5a subprocess ladder
+  (``mvge.runes.subprocess_policy``). It governs no RuneAPI
+  method, so its entry in ``CAPABILITY_GATES`` is an empty
+  method tuple by design: its gate is the ladder, not a facade
+  method. A rune declaring ``filesystem`` without write roots
+  is granted nothing writable.
 
-Filesystem and network capabilities are deliberately NOT minted:
-no filesystem or network gate exists yet (those arrive with the
-Phase 5a gates). Unknown capability ids are dropped at parse
+Network capabilities are deliberately NOT minted: no network
+gate exists yet. Unknown capability ids are dropped at parse
 time, never granted — fail-closed.
 
 Legacy rule, stated plainly: a manifest with no ``capabilities``
@@ -54,6 +60,10 @@ from mvge.core.layers import extensions_dir
 
 # The single declaration table. Runtime gate and source audit
 # both import this; neither invents its own mapping.
+# ``filesystem`` maps to no RuneAPI method: its gate is the
+# Phase 5a subprocess ladder, not a facade call (see the module
+# docstring). It is listed here so declaration, consent, and
+# re-consent treat it exactly like every other capability.
 CAPABILITY_GATES: dict[str, tuple[str, ...]] = {
     "spell": ("register_spell",),
     # Method names are the RuneAPI-facing names (the API's hook
@@ -63,6 +73,7 @@ CAPABILITY_GATES: dict[str, tuple[str, ...]] = {
     "command": ("register_command", "register_shortcut"),
     "realm": ("register_realm_factory", "register_provider"),
     "skill": ("register_skill", "register_skill_path"),
+    "filesystem": (),
 }
 
 METHOD_TO_CAPABILITY: dict[str, str] = {
@@ -98,9 +109,53 @@ def parse_capabilities(raw: Any) -> tuple[list[str], list[str]]:
     return known, dropped
 
 
-def declaration_hash(capabilities: list[str] | None) -> str:
-    """Canonical hash of a declaration, order-independent."""
-    canonical = json.dumps(sorted(set(capabilities or [])), sort_keys=True)
+def parse_filesystem_write_roots(raw: Any) -> tuple[list[str], list[str]]:
+    """Split a manifest ``filesystem_write_roots`` value into kept/dropped.
+
+    Roots are relative to the spell workspace root; ``"."`` means
+    the workspace itself. Absolute paths, ``..`` escapes, empty
+    strings, and non-strings are dropped, never granted —
+    fail-closed. Duplicates are removed, order preserved.
+    """
+    if not isinstance(raw, list):
+        return [], []
+    kept: list[str] = []
+    dropped: list[str] = []
+    for item in raw:
+        if not isinstance(item, str) or item == "":
+            dropped.append(str(item))
+            continue
+        candidate = Path(item)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            dropped.append(item)
+            continue
+        if item not in kept:
+            kept.append(item)
+    return kept, dropped
+
+
+def declaration_hash(
+    capabilities: list[str] | None,
+    write_roots: list[str] | None = None,
+) -> str:
+    """Canonical hash of a declaration, order-independent.
+
+    Phase 5a fix (F2): the hash covers ``filesystem_write_roots``
+    as well as capabilities, so widening a rune's write roots
+    changes its declaration hash exactly as a capability change
+    does. ``write_roots=None`` preserves the pre-5a hash (caps
+    only) for callers that do not track roots.
+    """
+    if write_roots is None:
+        canonical = json.dumps(sorted(set(capabilities or [])), sort_keys=True)
+    else:
+        canonical = json.dumps(
+            {
+                "capabilities": sorted(set(capabilities or [])),
+                "write_roots": sorted(set(write_roots)),
+            },
+            sort_keys=True,
+        )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -164,24 +219,59 @@ class CapabilityStore:
             rune_name, {"declared": [], "declaration_hash": "", "consented": []}
         )
 
-    def consent(self, rune_name: str, capabilities: list[str]) -> None:
-        """Record host consent for capabilities (known ids only)."""
+    def consent(
+        self,
+        rune_name: str,
+        capabilities: list[str],
+        write_roots: list[str] | None = None,
+    ) -> None:
+        """Record host consent for capabilities (known ids only).
+
+        Phase 5a fix (F2): consent also snapshots the write
+        roots being consented to, so a later widening is not
+        effective until re-consent (see ``granted_write_roots``).
+        When ``write_roots`` is given it is the declaration the
+        operator just saw — it both updates the stored roots
+        and becomes the consented snapshot — because the stored
+        declaration otherwise stays at first-seen by design and
+        could never grant a widening. Without ``write_roots``
+        the snapshot falls back to the stored roots. Records
+        created before roots were tracked have no snapshot and
+        keep legacy behavior.
+        """
         record = self._record(rune_name)
         consented = set(record.get("consented", []))
         consented.update(c for c in capabilities if c in CAPABILITY_IDS)
         record["consented"] = sorted(consented)
+        if write_roots is not None:
+            record["write_roots"] = sorted(set(write_roots))
+            record["consented_write_roots"] = sorted(set(write_roots))
+        elif "write_roots" in record:
+            record["consented_write_roots"] = sorted(set(record["write_roots"]))
         self._save()
 
-    def record_declaration(self, rune_name: str, declared: list[str]) -> list[str]:
+    def record_declaration(
+        self,
+        rune_name: str,
+        declared: list[str],
+        write_roots: list[str] | None = None,
+    ) -> list[str]:
         """Record the declaration seen for a rune; return the previous one."""
         record = self._record(rune_name)
         previous = list(record.get("declared", []))
         record["declared"] = sorted(set(declared))
-        record["declaration_hash"] = declaration_hash(declared)
+        record["declaration_hash"] = declaration_hash(declared, write_roots)
+        if write_roots is not None:
+            record["write_roots"] = sorted(set(write_roots))
         self._save()
         return previous
 
-    def ensure_declaration(self, rune_name: str, declared: list[str]) -> None:
+    def ensure_declaration(
+        self,
+        rune_name: str,
+        declared: list[str],
+        write_roots: list[str] | None = None,
+    ) -> None:
         """Record a first-seen declaration without overwriting a later one.
 
         The runner calls this on load: the first declaration is
@@ -190,14 +280,39 @@ class CapabilityStore:
         overwritten on every load.
         """
         if rune_name not in self._records:
-            self.record_declaration(rune_name, declared)
+            self.record_declaration(rune_name, declared, write_roots)
 
-    def declaration_changed(self, rune_name: str, declared: list[str]) -> bool:
-        """True when the declaration differs from the stored one."""
+    def declaration_changed(
+        self,
+        rune_name: str,
+        declared: list[str],
+        write_roots: list[str] | None = None,
+    ) -> bool:
+        """True when the declaration differs from the stored one.
+
+        Phase 5a fix (F2): with ``write_roots`` given, a widening
+        — new roots beyond those stored — also counts as a
+        change and triggers the same re-consent path as a
+        capability change. Narrowing roots never triggers it: less
+        privilege needs no new consent. Unchanged roots never
+        trigger it. Without ``write_roots`` the pre-5a behavior
+        (capabilities only) is preserved.
+        """
         record = self._records.get(rune_name)
         if record is None:
             return False
-        return sorted(set(declared)) != sorted(set(record.get("declared", [])))
+        if sorted(set(declared)) != sorted(set(record.get("declared", []))):
+            return True
+        if write_roots is not None and "write_roots" in record:
+            stored = set(record.get("write_roots", []))
+            if not set(write_roots) <= stored:
+                return True
+        elif write_roots is not None and "write_roots" not in record:
+            # A record predating root tracking: any declared roots
+            # are a widening over the unknown stored set (fail-closed).
+            if write_roots:
+                return True
+        return False
 
     def granted(self, rune_name: str, declared: list[str]) -> set[str]:
         """Granted capabilities: consented ∩ declared, nothing more."""
@@ -206,6 +321,30 @@ class CapabilityStore:
             return set()
         consented = set(record.get("consented", []))
         return {c for c in declared if c in consented and c in CAPABILITY_IDS}
+
+    def granted_write_roots(
+        self, rune_name: str, declared_roots: list[str]
+    ) -> set[str]:
+        """Granted write roots: consented ∩ declared, nothing more.
+
+        Phase 5a fix (F2): the roots analogue of ``granted``.
+        After consent, a rune that widens its declared roots
+        keeps only the roots consented at consent time until it
+        is re-consented; narrowing takes effect immediately.
+        Records with no consent snapshot (legacy, or consent
+        recorded before roots were tracked) return the declared
+        roots unchanged, preserving pre-5a behavior. Live-spell
+        ladder wiring will consume this method when it lands;
+        today it is the store-level grant the re-consent path
+        enforces.
+        """
+        record = self._records.get(rune_name)
+        if record is None:
+            return set()
+        snapshot = record.get("consented_write_roots")
+        if snapshot is None:
+            return set(declared_roots)
+        return {r for r in declared_roots if r in set(snapshot)}
 
 
 class CapabilityGate:

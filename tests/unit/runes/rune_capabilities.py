@@ -40,15 +40,25 @@ def _write_manifest(parent: Path, capabilities: object) -> Path:
 
 
 def test_capability_ids_are_only_existing_gates() -> None:
-    assert set(CAPABILITY_GATES) == {"spell", "hook", "command", "realm", "skill"}
-    assert "filesystem" not in CAPABILITY_GATES
+    assert set(CAPABILITY_GATES) == {
+        "spell",
+        "hook",
+        "command",
+        "realm",
+        "skill",
+        "filesystem",
+    }
+    # Phase 5a: filesystem is minted because its gate (the
+    # subprocess ladder) now exists. It governs no RuneAPI
+    # method, so its method tuple is empty by design.
+    assert CAPABILITY_GATES["filesystem"] == ()
     assert "network" not in CAPABILITY_GATES
 
 
 def test_parse_capabilities_drops_unknown_ids() -> None:
     known, dropped = parse_capabilities(["spell", "filesystem", "hook", "nope"])
-    assert known == ["spell", "hook"]
-    assert dropped == ["filesystem", "nope"]
+    assert known == ["spell", "filesystem", "hook"]
+    assert dropped == ["nope"]
 
 
 def test_parse_capabilities_dedupes_and_keeps_order() -> None:
@@ -61,8 +71,8 @@ def test_manifest_parser_keeps_known_and_dropped(tmp_path: Path) -> None:
     rune_dir = _write_manifest(tmp_path, ["spell", "filesystem"])
     manifest = load_manifest(rune_dir)
     assert manifest is not None
-    assert manifest.capabilities == ["spell"]
-    assert manifest.dropped_capabilities == ["filesystem"]
+    assert manifest.capabilities == ["spell", "filesystem"]
+    assert manifest.dropped_capabilities == []
 
 
 def test_manifest_without_capabilities_field_is_legacy(tmp_path: Path) -> None:
@@ -109,6 +119,43 @@ def test_declaration_change_without_reconsent_refuses_new_capability() -> None:
 def test_declaration_hash_is_stable_and_order_independent() -> None:
     assert declaration_hash(["spell", "hook"]) == declaration_hash(["hook", "spell"])
     assert declaration_hash(["spell"]) != declaration_hash(["hook"])
+
+
+def test_declaration_hash_covers_write_roots() -> None:
+    # Phase 5a fix (F2): widening write roots changes the
+    # declaration hash exactly as a capability change does.
+    assert declaration_hash(["spell", "filesystem"], ["data"]) == declaration_hash(
+        ["filesystem", "spell"], ["data"]
+    )
+    assert declaration_hash(["spell", "filesystem"], ["data"]) != declaration_hash(
+        ["spell", "filesystem"], ["."]
+    )
+    assert declaration_hash(["spell", "filesystem"], ["data"]) != declaration_hash(
+        ["spell", "filesystem"]
+    )
+
+
+def test_write_roots_widening_triggers_reconsent_not_narrowing() -> None:
+    # Phase 5a fix (F2): widening triggers declaration_changed;
+    # narrowing and unchanged roots do not spuriously re-trigger.
+    store = CapabilityStore(None)
+    store.record_declaration("rune-a", ["spell", "filesystem"], ["data"])
+    store.consent("rune-a", ["spell", "filesystem"])
+    assert (
+        store.declaration_changed("rune-a", ["spell", "filesystem"], ["data"]) is False
+    )
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], ["."]) is True
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], []) is False
+    # The widening is not effective until re-consent.
+    assert store.granted_write_roots("rune-a", ["."]) == set()
+    assert store.granted_write_roots("rune-a", ["data"]) == {"data"}
+    # Narrowing takes effect immediately, without re-consent.
+    assert store.granted_write_roots("rune-a", []) == set()
+    # Re-consent to the widened declaration grants it and
+    # clears the widening signal.
+    store.consent("rune-a", ["spell", "filesystem"], ["."])
+    assert store.granted_write_roots("rune-a", ["."]) == {"."}
+    assert store.declaration_changed("rune-a", ["spell", "filesystem"], ["."]) is False
 
 
 def _factory_registering_everything(results: dict[str, bool]):
@@ -263,3 +310,41 @@ def test_gate_allows_ad_hoc_apis_without_a_manifest() -> None:
     gate = runner.capability_gate()
     assert gate.allows("no-such-rune", "spell") is True
     assert gate.allows(None, "spell") is True
+
+
+def test_manifest_parser_keeps_and_drops_filesystem_roots(tmp_path: Path) -> None:
+    # Phase 5a: relative roots are kept; absolute paths, parent
+    # escapes, and empty strings are dropped fail-closed.
+    # "/etc" is not absolute on Windows (drive-relative), so the
+    # absolute example is spelled per-platform; the intent — an
+    # absolute path is dropped — is identical on every platform.
+    absolute_example = "/etc" if Path("/etc").is_absolute() else "C:/Windows"
+    rune_dir = tmp_path / "roots-rune"
+    rune_dir.mkdir()
+    (rune_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "name": "roots-rune",
+                "version": "0.1.0",
+                "entry_point": "r.py",
+                "capabilities": ["spell", "filesystem"],
+                "filesystem_write_roots": [
+                    ".",
+                    "data",
+                    absolute_example,
+                    "../escape",
+                    "",
+                    "data",
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_manifest(rune_dir)
+    assert manifest is not None
+    assert manifest.filesystem_write_roots == [".", "data"]
+    assert manifest.dropped_filesystem_write_roots == [
+        absolute_example,
+        "../escape",
+        "",
+    ]

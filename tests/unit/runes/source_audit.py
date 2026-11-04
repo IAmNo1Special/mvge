@@ -14,6 +14,7 @@ from pathlib import Path
 
 from mvge.runes.capabilities import CAPABILITY_GATES, CapabilityGate, CapabilityStore
 from mvge.runes.source_audit import (
+    audit_admission,
     audit_rune_dir,
     audit_source,
     blocking_findings,
@@ -233,3 +234,51 @@ def test_parity_audit_and_runtime_agree_for_every_method() -> None:
                     f"{method} declared={declared}: "
                     f"audit_flags={audit_flags} runtime_allows={runtime_allows}"
                 )
+
+
+def _filesystem_blocked(source: str) -> bool:
+    findings = audit_source(
+        source,
+        declared_capabilities=["filesystem"],
+        filesystem_write_roots=[],
+    )
+    return any(
+        f.kind == "undeclared_filesystem_write" for f in blocking_findings(findings)
+    )
+
+
+def test_audit_filesystem_open_modes_and_os_shutil() -> None:
+    # Phase 5a: only write modes flag; reads never do.
+    assert _filesystem_blocked("open('x')\n") is False
+    assert _filesystem_blocked("open('x', 'r')\n") is False
+    assert _filesystem_blocked("open('x', 'w')\n") is True
+    assert _filesystem_blocked("open('x', 'a')\n") is True
+    assert _filesystem_blocked("open('x', mode='w')\n") is True
+    assert _filesystem_blocked("import os\nos.remove('x')\n") is True
+    assert _filesystem_blocked("import shutil\nshutil.copy('a', 'b')\n") is True
+    assert _filesystem_blocked("import os\nos.path.join('a', 'b')\n") is False
+
+
+def test_audit_admission_filesystem_roots(tmp_path: Path) -> None:
+    # Phase 5a: admission verdicts thread the filesystem roots.
+    rune_dir = tmp_path / "writer"
+    rune_dir.mkdir()
+    (rune_dir / "rune.py").write_text(
+        "from pathlib import Path\nPath('x').write_text('hi')\n",
+        encoding="utf-8",
+    )
+    allowed, _ = audit_admission(
+        rune_dir,
+        ["spell", "filesystem"],
+        filesystem_write_roots=["."],
+    )
+    assert allowed is True
+    refused, findings = audit_admission(
+        rune_dir,
+        ["spell", "filesystem"],
+        filesystem_write_roots=[],
+    )
+    assert refused is False
+    assert any(
+        f.kind == "undeclared_filesystem_write" for f in blocking_findings(findings)
+    )

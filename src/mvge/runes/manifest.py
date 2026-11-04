@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from mvge.core.spells import ExecutionMode
-from mvge.runes.capabilities import parse_capabilities
+from mvge.runes.capabilities import (
+    parse_capabilities,
+    parse_filesystem_write_roots,
+)
 from mvge.runes.types import (
     RuneManifest,
     RuneShortcut,
@@ -127,6 +130,15 @@ def load_manifest(path: Path) -> RuneManifest | None:
     else:
         capabilities, dropped_capabilities = None, []
 
+    # Phase 5a: declared filesystem write roots. Absent = no
+    # rune-level roots (spells may still declare their own).
+    # Invalid entries are dropped fail-closed, never granted.
+    filesystem_write_roots, dropped_filesystem_write_roots = (
+        parse_filesystem_write_roots(data.get("filesystem_write_roots"))
+        if "filesystem_write_roots" in data
+        else ([], [])
+    )
+
     # Phase 4: hosting declaration. Absent = unspecified (eligible
     # subject to tier rules); "hosted" = explicitly eligible;
     # "in-process" = in-process-only. Anything else fails closed
@@ -158,5 +170,7 @@ def load_manifest(path: Path) -> RuneManifest | None:
         ui=ui,
         capabilities=capabilities,
         dropped_capabilities=dropped_capabilities,
+        filesystem_write_roots=filesystem_write_roots,
+        dropped_filesystem_write_roots=dropped_filesystem_write_roots,
         hosting=hosting,
     )

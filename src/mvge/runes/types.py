@@ -455,6 +455,14 @@ class RuneManifest:
     # into dropped_capabilities instead.
     capabilities: list[str] | None = None
     dropped_capabilities: list[str] = field(default_factory=list)
+    # Phase 5a: rune-level declared filesystem write roots
+    # (relative to the spell workspace root). Spell-level
+    # ``SpellDefinition.write_roots`` win over these when a
+    # spell declares any. Invalid entries never reach this
+    # field: the parser drops them into
+    # ``dropped_filesystem_write_roots`` instead.
+    filesystem_write_roots: list[str] = field(default_factory=list)
+    dropped_filesystem_write_roots: list[str] = field(default_factory=list)
     # Phase 4: hosting declaration. None = unspecified (eligible,
     # subject to the in-process-only tier rules). "hosted" =
     # explicitly eligible. "in-process" = must stay in-process.
@@ -550,6 +558,7 @@ class SpellDefinition:
         handler: Any | None = None,
         read_only: bool = False,
         timeout_ms: int | None = None,
+        write_roots: tuple[str, ...] | list[str] | None = None,
     ) -> None:
         self.name = name
         self.description = description
@@ -560,6 +569,11 @@ class SpellDefinition:
         self.source_rune = source_rune
         self._handler = handler
         self.read_only = read_only
+        # Phase 5a: declared write roots, relative to the spell
+        # workspace root ("." = the workspace itself). Only the
+        # subprocess ladder enforces them; a read-only spell
+        # resolves to no roots regardless of this declaration.
+        self.write_roots: tuple[str, ...] = tuple(write_roots or ())
         # Dispatcher timeout override, same semantics as MvgeSpell.timeout_ms:
         # None inherits the loop timeout, 0 disables the dispatcher timeout.
         self.timeout_ms = timeout_ms

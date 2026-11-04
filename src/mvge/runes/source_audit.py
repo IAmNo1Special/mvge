@@ -62,6 +62,28 @@ Findings are blocking or advisory:
     engine loader itself does this), so this cannot be a
     refusal on its own; it is surfaced for a human to review.
 
+Phase 5a filesystem gate (blocking, but only inside the
+opt-in domain):
+
+- ``undeclared_filesystem_write`` — a filesystem write call
+  (``open`` with a write mode, ``Path.write_text`` /
+  ``write_bytes`` / ``unlink`` / ``rename`` / ``replace`` /
+  ``touch`` / ``mkdir`` / ``rmdir``, ``os.remove`` /
+  ``os.unlink`` / ``os.rmdir``, ``shutil.rmtree`` / ``copy`` /
+  ``copy2`` / ``move`` / ``copytree``) in a rune that opted
+  into the filesystem capability without declaring write
+  roots, or with ``read_only`` set. The verdict comes from
+  the ONE predicate in ``mvge.runes.subprocess_policy``
+  (``filesystem_write_admitted``), which the runtime policy
+  also imports — the parity test asserts the two agree. The
+  gate is inactive (no finding) for legacy manifests and for
+  runes that never declared the filesystem capability: those
+  keep their pre-5a admission posture, while the ladder
+  itself stays fail-closed for their sandboxed runs. The
+  write-call list is a heuristic, not a proof: dynamically
+  built calls, ``exec``, and ``getattr`` bypass it, exactly
+  as with every other finding here.
+
 The audit is a review aid and admission gate only. It never
 claims to block in-process escape: a determined rune can still
 reach objects through introspection, and no diagnostic or doc
@@ -87,6 +109,7 @@ from pathlib import Path
 
 from mvge.runes.capabilities import METHOD_TO_CAPABILITY
 from mvge.runes.host_classification import HOST_UNSUPPORTED_METHODS
+from mvge.runes.subprocess_policy import filesystem_write_admitted
 
 INTERNAL_ENGINE_MODULES: frozenset[str] = frozenset(
     {
@@ -136,16 +159,48 @@ def blocking_findings(findings: list[AuditFinding]) -> list[AuditFinding]:
     return [f for f in findings if f.blocking]
 
 
+# Filesystem write calls the Phase 5a gate recognizes. Any
+# receiver counts for the method names: a rune's own object
+# with a ``write_text`` method is flagged too, and a human
+# reviews it. That over-flagging is deliberate: this is a
+# review aid, and a missed write is worse than a false flag.
+FILESYSTEM_WRITE_METHODS: frozenset[str] = frozenset(
+    {
+        "write_text",
+        "write_bytes",
+        "unlink",
+        "rename",
+        "replace",
+        "touch",
+        "mkdir",
+        "rmdir",
+    }
+)
+
+# os/shutil write operations beyond the method names above.
+OS_SHUTIL_WRITE_FUNCTIONS: frozenset[str] = frozenset(
+    {"remove", "rmtree", "copy", "copy2", "move", "copytree"}
+)
+
+_WRITE_MODE_CHARS: frozenset[str] = frozenset({"w", "a", "x", "+"})
+
+
 class _Visitor(ast.NodeVisitor):
     def __init__(
         self,
         filename: str,
         declared: list[str] | None,
         hosted: bool = False,
+        filesystem_admitted: bool | None = None,
     ) -> None:
         self._filename = filename
         self._declared = declared
         self._hosted = hosted
+        # None = gate inactive (legacy / never opted in): no
+        # filesystem finding, whatever the source contains.
+        # False = opted in but admitted nothing: every write
+        # call below is a blocking finding. True = admitted.
+        self._filesystem_admitted = filesystem_admitted
         self.findings: list[AuditFinding] = []
 
     def _add(self, kind: str, node: ast.AST, message: str, blocking: bool) -> None:
@@ -215,8 +270,45 @@ class _Visitor(ast.NodeVisitor):
             pass
         self.generic_visit(node)
 
+    def _is_filesystem_write_call(self, node: ast.Call) -> bool:
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "open":
+            mode: str | None = None
+            if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                mode = (
+                    node.args[1].value if isinstance(node.args[1].value, str) else None
+                )
+            for keyword in node.keywords:
+                if keyword.arg == "mode" and isinstance(keyword.value, ast.Constant):
+                    mode = (
+                        keyword.value.value
+                        if isinstance(keyword.value.value, str)
+                        else None
+                    )
+            if mode is None:
+                return False
+            return any(char in _WRITE_MODE_CHARS for char in mode)
+        if isinstance(func, ast.Attribute):
+            if func.attr in FILESYSTEM_WRITE_METHODS:
+                return True
+            if func.attr in OS_SHUTIL_WRITE_FUNCTIONS and self._base_name(func) in (
+                "os",
+                "shutil",
+            ):
+                return True
+        return False
+
     def visit_Call(self, node: ast.Call) -> None:
         func = node.func
+        if self._filesystem_admitted is False and self._is_filesystem_write_call(node):
+            self._add(
+                "undeclared_filesystem_write",
+                node,
+                "Filesystem write without declared filesystem write "
+                "roots (declare the 'filesystem' capability with "
+                "filesystem_write_roots, or do not write)",
+                True,
+            )
         # getattr(obj, "_runner" | "_facade" | "_wrapped_runner"
         # | "_install_id")
         if (
@@ -418,12 +510,21 @@ def audit_source(
     declared_capabilities: list[str] | None = None,
     filename: str = "<source>",
     hosted: bool = False,
+    filesystem_write_roots: list[str] | None = None,
+    read_only: bool = False,
 ) -> list[AuditFinding]:
     """Audit one source string. Parses only; never imports or executes.
 
     With ``hosted=True`` the Phase 4 hosted table also applies:
     use of a hosted-unsupported facade method is a blocking
     ``host_unsupported_method`` finding.
+
+    The Phase 5a filesystem verdict comes from the same
+    predicate the runtime policy imports
+    (``filesystem_write_admitted``): the gate is active only
+    when the rune declared the filesystem capability, and then
+    a write call is blocking unless roots are declared and
+    the spell is not read-only.
     """
     try:
         tree = ast.parse(source, filename=filename)
@@ -437,7 +538,17 @@ def audit_source(
                 blocking=True,
             )
         ]
-    visitor = _Visitor(filename, declared_capabilities, hosted=hosted)
+    filesystem_admitted = filesystem_write_admitted(
+        declared_capabilities=declared_capabilities,
+        filesystem_roots=filesystem_write_roots,
+        read_only=read_only,
+    )
+    visitor = _Visitor(
+        filename,
+        declared_capabilities,
+        hosted=hosted,
+        filesystem_admitted=filesystem_admitted,
+    )
     visitor.visit(tree)
     return visitor.findings
 
@@ -454,6 +565,8 @@ def audit_rune_dir(
     declared_capabilities: list[str] | None = None,
     *,
     hosted: bool = False,
+    filesystem_write_roots: list[str] | None = None,
+    read_only: bool = False,
 ) -> list[AuditFinding]:
     """Audit every Python file under a rune dir, except vendored/test dirs.
 
@@ -475,6 +588,8 @@ def audit_rune_dir(
                 declared_capabilities=declared_capabilities,
                 filename=relative,
                 hosted=hosted,
+                filesystem_write_roots=filesystem_write_roots,
+                read_only=read_only,
             )
         )
     return findings
@@ -483,7 +598,15 @@ def audit_rune_dir(
 def audit_admission(
     rune_dir: Path,
     declared_capabilities: list[str] | None = None,
+    *,
+    filesystem_write_roots: list[str] | None = None,
+    read_only: bool = False,
 ) -> tuple[bool, list[AuditFinding]]:
     """Admission verdict: allowed iff no blocking finding exists."""
-    findings = audit_rune_dir(rune_dir, declared_capabilities)
+    findings = audit_rune_dir(
+        rune_dir,
+        declared_capabilities,
+        filesystem_write_roots=filesystem_write_roots,
+        read_only=read_only,
+    )
     return (not blocking_findings(findings)), findings

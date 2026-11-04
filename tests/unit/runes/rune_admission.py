@@ -11,7 +11,13 @@ from mvge.runes.pinning import RunePin, compute_rune_tree_hash, write_pin
 from mvge.runes.types import DiagnosticKind
 
 
-def _write_rune(parent: Path, name: str, body: str, capabilities=None) -> Path:
+def _write_rune(
+    parent: Path,
+    name: str,
+    body: str,
+    capabilities=None,
+    filesystem_write_roots=None,
+) -> Path:
     rune_dir = parent / name
     rune_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -21,6 +27,8 @@ def _write_rune(parent: Path, name: str, body: str, capabilities=None) -> Path:
     }
     if capabilities is not None:
         manifest["capabilities"] = capabilities
+    if filesystem_write_roots is not None:
+        manifest["filesystem_write_roots"] = filesystem_write_roots
     (rune_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     (rune_dir / "rune.py").write_text(body, encoding="utf-8")
     write_pin(
@@ -107,3 +115,52 @@ def test_undeclared_capability_use_refused_for_declared_rune(tmp_path: Path) -> 
         and "undeclared_capability_use" in d.message
         for d in diagnostics
     )
+
+
+def test_filesystem_write_refused_without_declared_roots(tmp_path: Path) -> None:
+    # Phase 5a: a rune that opts into the filesystem capability
+    # but declares no write roots is refused at admission when
+    # its source writes files. Declaring the capability without
+    # roots grants nothing.
+    rune_dir = _write_rune(
+        tmp_path,
+        "writer-no-roots",
+        "from pathlib import Path\n"
+        "def rune_factory(api):\n"
+        "    Path('out.txt').write_text('hi')\n"
+        "    return None\n",
+        capabilities=["spell", "filesystem"],
+    )
+    manifest = load_manifest(rune_dir)
+    assert manifest is not None
+    diagnostics: list = []
+    factory = load_factory_from_manifest(manifest, rune_dir, diagnostics=diagnostics)
+    assert factory is None
+    assert any(
+        d.kind == DiagnosticKind.LOAD_FAILURE
+        and "undeclared_filesystem_write" in d.message
+        for d in diagnostics
+    )
+
+
+def test_filesystem_write_admitted_with_declared_roots(tmp_path: Path) -> None:
+    # Phase 5a: the same write passes admission once roots are
+    # declared. The audit checks the declaration, not the path:
+    # path-level enforcement belongs to the ladder at runtime.
+    rune_dir = _write_rune(
+        tmp_path,
+        "writer-with-roots",
+        "from pathlib import Path\n"
+        "def rune_factory(api):\n"
+        "    Path('out.txt').write_text('hi')\n"
+        "    return None\n",
+        capabilities=["spell", "filesystem"],
+        filesystem_write_roots=["."],
+    )
+    manifest = load_manifest(rune_dir)
+    assert manifest is not None
+    assert manifest.filesystem_write_roots == ["."]
+    diagnostics: list = []
+    factory = load_factory_from_manifest(manifest, rune_dir, diagnostics=diagnostics)
+    assert factory is not None
+    assert diagnostics == []
