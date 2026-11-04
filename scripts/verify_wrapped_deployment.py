@@ -27,9 +27,21 @@ what each PASS proves):
   write root, and the file is visible from the host afterwards.
 - credential-env-absent: no credential-shaped environment
   variable is visible inside the wrap.
-- network-denied: a probe cannot open a socket (skipped when
-  --allow-network is passed, because allowed network is
-  all-or-none in v1 with no allowlist).
+- network-denied: a probe cannot reach a TCP listener this
+  script controls (loopback, plus the host's outward address
+  for Docker's bridge). The listener matters: probing a dead
+  port proves nothing, because a refused connection counts as
+  "denied" even with full network. When --allow-network is
+  passed, the same probe must succeed instead (bwrap: loopback
+  on the host network; Docker: host address over the bridge --
+  a failure there is a WARNING, not a FAIL, because host
+  firewall rules can block bridge-to-host traffic without any
+  confinement defect).
+- host-proc-hidden: a probe cannot read this script's own
+  /proc/<pid>/cmdline inside the wrap. With a fresh procfs
+  (bwrap) or a container PID namespace (Docker), host PIDs
+  are invisible, so the engine's environment cannot leak
+  through /proc/<engine-pid>/environ.
 - no-credential-files-in-mounts: no credential-named file
   exists under any mount. Pass
   --allow-workspace-credential-files only to record an explicit
@@ -48,6 +60,7 @@ import argparse
 import json
 import os
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -67,6 +80,52 @@ except ImportError:  # Direct python3 run without the venv: use repo src/.
         WrappingPolicy,
         credential_files_in_mounts,
         wrap_host_command,
+    )
+
+
+def _listener_and_host_ip() -> tuple[socket.socket, int, str | None]:
+    """A listener the script controls, plus the host's outward address.
+
+    The listener binds all interfaces so a Docker bridge probe
+    can reach it via the host address; a bwrap host-network
+    probe reaches it via loopback. The outward address comes
+    from a UDP connect that sends no packets.
+    """
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("0.0.0.0", 0))
+    listener.listen(5)
+    port = listener.getsockname()[1]
+    host_ip: str | None = None
+    try:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("8.8.8.8", 80))
+            host_ip = probe.getsockname()[0]
+        finally:
+            probe.close()
+    except OSError:
+        host_ip = None
+    return listener, port, host_ip
+
+
+def _network_probe_code(port: int, host_ip: str | None) -> str:
+    """Probe code: exit 0 iff any controlled listener address connects."""
+    targets = [f"('127.0.0.1', {port})"]
+    if host_ip:
+        targets.append(f"({host_ip!r}, {port})")
+    return (
+        "import socket,sys\n"
+        "for target in [" + ", ".join(targets) + "]:\n"
+        "    try:\n"
+        "        s = socket.socket()\n"
+        "        s.settimeout(3)\n"
+        "        s.connect(target)\n"
+        "        print('CONNECTED')\n"
+        "        sys.exit(0)\n"
+        "    except OSError:\n"
+        "        continue\n"
+        "sys.exit(1)\n"
     )
 
 
@@ -208,17 +267,40 @@ def main(argv: list[str] | None = None) -> int:
             ",".join(leaked),
         )
 
-        if args.allow_network:
-            print("SKIP network-denied: network allowed (all-or-none, no allowlist)")
-        else:
-            net_code = (
-                "import socket\n"
-                "s = socket.socket()\n"
-                "s.settimeout(3)\n"
-                "s.connect(('127.0.0.1', 9))\n"
-            )
+        listener, port, host_ip = _listener_and_host_ip()
+        try:
+            net_code = _network_probe_code(port, host_ip)
             result = _run_probe(policy, net_code, timeout=args.probe_timeout)
-            check("network-denied", result.returncode != 0)
+            if args.allow_network:
+                if args.backend == "docker" and result.returncode != 0:
+                    warnings += 1
+                    print(
+                        "WARNING network-allowed: probe could not reach "
+                        "the controlled listener over the bridge; host "
+                        "firewall rules can block bridge-to-host traffic, "
+                        "so this is not counted as a confinement failure"
+                    )
+                else:
+                    check("network-allowed", result.returncode == 0)
+            else:
+                check("network-denied", result.returncode != 0)
+        finally:
+            listener.close()
+
+        proc_code = (
+            "import pathlib,sys\n"
+            f"path = pathlib.Path('/proc/{os.getpid()}/cmdline')\n"
+            "try:\n"
+            "    sys.stdout.write(path.read_text())\n"
+            "except OSError:\n"
+            "    sys.exit(1)\n"
+        )
+        result = _run_probe(policy, proc_code, timeout=args.probe_timeout)
+        check(
+            "host-proc-hidden",
+            "verify_wrapped_deployment" not in result.stdout,
+            "host process cmdline visible inside the wrap",
+        )
 
         mounts = [m.host_path for m in policy.mounts()]
         found = credential_files_in_mounts(mounts)

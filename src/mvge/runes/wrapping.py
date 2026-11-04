@@ -22,6 +22,10 @@ What a wrapped deployment confines, and what it does not:
 - Credentials: the host environment is the Phase 4 scrubbed
   environment, and wrapping asserts after scrubbing that no
   credential-shaped name survived (``assert_no_credential_env``).
+  The bwrap backend mounts a fresh procfs (``--proc /proc``)
+  for its new PID namespace, so host PIDs -- and with them
+  ``/proc/<engine-pid>/environ`` -- are not visible inside the
+  wrap at all; a host ``/proc`` bind would leak exactly that.
   Docker adds a second guarantee by construction: ``docker run``
   does not inherit host environment variables, and the Docker
   backend passes no ``-e``/``--env`` flags at all. Credentials
@@ -444,7 +448,13 @@ class BwrapWrappingBackend:
             flag = "--bind" if mount.mode == "rw" else "--ro-bind"
             command += [flag, str(mount.host_path), str(mount.container_path)]
         if Path("/proc").exists():
-            command += ["--ro-bind", "/proc", "/proc"]
+            # Fresh procfs for the new PID namespace, NOT a
+            # host bind: a host /proc bind would expose host
+            # PIDs, so a same-UID wrapped rune could read
+            # /proc/<engine-pid>/environ -- the engine's own
+            # environment, which the child-env scrub never
+            # touches -- bypassing the credential guarantee.
+            command += ["--proc", "/proc"]
         for bound in _SYSTEM_RO_BINDS:
             if Path(bound).exists():
                 command += ["--ro-bind", bound, bound]
@@ -480,7 +490,7 @@ class DockerWrappingBackend:
 
     def build_argv(self, argv: list[str], policy: WrappingPolicy) -> list[str]:
         mapped_argv = list(argv)
-        if mapped_argv and "/" in mapped_argv[0]:
+        if mapped_argv and ("/" in mapped_argv[0] or "\\" in mapped_argv[0]):
             mapped_argv[0] = "python3"
         workspace = str(policy.workspace_root)
         command: list[str] = ["docker", "run", "--rm", "-i", "--read-only"]

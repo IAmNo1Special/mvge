@@ -59,7 +59,7 @@ Phase 4 wire still resolve inside the wrap.
 | Rune directory | read-only, bound last | Rune code stays read-only even when it sits under a declared write root. |
 | Interpreter prefix(es) + engine source tree | read-only | Backend-internal runtime binds: the venv prefix, every prefix along the interpreter symlink chain, and the editable engine `src/`. Without the chain, a uv-managed interpreter fails inside the namespace with a missing executable. |
 | System directories (`/usr`, `/lib`, `/bin`, `/sbin`, `/etc`) | read-only | bwrap only. |
-| `/proc` | read-only | bwrap only, bound from the host (a fresh proc mount is not portable to restricted containers). |
+| `/proc` | fresh procfs | bwrap only, mounted fresh for the new PID namespace (`--proc /proc`). Host PIDs are not visible inside the wrap, so a wrapped rune cannot read `/proc/<engine-pid>/environ`. A host `/proc` bind would leak exactly that and is deliberately not used. |
 | `/tmp` | tmpfs scratch | bwrap only; mounted before the workspace bind so a workspace under `/tmp` stays visible. Docker uses `--tmpfs /tmp` with a read-only container filesystem. |
 
 Nothing else is mounted: no home directory, no `~/.agents`
@@ -85,7 +85,7 @@ a wrapped deployment is credential-free.
 
 | Platform / backend | Enforcement | Mechanism and gaps |
 | --- | --- | --- |
-| Linux / `bwrap` | full | Bubblewrap mount namespace. Unbound paths are invisible (reads fail), declared roots are the only writable mounts, network is unshared unless the policy allows it. |
+| Linux / `bwrap` | full | Bubblewrap mount namespace. Unbound paths are invisible (reads fail), declared roots are the only writable mounts, network is unshared unless the policy allows it, and `/proc` is a fresh procfs for the new PID namespace, so host process environ is not visible inside the wrap. |
 | Linux / `docker` | full | Docker with a read-only filesystem, tmpfs `/tmp`, identity mounts, `--network none` unless the policy allows it. The image must provide `python3` and the `mvge` package; a host interpreter path is mapped to `python3` inside the container. |
 | macOS / `docker` | full | Same Docker backend, under a Docker daemon on macOS. Requires a daemon; without one, wrapping refuses. |
 | macOS / (no backend) | unavailable | Seatbelt is a Phase 5a write policy, not whole-process wrapping, and is deliberately not a wrapping backend. Without Docker, wrapping refuses with `WRAPPING_UNAVAILABLE`. |
@@ -162,8 +162,14 @@ What it checks, and what output proves confinement:
   prints the environment keys it sees; the script asserts
   none matches the Phase 4 credential-name rule.
 - `PASS network-denied` (when network is denied): a probe
-  cannot open a socket. Failure means the network namespace
-  or `--network none` did not apply.
+  cannot reach a TCP listener this script controls. Probing
+  a dead port would prove nothing, so the script's own
+  listener is the target; a network-only leak connects to it
+  and fails the proof. When network is allowed, the same
+  probe must succeed instead (`PASS network-allowed`).
+- `PASS host-proc-hidden`: a probe cannot read this script's
+  own `/proc/<pid>/cmdline` inside the wrap, proving host
+  PIDs (and host process environ) are not visible.
 - `PASS no-credential-files-in-mounts`: no credential-named
   file exists under any mount. Failure lists the files; the
   operator removes them and re-runs. (Pass

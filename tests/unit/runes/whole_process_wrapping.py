@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -211,7 +212,10 @@ def test_home_and_agents_dirs_are_never_mounts(tmp_path: Path) -> None:
 def test_ancestor_of_home_is_a_forbidden_mount() -> None:
     from mvge.runes.wrapping import is_forbidden_mount
 
-    assert is_forbidden_mount(Path("/")) is True
+    # A genuine ancestor of home, not a drive root: on Windows
+    # runners the checkout drive and the home drive differ, so
+    # Path("/") is not an ancestor of home there.
+    assert is_forbidden_mount(Path.home().parent) is True
     assert is_forbidden_mount(Path.home() / ".agents") is True
 
 
@@ -302,6 +306,19 @@ def test_bwrap_argv_carries_no_credential_env_flag(tmp_path: Path) -> None:
     assert "--" in argv
 
 
+def test_bwrap_argv_mounts_fresh_proc_not_host_proc(tmp_path: Path) -> None:
+    backend = BwrapWrappingBackend()
+    argv = backend.build_argv(["python3", "-c", "pass"], _policy(tmp_path))
+    assert "--proc" in argv
+    assert argv[argv.index("--proc") + 1] == "/proc"
+    # No host /proc ro-bind anywhere in the bwrap flags.
+    flags = argv[: argv.index("--")]
+    assert not any(
+        flags[i] == "--ro-bind" and flags[i + 1] == "/proc"
+        for i in range(len(flags) - 1)
+    )
+
+
 def test_docker_argv_has_no_env_passthrough_and_identity_mounts(
     tmp_path: Path,
 ) -> None:
@@ -319,6 +336,16 @@ def test_docker_argv_has_no_env_passthrough_and_identity_mounts(
     # Identity mount: the workspace path is the same inside the container,
     # so paths carried on the host wire still resolve.
     assert f"{tmp_path.resolve()}:{tmp_path.resolve()}:ro" in argv
+
+
+def test_docker_argv_maps_a_windows_interpreter_path(tmp_path: Path) -> None:
+    backend = DockerWrappingBackend()
+    policy = _policy(tmp_path, backend="docker")
+    argv = backend.build_argv(
+        [r"C:\hostedtoolcache\python.exe", "-m", "mvge.runes.host_server"], policy
+    )
+    assert "python3" in argv
+    assert not any("hostedtoolcache" in part for part in argv)
 
 
 def test_docker_network_allowed_means_default_bridge_not_allowlist(
@@ -464,9 +491,10 @@ def _run_wrapped_probe(
     code: str,
     *,
     write_roots: tuple[Path, ...] = (),
+    allow_network: bool = False,
     env_extra: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    policy = _policy(tmp_path, write_roots=write_roots)
+    policy = _policy(tmp_path, write_roots=write_roots, allow_network=allow_network)
     argv = wrap_host_command([sys.executable, "-c", code], policy)
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
     if env_extra:
@@ -517,16 +545,69 @@ def test_bwrap_probe_can_write_a_declared_root(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(shutil.which("bwrap") is None, reason="bwrap not installed")
 def test_bwrap_probe_has_no_network_when_denied(tmp_path: Path) -> None:
+    # The probe connects to a listener this test controls, not
+    # to a dead port: connecting to 127.0.0.1:9 proves nothing,
+    # because a refused connection counts as "denied" even with
+    # full network. With a live listener, a network leak
+    # connects successfully and the probe exits 0.
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        code = (
+            "import socket\n"
+            "s = socket.socket()\n"
+            "s.settimeout(3)\n"
+            f"s.connect(('127.0.0.1', {listener.getsockname()[1]}))\n"
+        )
+        result = _run_wrapped_probe(workspace, code)
+        assert result.returncode != 0
+    finally:
+        listener.close()
+
+
+@pytest.mark.skipif(shutil.which("bwrap") is None, reason="bwrap not installed")
+def test_bwrap_probe_can_reach_the_listener_when_allowed(tmp_path: Path) -> None:
+    # Symmetric half of the denied test: the same listener
+    # probe must succeed when network is allowed, proving the
+    # probe is capable of succeeding at all.
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    try:
+        code = (
+            "import socket\n"
+            "s = socket.socket()\n"
+            "s.settimeout(3)\n"
+            f"s.connect(('127.0.0.1', {listener.getsockname()[1]}))\n"
+        )
+        result = _run_wrapped_probe(workspace, code, allow_network=True)
+        assert result.returncode == 0, result.stderr
+    finally:
+        listener.close()
+
+
+@pytest.mark.skipif(shutil.which("bwrap") is None, reason="bwrap not installed")
+def test_bwrap_probe_cannot_see_host_proc(tmp_path: Path) -> None:
+    # Fresh procfs: the host PID of this test process must not
+    # be visible inside the wrap, so its environ/cmdline cannot
+    # be read through /proc.
     workspace = tmp_path / "ws"
     workspace.mkdir()
     code = (
-        "import socket\n"
-        "s = socket.socket()\n"
-        "s.settimeout(3)\n"
-        "s.connect(('127.0.0.1', 9))\n"
+        "import pathlib\n"
+        f"path = pathlib.Path('/proc/{os.getpid()}/cmdline')\n"
+        "print(path.read_text())\n"
     )
     result = _run_wrapped_probe(workspace, code)
     assert result.returncode != 0
+    assert str(os.getpid()) not in result.stdout
 
 
 @pytest.mark.skipif(shutil.which("bwrap") is None, reason="bwrap not installed")
