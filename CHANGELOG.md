@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.48] - 2026-11-04
+
+
+### Bug Fixes
+
+- **runes:** Windows test portability for 5a tests and write-roots re-consent (F2) (0c16b24)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (ba9e242)
+
+- **release:** v0.2.48 (4114712)
+
+
+### Features
+
+- **runes:** Phase 5a fail-closed subprocess ladder (86f24f4)
+
+
 ## [0.2.47] - 2026-11-03
 
 
