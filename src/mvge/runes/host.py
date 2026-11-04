@@ -76,6 +76,7 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import mvge
 from mvge.core.spells import ExecutionMode, MvgeSpell
 from mvge.runes.capabilities import METHOD_TO_CAPABILITY
 from mvge.runes.host_classification import classify_manifest
@@ -101,6 +102,12 @@ from mvge.runes.types import (
     SigilHook,
     SkillManifest,
     SpellDefinition,
+)
+from mvge.runes.wrapping import (
+    WrappingBackend,
+    WrappingPolicy,
+    assert_no_credential_env,
+    wrap_host_command,
 )
 
 if TYPE_CHECKING:
@@ -180,6 +187,8 @@ class HostSession:
         start_timeout_seconds: float = DEFAULT_START_TIMEOUT_SECONDS,
         stderr_log_path: Path | None = None,
         audit_log: RuneAuditLog | None = None,
+        wrapping_policy: WrappingPolicy | None = None,
+        wrapping_backends: list[WrappingBackend] | None = None,
     ) -> None:
         self.manifest = manifest
         self.rune_name = manifest.name
@@ -189,6 +198,15 @@ class HostSession:
         self.start_timeout_seconds = start_timeout_seconds
         self._audit_log = audit_log
         self._command_override = list(command) if command is not None else None
+        # Phase 5b: wrapping is opt-in and defaults to absent.
+        # A present-but-disabled policy is the same as absent:
+        # the host runs unwrapped, exactly as Phase 4 ships.
+        # wrapping_backends is a backend-injection seam (a
+        # deployment may supply its own wrapping backend, and
+        # the suite injects one instead of depending on an
+        # installed tool); None means the default backends.
+        self._wrapping_policy = wrapping_policy
+        self._wrapping_backends = wrapping_backends
         if stderr_log_path is not None:
             self.stderr_log_path = Path(stderr_log_path)
         else:
@@ -205,18 +223,40 @@ class HostSession:
         self._update_lock = threading.Lock()
         self._stopped = False
 
+    def _effective_wrapping_policy(self) -> WrappingPolicy | None:
+        """The wrapping policy with the session's rune dir filled in."""
+        policy = self._wrapping_policy
+        if policy is None or not policy.enabled:
+            return None
+        if policy.rune_dir is not None:
+            return policy
+        return dataclasses.replace(policy, rune_dir=self.rune_dir)
+
     @property
     def command(self) -> list[str]:
-        """The host command: cross-platform, no shell."""
+        """The host command: cross-platform, no shell.
+
+        Phase 5b: when a wrapping policy is enabled, the host
+        command is the wrapped command. Wrapping validation
+        raises before any process starts when the backend is
+        unavailable, so a wrapped command is never silently
+        replaced by the unwrapped one.
+        """
         if self._command_override is not None:
-            return list(self._command_override)
-        return [
-            sys.executable,
-            "-m",
-            "mvge.runes.host_server",
-            "--rune-dir",
-            str(self.rune_dir),
-        ]
+            base = list(self._command_override)
+        else:
+            base = [
+                sys.executable,
+                "-m",
+                "mvge.runes.host_server",
+                "--rune-dir",
+                str(self.rune_dir),
+            ]
+        return wrap_host_command(
+            base,
+            self._effective_wrapping_policy(),
+            backends=self._wrapping_backends,
+        )
 
     @property
     def pid(self) -> int | None:
@@ -254,6 +294,45 @@ class HostSession:
         self._hello_payload = None
         env = scrub_env(dict(os.environ))
         env["PYTHONUNBUFFERED"] = "1"
+        wrapping = self._effective_wrapping_policy()
+        run_cwd: Path | None = None
+        if wrapping is not None:
+            # Phase 5b, fail-closed twice over: the scrub must
+            # have removed every credential-shaped name, and
+            # the wrapped process runs with the workspace as
+            # its working directory (the inherited cwd is not
+            # bound into the namespace). PYTHONPATH entries
+            # are bound read-only so an editable engine install
+            # stays importable inside the wrap.
+            assert_no_credential_env(env)
+            # The wrapped child must find the engine even when
+            # its interpreter is resolved away from a venv: put
+            # the engine source tree on PYTHONPATH for the child
+            # (it is bound read-only below, like any PYTHONPATH
+            # entry), in addition to the venv discovery above.
+            engine_src = str(Path(mvge.__file__).resolve().parent.parent)
+            existing_pythonpath = env.get("PYTHONPATH", "")
+            entries = (
+                [engine_src] + [e for e in existing_pythonpath.split(os.pathsep) if e]
+                if existing_pythonpath
+                else [engine_src]
+            )
+            env["PYTHONPATH"] = os.pathsep.join(entries)
+            pythonpath_mounts = tuple(
+                Path(entry).resolve()
+                for entry in env.get("PYTHONPATH", "").split(os.pathsep)
+                if entry and Path(entry).is_dir()
+            )
+            if pythonpath_mounts:
+                wrapping = dataclasses.replace(
+                    wrapping,
+                    extra_read_only_mounts=(
+                        *wrapping.extra_read_only_mounts,
+                        *pythonpath_mounts,
+                    ),
+                )
+                self._wrapping_policy = wrapping
+            run_cwd = wrapping.workspace_root
         self.stderr_log_path.parent.mkdir(parents=True, exist_ok=True)
         self._stderr_handle = self.stderr_log_path.open("wb")
         try:
@@ -263,6 +342,7 @@ class HostSession:
                 stdout=subprocess.PIPE,
                 stderr=self._stderr_handle,
                 env=env,
+                cwd=str(run_cwd) if run_cwd is not None else None,
             )
         except OSError as exc:
             self._stderr_handle.close()
