@@ -309,9 +309,17 @@ def test_bwrap_argv_carries_no_credential_env_flag(tmp_path: Path) -> None:
 def test_bwrap_argv_mounts_fresh_proc_not_host_proc(tmp_path: Path) -> None:
     backend = BwrapWrappingBackend()
     argv = backend.build_argv(["python3", "-c", "pass"], _policy(tmp_path))
-    assert "--proc" in argv
-    assert argv[argv.index("--proc") + 1] == "/proc"
-    # No host /proc ro-bind anywhere in the bwrap flags.
+    # --proc is added only when /proc exists on the build
+    # machine (wrapping.py gates on it): on Windows/macOS it
+    # is absent, and bwrap is Linux-only anyway, so a missing
+    # --proc there can never reach a real wrap.
+    if Path("/proc").exists():
+        assert "--proc" in argv
+        assert argv[argv.index("--proc") + 1] == "/proc"
+    else:
+        assert "--proc" not in argv
+    # No host /proc ro-bind anywhere in the bwrap flags, on
+    # every platform: this half is meaningful unconditionally.
     flags = argv[: argv.index("--")]
     assert not any(
         flags[i] == "--ro-bind" and flags[i + 1] == "/proc"
