@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.49] - 2026-11-04
+
+
+### Bug Fixes
+
+- **runes:** fix 5b review findings B1-B4 (Docker Windows paths, home-ancestor test, non-vacuous network proof, fresh procfs) (f1db61c)
+
+- **runes:** gate fresh-proc argv assertion on /proc existing (F1) (b79c90c)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (620d461)
+
+- **release:** v0.2.49 (1415fa2)
+
+
+### Features
+
+- **runes:** whole-process wrapping as opt-in deployment posture (5b) (f1587dd)
+
+
 ## [0.2.48] - 2026-11-04
 
 
