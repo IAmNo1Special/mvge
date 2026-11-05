@@ -75,7 +75,7 @@ from mvge.provider.realms import (
     api_key_env_for_realm,
     rune_for_realm,
 )
-from mvge.runes.installer import install_rune
+from mvge.runes.installer import install_rune, installed_rune_needs_consent
 from mvge.runes.trust import WorkspaceTrustStatus
 
 console = get_console()
@@ -662,6 +662,20 @@ async def _run_agent(
                 console.print(format_error(install_exc))
                 return 1
 
+        # The registry's remedy ("install the rune") is wrong when the
+        # rune is already installed but unconsented: reinstalling it
+        # changes nothing, and the operator loops forever. Name the
+        # real remedy instead — but only when consent is actually the
+        # gap, so a consented rune that fails for another reason is
+        # never misdiagnosed the same way in reverse.
+        if missing_rune and installed_rune_needs_consent(missing_rune):
+            console.print(
+                f"[yellow]Rune '{missing_rune}' is already installed but "
+                "its declared capabilities are not consented, so it "
+                "registered nothing. Run "
+                f"'mvge rune consent {missing_rune}' to consent to its "
+                "declared capabilities, then retry.[/yellow]"
+            )
         console.print(format_error(exc))
         return 1
     except Exception as exc:

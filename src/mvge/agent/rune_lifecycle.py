@@ -19,6 +19,10 @@ from mvge.agent.environment import MvgeEnvironment
 from mvge.core.layers import ResolvedLayer
 from mvge.core.sandbox import MvgeSandbox
 from mvge.provider.registry import RealmRegistry
+from mvge.runes.capabilities import (
+    CapabilityStore,
+    default_capability_store_dir,
+)
 from mvge.runes.loader import (
     load_runes_from_paths,
 )
@@ -211,7 +215,16 @@ class RuneLifecycle:
 
     def _ensure_runner(self) -> RuneRunner:
         if self._runner is None:
-            self._runner = RuneRunner(sandbox_factory=MvgeSandbox)
+            # The file-backed store is the host opting into the
+            # Phase 2B persistence the design left open: grants
+            # recorded at install time live in the global
+            # extensions layer, and this is the runner that must
+            # read them. The in-memory default would make every
+            # declared rune register nothing on a fresh install.
+            self._runner = RuneRunner(
+                sandbox_factory=MvgeSandbox,
+                capability_store=CapabilityStore(default_capability_store_dir()),
+            )
             self._runner.bind_context(
                 RuneContext(
                     cwd=self._cwd,

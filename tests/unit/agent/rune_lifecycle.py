@@ -11,6 +11,10 @@ from mvge.agent.environment import MvgeEnvironment
 from mvge.agent.rune_lifecycle import RuneLifecycle
 from mvge.core.layers import ResolvedLayer, Scope
 from mvge.provider.registry import RealmRegistry
+from mvge.runes.capabilities import (
+    CapabilityStore,
+    default_capability_store_dir,
+)
 from mvge.runes.rune_runner import RuneRunner
 from mvge.runes.types import (
     Diagnostic,
@@ -20,6 +24,7 @@ from mvge.runes.types import (
     RuneManifest,
     RuneScope,
     RuneShortcut,
+    SpellDefinition,
 )
 
 
@@ -245,6 +250,55 @@ class TestLoad:
             runner = await lifecycle.load()
 
         assert runner.diagnostics == [diag]
+
+    @pytest.mark.asyncio
+    async def test_load_reads_install_time_consent_from_file_store(
+        self, tmp_path: Path
+    ) -> None:
+        """The defect: the runner defaulted to an in-memory store, so
+        consent recorded at install time was invisible at load and every
+        declared rune registered nothing. The lifecycle runner reads the
+        file-backed store, so an installed-and-consented rune registers."""
+
+        def factory(api: Any) -> None:
+            api.register_spell(SpellDefinition(name="acme_spell", description="x"))
+
+        store = CapabilityStore(default_capability_store_dir())
+        store.consent_to_declaration("acme", ["spell"])
+        loads = [RuneLoad(manifest=_manifest(capabilities=["spell"]), factory=factory)]
+        lifecycle = RuneLifecycle(agent_name="tester")
+
+        with (
+            patch(
+                "mvge.agent.rune_lifecycle.load_runes_from_paths",
+                return_value=(loads, []),
+            ),
+        ):
+            runner = await lifecycle.load()
+
+        assert runner.capability_store.data_dir == default_capability_store_dir()
+        assert runner.get_spell("acme_spell") is not None
+
+    @pytest.mark.asyncio
+    async def test_load_still_refuses_declared_rune_without_consent(self) -> None:
+        """The gate still bites through the lifecycle path: a declared rune
+        with no consent record registers nothing."""
+
+        def factory(api: Any) -> None:
+            api.register_spell(SpellDefinition(name="acme_spell", description="x"))
+
+        loads = [RuneLoad(manifest=_manifest(capabilities=["spell"]), factory=factory)]
+        lifecycle = RuneLifecycle(agent_name="tester")
+
+        with (
+            patch(
+                "mvge.agent.rune_lifecycle.load_runes_from_paths",
+                return_value=(loads, []),
+            ),
+        ):
+            runner = await lifecycle.load()
+
+        assert runner.get_spell("acme_spell") is None
 
     @pytest.mark.asyncio
     async def test_load_registers_providers_into_registry(self) -> None:

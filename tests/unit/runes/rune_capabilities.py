@@ -86,6 +86,25 @@ def test_manifest_without_capabilities_field_is_legacy(tmp_path: Path) -> None:
     assert manifest.capabilities is None
 
 
+def test_store_consent_to_declaration_records_consent_and_declaration(
+    tmp_path: Path,
+) -> None:
+    store = CapabilityStore(tmp_path)
+    store.consent_to_declaration("rune-a", ["spell", "hook"])
+    assert store.granted("rune-a", ["spell", "hook"]) == {"spell", "hook"}
+    assert store.declaration_changed("rune-a", ["spell", "hook"]) is False
+    assert store.has_record("rune-a") is True
+    reopened = CapabilityStore(tmp_path)
+    assert reopened.granted("rune-a", ["spell", "hook"]) == {"spell", "hook"}
+
+
+def test_store_has_record_is_false_before_any_consent(tmp_path: Path) -> None:
+    store = CapabilityStore(tmp_path)
+    assert store.has_record("rune-a") is False
+    store.record_declaration("rune-a", ["spell"])
+    assert store.has_record("rune-a") is True
+
+
 def test_store_grants_only_consented_and_declared(tmp_path: Path) -> None:
     store = CapabilityStore(tmp_path)
     store.consent("rune-a", ["spell", "hook"])

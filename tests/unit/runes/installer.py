@@ -8,10 +8,16 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from mvge.runes.capabilities import (
+    CapabilityStore,
+    default_capability_store_dir,
+)
 from mvge.runes.installer import (
     DEFAULT_MARKETPLACE_URL,
+    consent_rune,
     fetch_marketplace_runes,
     install_rune,
+    installed_rune_needs_consent,
     list_installed_runes,
     set_rune_enabled,
     uninstall_rune,
@@ -20,7 +26,11 @@ from mvge.runes.pinning import read_pin
 
 
 def _create_mock_rune_dir(
-    path: Path, name: str, python_deps: list[str] | None = None
+    path: Path,
+    name: str,
+    python_deps: list[str] | None = None,
+    capabilities: list[str] | None = None,
+    filesystem_write_roots: list[str] | None = None,
 ) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     manifest_data = {
@@ -31,9 +41,170 @@ def _create_mock_rune_dir(
     }
     if python_deps is not None:
         manifest_data["python_deps"] = python_deps
+    if capabilities is not None:
+        manifest_data["capabilities"] = capabilities
+    if filesystem_write_roots is not None:
+        manifest_data["filesystem_write_roots"] = filesystem_write_roots
     (path / "manifest.json").write_text(json.dumps(manifest_data), encoding="utf-8")
     (path / "main.py").write_text("# entry point\n", encoding="utf-8")
     return path
+
+
+def _consent_store() -> CapabilityStore:
+    return CapabilityStore(default_capability_store_dir())
+
+
+def test_install_rune_records_consent_for_declared_capabilities(
+    tmp_path: Path,
+) -> None:
+    """Installing is the consent act: a fresh install grants exactly what
+    the installed manifest declares, so the rune registers on first load."""
+    source_dir = tmp_path / "realm_rune"
+    _create_mock_rune_dir(source_dir, "realm_rune", capabilities=["realm", "hook"])
+    target_dir = tmp_path / "extensions"
+
+    install_rune(str(source_dir), target_dir=target_dir)
+
+    assert (default_capability_store_dir() / "capability-consents.json").is_file()
+    assert _consent_store().granted("realm_rune", ["realm", "hook"]) == {
+        "realm",
+        "hook",
+    }
+
+
+def test_install_rune_records_no_consent_for_legacy_manifest(tmp_path: Path) -> None:
+    """A manifest with no capabilities field is ungated; installing it
+    writes no consent record at all."""
+    source_dir = tmp_path / "legacy_rune"
+    _create_mock_rune_dir(source_dir, "legacy_rune")
+    target_dir = tmp_path / "extensions"
+
+    install_rune(str(source_dir), target_dir=target_dir)
+
+    assert _consent_store().has_record("legacy_rune") is False
+
+
+def test_install_rune_does_not_reconsent_on_reinstall_after_widening(
+    tmp_path: Path,
+) -> None:
+    """A reinstall that widens the declaration must not silently grant the
+    new capability: the 2B rule is re-consent on widening, and an update is
+    not a re-consent."""
+    source_dir = tmp_path / "wide_rune"
+    _create_mock_rune_dir(source_dir, "wide_rune", capabilities=["spell"])
+    target_dir = tmp_path / "extensions"
+    install_rune(str(source_dir), target_dir=target_dir)
+    assert _consent_store().granted("wide_rune", ["spell"]) == {"spell"}
+
+    _create_mock_rune_dir(source_dir, "wide_rune", capabilities=["spell", "skill"])
+    install_rune(str(source_dir), target_dir=target_dir)
+
+    assert _consent_store().granted("wide_rune", ["spell", "skill"]) == {"spell"}
+    assert _consent_store().declaration_changed("wide_rune", ["spell", "skill"]) is True
+
+
+def test_consent_rune_grants_declared_for_already_installed_rune(
+    tmp_path: Path,
+) -> None:
+    """The migration path for a rune installed before install-time consent
+    existed: explicit consent grants its current declaration."""
+    target_dir = tmp_path / "extensions"
+    _create_mock_rune_dir(
+        target_dir / "old_rune", "old_rune", capabilities=["realm", "hook"]
+    )
+    assert _consent_store().has_record("old_rune") is False
+
+    granted = consent_rune("old_rune", target_dir=target_dir)
+
+    assert granted == ["realm", "hook"]
+    assert _consent_store().granted("old_rune", ["realm", "hook"]) == {
+        "realm",
+        "hook",
+    }
+
+
+def test_consent_rune_reconsents_after_widening(tmp_path: Path) -> None:
+    """Re-consent after a declaration widened grants the new capability
+    and records the new declaration, so the change stops being outstanding."""
+    target_dir = tmp_path / "extensions"
+    _create_mock_rune_dir(target_dir / "wide_rune", "wide_rune", capabilities=["spell"])
+    consent_rune("wide_rune", target_dir=target_dir)
+
+    _create_mock_rune_dir(
+        target_dir / "wide_rune", "wide_rune", capabilities=["spell", "skill"]
+    )
+    granted = consent_rune("wide_rune", target_dir=target_dir)
+
+    assert granted == ["spell", "skill"]
+    assert _consent_store().granted("wide_rune", ["spell", "skill"]) == {
+        "spell",
+        "skill",
+    }
+    assert (
+        _consent_store().declaration_changed("wide_rune", ["spell", "skill"]) is False
+    )
+
+
+def test_consent_rune_unknown_rune_raises(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not installed"):
+        consent_rune("missing_rune", target_dir=tmp_path / "extensions")
+
+
+def test_consent_rune_legacy_manifest_raises(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    _create_mock_rune_dir(target_dir / "legacy_rune", "legacy_rune")
+    with pytest.raises(ValueError, match="declares no capabilities"):
+        consent_rune("legacy_rune", target_dir=target_dir)
+
+
+def test_consent_rune_invalid_manifest_raises(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    rune_dir = target_dir / "broken_rune"
+    rune_dir.mkdir(parents=True)
+    (rune_dir / "manifest.json").write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid manifest"):
+        consent_rune("broken_rune", target_dir=target_dir)
+
+
+def test_installed_rune_needs_consent_write_roots_widening(tmp_path: Path) -> None:
+    """Phase 5a re-consent through the installer path: widening write
+    roots needs consent even when the filesystem capability itself was
+    already granted; re-consent clears it."""
+    target_dir = tmp_path / "extensions"
+    _create_mock_rune_dir(
+        target_dir / "fs_rune",
+        "fs_rune",
+        capabilities=["filesystem"],
+        filesystem_write_roots=["."],
+    )
+    consent_rune("fs_rune", target_dir=target_dir)
+    assert installed_rune_needs_consent("fs_rune", target_dir=target_dir) is False
+
+    _create_mock_rune_dir(
+        target_dir / "fs_rune",
+        "fs_rune",
+        capabilities=["filesystem"],
+        filesystem_write_roots=[".", "sub"],
+    )
+    assert installed_rune_needs_consent("fs_rune", target_dir=target_dir) is True
+
+    consent_rune("fs_rune", target_dir=target_dir)
+    assert installed_rune_needs_consent("fs_rune", target_dir=target_dir) is False
+
+
+def test_installed_rune_needs_consent(tmp_path: Path) -> None:
+    target_dir = tmp_path / "extensions"
+    _create_mock_rune_dir(
+        target_dir / "unconsented", "unconsented", capabilities=["realm"]
+    )
+    _create_mock_rune_dir(target_dir / "consented", "consented", capabilities=["realm"])
+    _create_mock_rune_dir(target_dir / "legacy", "legacy")
+    consent_rune("consented", target_dir=target_dir)
+
+    assert installed_rune_needs_consent("unconsented", target_dir=target_dir) is True
+    assert installed_rune_needs_consent("consented", target_dir=target_dir) is False
+    assert installed_rune_needs_consent("legacy", target_dir=target_dir) is False
+    assert installed_rune_needs_consent("missing", target_dir=target_dir) is False
 
 
 def test_list_installed_runes_ignores_hidden_dirs(tmp_path: Path) -> None:
