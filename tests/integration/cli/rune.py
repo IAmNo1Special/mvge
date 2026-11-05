@@ -36,6 +36,7 @@ def test_rune_help() -> None:
     assert result.exit_code == 0
     assert "Extension rune management" in result.output
     assert "install" in result.output
+    assert "consent" in result.output
 
 
 def test_rune_install_success() -> None:
@@ -334,6 +335,93 @@ async def test_no_realm_registered_retries_once_then_reports() -> None:
         assert code == 1
         assert call_count == 2
         assert mock_install.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_no_realm_registered_installed_but_unconsented_names_consent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The old remedy was wrong: it told the operator to install a rune
+    that was already installed, and following it looped forever. When the
+    rune is installed but its capabilities are not consented, the report
+    names the real remedy: `mvge rune consent <name>`."""
+    call_count = 0
+
+    async def fake_create_agent(**kwargs: object) -> object:
+        nonlocal call_count
+        call_count += 1
+        raise _no_realm("opencode/space-bunny-free")
+
+    with (
+        patch("mvge.cli.main._create_agent", side_effect=fake_create_agent),
+        patch("builtins.input"),
+        patch("mvge.cli.main.install_rune") as mock_install,
+        patch(
+            "mvge.cli.main.installed_rune_needs_consent", return_value=True
+        ) as mock_needs,
+    ):
+        code = await _run_agent(
+            incantation="Create a file named hello.txt",
+            model_id="opencode/space-bunny-free",
+            api_key="sk-or-v1-test-key",
+            temperature=None,
+            max_tokens=None,
+            contemplation_level=None,
+            spells_enabled=None,
+            extension_dir=None,
+            resume=None,
+            provider_name=None,
+            tome_dir=None,
+            tui=False,
+            prompts=["Create a file named hello.txt"],
+        )
+
+        assert code == 1
+        assert call_count == 2
+        assert mock_install.call_count == 1
+        mock_needs.assert_called_once_with("opencode-realm")
+        assert "mvge rune consent opencode-realm" in capsys.readouterr().out
+
+
+@pytest.mark.asyncio
+async def test_no_realm_registered_installed_and_consented_names_no_consent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The consent hint must not fire when the rune is installed and fully
+    consented: then the failure is something else, and naming consent as
+    the remedy would be the same wrong-remedy loop in reverse."""
+    call_count = 0
+
+    async def fake_create_agent(**kwargs: object) -> object:
+        nonlocal call_count
+        call_count += 1
+        raise _no_realm("opencode/space-bunny-free")
+
+    with (
+        patch("mvge.cli.main._create_agent", side_effect=fake_create_agent),
+        patch("builtins.input"),
+        patch("mvge.cli.main.install_rune"),
+        patch("mvge.cli.main.installed_rune_needs_consent", return_value=False),
+    ):
+        code = await _run_agent(
+            incantation="Create a file named hello.txt",
+            model_id="opencode/space-bunny-free",
+            api_key="sk-or-v1-test-key",
+            temperature=None,
+            max_tokens=None,
+            contemplation_level=None,
+            spells_enabled=None,
+            extension_dir=None,
+            resume=None,
+            provider_name=None,
+            tome_dir=None,
+            tui=False,
+            prompts=["Create a file named hello.txt"],
+        )
+
+        assert code == 1
+        assert call_count == 2
+        assert "mvge rune consent" not in capsys.readouterr().out
 
 
 @pytest.mark.asyncio

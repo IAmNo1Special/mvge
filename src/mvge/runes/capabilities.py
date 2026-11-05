@@ -219,6 +219,10 @@ class CapabilityStore:
             rune_name, {"declared": [], "declaration_hash": "", "consented": []}
         )
 
+    def has_record(self, rune_name: str) -> bool:
+        """True when any consent or declaration record exists for a rune."""
+        return rune_name in self._records
+
     def consent(
         self,
         rune_name: str,
@@ -249,6 +253,25 @@ class CapabilityStore:
         elif "write_roots" in record:
             record["consented_write_roots"] = sorted(set(record["write_roots"]))
         self._save()
+
+    def consent_to_declaration(
+        self,
+        rune_name: str,
+        declared: list[str],
+        write_roots: list[str] | None = None,
+    ) -> None:
+        """Consent to exactly the capabilities currently declared, and
+        record that declaration as the consented one.
+
+        This is the one act install-time consent and explicit
+        re-consent share: the host consents to the declaration in
+        front of it, nothing more. A later declaration change —
+        a new capability, or widened write roots — still needs a
+        fresh call, because ``granted`` is always
+        ``consented ∩ declared``.
+        """
+        self.consent(rune_name, declared, write_roots)
+        self.record_declaration(rune_name, declared, write_roots)
 
     def record_declaration(
         self,

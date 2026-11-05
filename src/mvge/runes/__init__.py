@@ -23,8 +23,10 @@ from mvge.runes.host_protocol import (
 from mvge.runes.host_server import HostRuneAPI, HostState
 from mvge.runes.installer import (
     DEFAULT_MARKETPLACE_URL,
+    consent_rune,
     fetch_marketplace_runes,
     install_rune,
+    installed_rune_needs_consent,
     list_installed_runes,
     read_or_create_install_id,
     set_rune_enabled,
@@ -153,8 +155,10 @@ __all__ = [
     "RunePin",
     "adopt_rune_pin",
     "compute_rune_tree_hash",
+    "consent_rune",
     "fetch_marketplace_runes",
     "install_rune",
+    "installed_rune_needs_consent",
     "is_revoked",
     "list_installed_runes",
     "load_factory_from_manifest",

@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any
 
 from mvge.core.layers import extensions_dir, global_agents_dir
+from mvge.runes.capabilities import (
+    CapabilityStore,
+    default_capability_store_dir,
+)
 from mvge.runes.catalog import (
     DEFAULT_MARKETPLACE_URL,
     RUNES_SECTION,
@@ -21,12 +25,14 @@ from mvge.runes.catalog import (
     section_of,
 )
 from mvge.runes.deps import install_python_deps
+from mvge.runes.manifest import load_manifest
 from mvge.runes.pinning import (
     RunePin,
     adopt_rune_pin,
     compute_rune_tree_hash,
     write_pin,
 )
+from mvge.runes.types import RuneManifest
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +41,9 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "DEFAULT_MARKETPLACE_URL",
     "adopt_installed_rune",
+    "consent_rune",
     "install_rune",
+    "installed_rune_needs_consent",
     "uninstall_rune",
 ]
 
@@ -367,6 +375,108 @@ def adopt_installed_rune(name: str, target_dir: Path | None = None) -> Path:
     return rune_dir
 
 
+def _installed_rune_dir(name: str, target_dir: Path | None = None) -> Path:
+    """Installed directory for a rune name, validated to stay in target."""
+    target = target_dir.expanduser() if target_dir is not None else extensions_dir()
+    return _dest_within_target(target, _validate_install_name(name, kind="rune"))
+
+
+def _installed_manifest(
+    name: str, target_dir: Path | None = None
+) -> RuneManifest | None:
+    """Load the installed manifest for a rune, or None when it is absent.
+
+    The manifest name is the single source of truth for install, list,
+    and uninstall, so consent reads it from the installed directory
+    rather than trusting the name the caller passed in.
+    """
+    rune_dir = _installed_rune_dir(name, target_dir)
+    if not rune_dir.is_dir():
+        return None
+    manifest = load_manifest(rune_dir)
+    return manifest if isinstance(manifest, RuneManifest) else None
+
+
+def _record_install_consent(rune_dir: Path) -> None:
+    """Record install-time consent for a freshly installed rune.
+
+    Installing a rune is the operator's explicit act of consenting to
+    the capabilities its manifest declares at that moment — that is
+    the consent the Phase 2B design left without a host. It runs only
+    when no consent record exists yet: a reinstall or update that
+    widens the declaration must not silently grant the new capability
+    (or the widened write roots); that needs explicit re-consent via
+    :func:`consent_rune`. A legacy manifest declares nothing, so
+    installing one records nothing.
+    """
+    manifest = load_manifest(rune_dir)
+    if manifest is None or manifest.capabilities is None:
+        return
+    store = CapabilityStore(default_capability_store_dir())
+    if store.has_record(manifest.name):
+        return
+    store.consent_to_declaration(
+        manifest.name, manifest.capabilities, manifest.filesystem_write_roots
+    )
+
+
+def consent_rune(name: str, target_dir: Path | None = None) -> list[str]:
+    """Record host consent for an installed rune's current declaration.
+
+    The explicit re-consent path: for a rune installed before
+    install-time consent existed, and for a rune whose declaration
+    widened after install. Consents to exactly what the installed
+    manifest declares now, and records that declaration as the
+    consented one, so the widening stops being outstanding.
+
+    Returns the granted capabilities.
+
+    Raises:
+        ValueError: If the rune is not installed, its manifest is
+            invalid, or it declares no capabilities (legacy).
+    """
+    if not _installed_rune_dir(name, target_dir).is_dir():
+        raise ValueError(f"Rune '{name}' is not installed.")
+    manifest = _installed_manifest(name, target_dir)
+    if manifest is None:
+        raise ValueError(f"Rune '{name}' has an invalid manifest.")
+    if manifest.capabilities is None:
+        raise ValueError(
+            f"Rune '{name}' declares no capabilities (legacy manifest); "
+            "nothing to consent to."
+        )
+    store = CapabilityStore(default_capability_store_dir())
+    store.consent_to_declaration(
+        manifest.name, manifest.capabilities, manifest.filesystem_write_roots
+    )
+    return list(manifest.capabilities)
+
+
+def installed_rune_needs_consent(name: str, target_dir: Path | None = None) -> bool:
+    """True when an installed rune declares capabilities (or write roots)
+    that are not all granted.
+
+    False for a rune that is not installed, a legacy manifest (ungated,
+    nothing to consent to), and a rune whose current declaration is
+    fully granted. The CLI uses this to tell an installed-but-unconsented
+    rune apart from a genuinely missing one, so the NoRealm remedy names
+    consent instead of a reinstall that changes nothing.
+    """
+    manifest = _installed_manifest(name, target_dir)
+    if manifest is None or manifest.capabilities is None:
+        return False
+    store = CapabilityStore(default_capability_store_dir())
+    if store.granted(manifest.name, manifest.capabilities) != set(
+        manifest.capabilities
+    ):
+        return True
+    if "filesystem" in manifest.capabilities:
+        return store.granted_write_roots(
+            manifest.name, manifest.filesystem_write_roots
+        ) != set(manifest.filesystem_write_roots)
+    return False
+
+
 def set_rune_enabled(name: str, enabled: bool, target_dir: Path | None = None) -> bool:
     """Set the enabled flag in an installed rune's manifest.json.
 
@@ -570,5 +680,10 @@ def install_rune(
         manifest_path=dest / "manifest.json",
         confirm=confirm_python_deps,
     )
+
+    # Installing is the consent act: a fresh install grants exactly what
+    # the installed manifest declares, so the rune registers on first
+    # load. A reinstall never re-consents (see _record_install_consent).
+    _record_install_consent(dest)
 
     return dest

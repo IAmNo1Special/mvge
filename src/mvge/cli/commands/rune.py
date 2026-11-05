@@ -7,6 +7,7 @@ from mvge.cli.console import format_error, get_console
 from mvge.core.layers import extensions_dir
 from mvge.runes.installer import (
     adopt_installed_rune,
+    consent_rune,
     install_rune,
     list_installed_runes,
     uninstall_rune,
@@ -80,6 +81,62 @@ def rune_list() -> None:
                 str(r.get("description", "")),
             )
         console.print(table)
+    except Exception as exc:
+        console.print(format_error(exc))
+        raise typer.Exit(1) from exc
+
+
+@rune_app.command("consent")
+def rune_consent(
+    name: str | None = typer.Argument(
+        None,
+        help="Installed rune name to consent to its declared capabilities.",
+    ),
+    all_runes: bool = typer.Option(
+        False,
+        "--all",
+        help=(
+            "Consent to every installed rune's declared capabilities. "
+            "Legacy runes (no capabilities field) are skipped: they are "
+            "ungated and have nothing to consent to."
+        ),
+    ),
+) -> None:
+    """Consent to an installed rune's declared capabilities.
+
+    Installing already consents to what the manifest declares at
+    install time. This command is the re-consent path: a rune
+    installed before install-time consent existed, or a rune whose
+    declaration widened after install (a new capability, or wider
+    write roots). It consents to exactly what the installed manifest
+    declares now — a widened declaration is never granted by loading
+    alone, only by this explicit act.
+    """
+    try:
+        if all_runes:
+            for r in list_installed_runes():
+                rname = str(r.get("name", ""))
+                if not rname:
+                    continue
+                try:
+                    granted = consent_rune(rname)
+                except ValueError as exc:
+                    console.print(f"[yellow]Skipping '{rname}': {exc}[/yellow]")
+                    continue
+                console.print(
+                    "[green]Consented to "
+                    f"'{rname}': {', '.join(granted) or 'none'}[/green]"
+                )
+            return
+        if name is None:
+            console.print("[red]Provide a rune name or --all.[/red]")
+            raise typer.Exit(1)
+        granted = consent_rune(name)
+        console.print(
+            f"[green]Consented to '{name}': {', '.join(granted) or 'none'}[/green]"
+        )
+    except typer.Exit:
+        raise
     except Exception as exc:
         console.print(format_error(exc))
         raise typer.Exit(1) from exc

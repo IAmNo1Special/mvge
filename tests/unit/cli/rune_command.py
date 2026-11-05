@@ -34,6 +34,51 @@ def test_rune_install_error() -> None:
         assert "Not found" in result.stdout
 
 
+def test_rune_consent_success() -> None:
+    with patch(
+        "mvge.cli.commands.rune.consent_rune", return_value=["realm", "hook"]
+    ) as mock_consent:
+        result = runner.invoke(rune_app, ["consent", "pollinations-realm"])
+        assert result.exit_code == 0
+        assert "Consented to 'pollinations-realm'" in result.stdout
+        assert "realm" in result.stdout
+        mock_consent.assert_called_once_with("pollinations-realm")
+
+
+def test_rune_consent_not_installed() -> None:
+    with patch(
+        "mvge.cli.commands.rune.consent_rune",
+        side_effect=ValueError("Rune 'unknown-rune' is not installed."),
+    ):
+        result = runner.invoke(rune_app, ["consent", "unknown-rune"])
+        assert result.exit_code != 0
+        assert "not installed" in result.stdout
+
+
+def test_rune_consent_all() -> None:
+    mock_items = [
+        {"name": "pollinations-realm"},
+        {"name": "approval-rune"},
+    ]
+    with (
+        patch("mvge.cli.commands.rune.list_installed_runes", return_value=mock_items),
+        patch(
+            "mvge.cli.commands.rune.consent_rune",
+            side_effect=[["realm", "hook"], ["hook"]],
+        ) as mock_consent,
+    ):
+        result = runner.invoke(rune_app, ["consent", "--all"])
+        assert result.exit_code == 0
+        assert "Consented to 'pollinations-realm'" in result.stdout
+        assert "Consented to 'approval-rune'" in result.stdout
+        assert mock_consent.call_count == 2
+
+
+def test_rune_consent_needs_name_or_all() -> None:
+    result = runner.invoke(rune_app, ["consent"])
+    assert result.exit_code != 0
+
+
 def test_rune_uninstall_success() -> None:
     with patch("mvge.cli.commands.rune.uninstall_rune", return_value=True):
         result = runner.invoke(rune_app, ["uninstall", "openrouter-realm"])
