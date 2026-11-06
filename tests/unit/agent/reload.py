@@ -983,6 +983,74 @@ async def test_reload_transfers_explicit_allowlist(
 
 
 @pytest.mark.asyncio
+async def test_reload_transfers_approval_presenter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The host-bound approval presenter survives reload on the new runner.
+
+    Without the transfer, every gated spell cast after /reload is denied
+    fail-closed because the fresh candidate runner has no presenter
+    (rerun 13, D4, leg 15). The second reload proves disposing the retired
+    runner does not strip the presenter from the live one.
+    """
+    from types import MappingProxyType
+
+    from mvge.core.approval import (
+        ApprovalDecision,
+        ApprovalOutcome,
+        ApprovalRequest,
+        allow,
+    )
+
+    _write_probe_rune(tmp_path)
+    agent = _make_agent(tmp_path, monkeypatch)
+    await agent.initialize()
+    try:
+        assert agent.runner is not None
+
+        async def presenter(request: ApprovalRequest) -> ApprovalDecision:
+            return allow(request, scope="session")
+
+        agent.runner.set_approval_presenter(presenter)
+        old_runner = agent.runner
+
+        def _request() -> ApprovalRequest:
+            assert agent.runner is not None
+            context = agent.runner.context
+            return ApprovalRequest(
+                cast_id="call_1",
+                spell_name="write",
+                spell_identity=MappingProxyType(
+                    {"name": "write", "source_kind": "builtin"}
+                ),
+                arguments=MappingProxyType({"path": "a.txt"}),
+                argument_digest="sha256:abc",
+                project_root=context.project_root,
+                tome_id=context.session_id,
+                agent_name="reload-test",
+            )
+
+        result = await agent.reload()
+        assert result.ok
+        assert agent.runner is not None
+        assert agent.runner is not old_runner
+        assert agent.runner.approval_presenter is presenter
+        api = agent.runner.create_api(rune_name="reload-probe")
+        decision = await api.request_approval(_request())
+        assert decision.outcome is ApprovalOutcome.ALLOW
+
+        second = await agent.reload()
+        assert second.ok
+        assert agent.runner is not None
+        assert agent.runner.approval_presenter is presenter
+        api = agent.runner.create_api(rune_name="reload-probe")
+        decision = await api.request_approval(_request())
+        assert decision.outcome is ApprovalOutcome.ALLOW
+    finally:
+        await agent.close()
+
+
+@pytest.mark.asyncio
 async def test_second_reload_keeps_rune_spell_allowlist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
