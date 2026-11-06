@@ -63,7 +63,10 @@ def load_api_key_for_realm(realm: str) -> str | None:
     """
     if not realm or realm == DEFAULT_REALM:
         return load_api_key_from_auth()
-    return _read_key(auth_file(realm))
+    key = _read_key(auth_file(realm))
+    if not key and realm == "opencode-go":
+        return _read_key(auth_file("opencode"))
+    return key
 
 
 def save_api_key_to_auth(api_key: str, realm: str = DEFAULT_REALM) -> Path:

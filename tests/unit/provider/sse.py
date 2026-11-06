@@ -1392,6 +1392,15 @@ async def test_a_keyed_realm_still_sends_its_bearer_header() -> None:
         await realm.close()
 
 
+@pytest.mark.asyncio
+async def test_a_keyed_realm_strips_whitespace_and_crlf_from_api_key() -> None:
+    realm = _concrete_realm(api_key="  secret-key\r\n  ")
+    try:
+        assert realm._client.headers["Authorization"] == "Bearer secret-key"
+    finally:
+        await realm.close()
+
+
 # NOTE: Windows environment variables are case-insensitive, so
 # NO_PROXY and no_proxy are the SAME slot there. These tests must never
 # assume two distinct slots: each case sets exactly one name, after

@@ -179,6 +179,9 @@ class TestMvgeApiKeyAndEnvLoading:
     ) -> None:
         for var in self.API_KEY_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr(
+            "mvge.agent.mvge.load_api_key_for_realm", lambda realm: None
+        )
 
         agent = Mvge(
             environment=MvgeEnvironment.resolve(

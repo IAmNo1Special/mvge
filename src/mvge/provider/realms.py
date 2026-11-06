@@ -250,6 +250,7 @@ def free_suffix_for_realm(realm: str) -> str:
 
 
 __all__ = [
+    "DEFAULT_REALM",
     "REALM_API_KEY_ENV",
     "REALM_BASE_URLS",
     "REALM_DEFAULT_MODELS",
@@ -264,3 +265,5 @@ __all__ = [
     "register_realm_default_model",
     "rune_for_realm",
 ]
+
+DEFAULT_REALM: Final[str] = "openrouter"

@@ -362,6 +362,7 @@ class SSEStreamingRealm(Realm, ABC):
         base_url: str = "",
         client: httpx.AsyncClient | None = None,
     ) -> None:
+        api_key = api_key.strip()
         self._api_key = api_key
         self._base_url = base_url
         self._owned_client = client is None

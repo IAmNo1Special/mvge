@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 from mvge.agent.agent_name import resolve_active_agent_name
 from mvge.agent.agent_session import MvgeTome
+from mvge.agent.auth import load_api_key_for_realm
 from mvge.agent.compatibility import (
     SessionCompatibilityReport,
     validate_session_compatibility,
@@ -127,10 +128,19 @@ def _resolve_api_key(explicit_key: str | None = None, realm: str = "") -> str:
     A Realm with no credential of its own resolves to ``""``, which is a correct
     answer rather than a failure: OpenCode Zen's free tier needs no key at all.
     """
-    if explicit_key:
-        return explicit_key
+    if explicit_key and explicit_key.strip():
+        return explicit_key.strip()
     env_key = os.environ.get(api_key_env_for_realm(realm)) if realm else None
-    return env_key or os.environ.get("MVGE_API_KEY") or ""
+    if env_key and env_key.strip():
+        return env_key.strip()
+    mvge_env = os.environ.get("MVGE_API_KEY")
+    if mvge_env and mvge_env.strip():
+        return mvge_env.strip()
+    if realm:
+        auth_key = load_api_key_for_realm(realm)
+        if auth_key and auth_key.strip():
+            return auth_key.strip()
+    return ""
 
 
 def _validate_spell_name(name: Any) -> bool:
@@ -1708,6 +1718,14 @@ class Mvge:
 
     async def switch_model(self, model_id: str) -> None:
         """Switch the model in-flight."""
+        new_realm = serving_realm_for_model(model_id)
+        current_realm = (
+            serving_realm_for_model(self._model_id) if self._model_id else ""
+        )
+        if new_realm != current_realm:
+            self._api_key = _resolve_api_key(realm=new_realm)
+            if self._harness is not None:
+                self._harness._api_key = self._api_key
         if self._harness is not None:
             await self._harness.switch_model(model_id)
             if self._harness._model is not None:
