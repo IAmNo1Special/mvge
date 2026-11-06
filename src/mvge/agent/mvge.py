@@ -867,6 +867,18 @@ class Mvge:
                 _widen_allowlist_with_allowed_spells(
                     candidate_runner, self._allowed_spells
                 )
+            # The host-bound approval presenter transfers the same way:
+            # the candidate runner is fresh, and without this every gated
+            # spell cast after /reload is denied fail-closed because no
+            # presenter is bound. Sharing hands over the presenter, the
+            # per-session presenters, and the shared mutex, exactly as a
+            # summoned child shares its parent's. The identity guard
+            # matters: with no candidate lifecycle the candidate runner IS
+            # the live runner and must not share with itself. The transfer
+            # lands on the candidate, so a build that fails later still
+            # leaves the live runner untouched.
+            if live_runner is not None and candidate_runner is not live_runner:
+                candidate_runner.share_approval_presenter_from(live_runner)
 
         new_spells = self._build_spells_from(discovered, runner=candidate_runner)
 
