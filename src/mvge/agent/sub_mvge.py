@@ -80,6 +80,27 @@ def _extract_invocation_text(inv: object) -> str:
     return str(inv)
 
 
+def _summon_prompt(spec: SubMvgeSpec) -> str:
+    """The user message a summoned child actually runs with.
+
+    A null prompt reaches the spec as ``""`` (the summon spell coerces
+    explicit nulls to the schema default, which for prompt is empty), and
+    an empty user message is rejected upstream -- opencode-go answers 400
+    ``invalid_value``. A blank prompt therefore runs with a default naming
+    the child's role, so the summon still completes; a real prompt passes
+    through verbatim. The default asks for a one-line acknowledgement
+    rather than work: a child summoned with no task must finish, not
+    invent one and loop until the turn cap.
+    """
+    prompt = spec.prompt or ""
+    if prompt.strip():
+        return prompt
+    return (
+        f"You were summoned as {spec.role or 'worker'} with no task. "
+        "Reply with exactly: OK"
+    )
+
+
 class SubMvgeManager:
     """Kernel manager for spawning, coordinating, and persisting child sub-Mvges.
 
@@ -236,11 +257,12 @@ class SubMvgeManager:
 
             records_to_return.append(record)
 
+            prompt = _summon_prompt(spec)
             if spec.wait:
-                waiting_coroutines.append((sub_mvge_id, spec.prompt))
+                waiting_coroutines.append((sub_mvge_id, prompt))
             else:
                 task = asyncio.create_task(
-                    self._run_child(sub_mvge_id, spec.prompt, notify=True)
+                    self._run_child(sub_mvge_id, prompt, notify=True)
                 )
                 self._tasks[sub_mvge_id] = task
 

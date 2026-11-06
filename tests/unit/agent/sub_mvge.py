@@ -172,6 +172,85 @@ async def test_child_tome_persisted_in_subsessions_dir(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_summon_empty_prompt_never_reaches_child_empty(tmp_path: Path) -> None:
+    """A null/empty summon prompt (coerced to "" by the summon spell) must
+    never produce an empty user message to the backend: opencode-go rejects
+    it with 400 invalid_value (rerun 13, D3, leg 24). The child runs with a
+    non-empty default prompt naming its role instead."""
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        parent_model_id="test-model",
+        parent_agent_name="test_mvge",
+        subsessions_dir=subsessions_dir,
+    )
+
+    seen_prompts: list[str] = []
+
+    async def capturing_run(
+        prompt: str | list[dict[str, object]], *, signal: object = None
+    ) -> MvgeResponse:
+        assert isinstance(prompt, str)
+        seen_prompts.append(prompt)
+        return MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "ok"}],
+        )
+
+    with MockChildMvgeContext(custom_run=capturing_run):
+        records = await manager.summon(
+            [
+                SubMvgeSpec(role="worker", prompt="", wait=True),
+                SubMvgeSpec(role="research", prompt="   ", wait=True),
+            ]
+        )
+
+    assert len(records) == 2
+    assert all(rec.state == SubMvgeState.COMPLETED for rec in records)
+    assert len(seen_prompts) == 2
+    for seen in seen_prompts:
+        assert seen.strip(), "child must never run with an empty prompt"
+    assert "worker" in seen_prompts[0]
+    assert "research" in seen_prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_summon_nonempty_prompt_passes_through(tmp_path: Path) -> None:
+    """A real summon prompt is passed to the child verbatim: the default
+    applies only when the prompt is empty or whitespace-only."""
+    subsessions_dir = tmp_path / "sessions" / "subsessions"
+    subsessions_dir.mkdir(parents=True, exist_ok=True)
+
+    manager = SubMvgeManager(
+        parent_workspace=tmp_path,
+        parent_model_id="test-model",
+        parent_agent_name="test_mvge",
+        subsessions_dir=subsessions_dir,
+    )
+
+    seen_prompts: list[str] = []
+
+    async def capturing_run(
+        prompt: str | list[dict[str, object]], *, signal: object = None
+    ) -> MvgeResponse:
+        assert isinstance(prompt, str)
+        seen_prompts.append(prompt)
+        return MvgeResponse(
+            role="assistant",
+            content=[{"type": "text", "text": "ok"}],
+        )
+
+    with MockChildMvgeContext(custom_run=capturing_run):
+        await manager.summon(
+            [SubMvgeSpec(role="worker", prompt="Reply with exactly: OK", wait=True)]
+        )
+
+    assert seen_prompts == ["Reply with exactly: OK"]
+
+
+@pytest.mark.asyncio
 async def test_post_rune_allowed_spells_enforcement(tmp_path: Path) -> None:
     subsessions_dir = tmp_path / "sessions" / "subsessions"
     subsessions_dir.mkdir(parents=True, exist_ok=True)
