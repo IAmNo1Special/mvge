@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.51] - 2026-11-06
+
+
+### Bug Fixes
+
+- **cli:** accept real opencode keys and vault surrogates in validate_api_key (61dac68)
+
+- **agent:** default blank summon prompts instead of sending empty user messages (155af43)
+
+- **agent:** transfer the approval presenter to the reload candidate runner (a6324c6)
+
+
+### Chores
+
+- update CHANGELOG.md [skip ci] (451a06f)
+
+- **release:** v0.2.51 (082a316)
+
+
 ## [0.2.50] - 2026-11-05
 
 
