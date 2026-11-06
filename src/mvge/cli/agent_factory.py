@@ -22,10 +22,24 @@ def validate_api_key(api_key: str, model_id: str | None = None) -> None:
     Realm, and it is wrong for any Realm whose slug does not start with its own
     name. Consulted per model rather than per Realm, so a Realm's paid models
     are still refused.
+
+    Known vendor key shapes are accepted as such, regardless of the model:
+    OpenRouter (``sk-or-``), Google (``AIza``), opencode (``oc_sk_-``, the
+    prefix the vendor's API overview shows for Console keys). A
+    vault-managed credential reference (``hsurr:``) is opaque by design --
+    the vault, not the CLI, is the authority on its validity -- so it is
+    accepted and any bad reference fails at the upstream 401, as any bad
+    key does. Anything else is refused early so a mistyped key fails here
+    with a clear message instead of at the host.
     """
     if model_id and not model_requires_credential(model_id):
         return
-    if api_key.startswith("sk-or-") or api_key.startswith("AIza"):
+    if (
+        api_key.startswith("sk-or-")
+        or api_key.startswith("AIza")
+        or api_key.startswith("oc_sk_")
+        or api_key.startswith("hsurr:")
+    ):
         return
     if model_id and model_id.startswith("google/") and api_key.strip():
         return
@@ -33,7 +47,8 @@ def validate_api_key(api_key: str, model_id: str | None = None) -> None:
         raise ValueError("API key is required.")
     raise ValueError(
         "Invalid API key format. OpenRouter keys start with 'sk-or-', "
-        "and Google keys start with 'AIza'."
+        "Google keys start with 'AIza', and opencode keys start with "
+        "'oc_sk_'."
     )
 
 

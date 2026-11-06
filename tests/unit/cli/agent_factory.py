@@ -34,6 +34,31 @@ def test_validate_api_key_invalid() -> None:
         validate_api_key("invalid-key")
 
 
+def test_validate_api_key_accepts_real_opencode_key() -> None:
+    """A real opencode.ai key (oc_sk_-, per the vendor's API overview)
+    must pass for opencode models: the validator previously knew only
+    OpenRouter (sk-or-) and Google (AIza) shapes, so every real opencode
+    key was refused at the CLI before any turn (rerun 13, D2)."""
+    validate_api_key("oc_sk_1a2b3c4d5e6f", model_id="opencode-go/beam-free")
+    validate_api_key("oc_sk_1a2b3c4d5e6f", model_id="opencode/space-bunny-free")
+
+
+def test_validate_api_key_accepts_vault_surrogate() -> None:
+    """A vault-managed credential reference (hsurr:) is opaque by design:
+    the vault, not the CLI, is the authority on its validity, so format
+    validation defers to the upstream 401 instead of refusing it outright
+    (rerun 13, D2: the CLI rejected the vault surrogate before any turn)."""
+    validate_api_key("hsurr:opencode:abc123", model_id="opencode-go/beam-free")
+    validate_api_key("hsurr:opencode:abc123")
+
+
+def test_validate_api_key_still_rejects_garbage_for_opencode() -> None:
+    """The opencode exemption is for the vendor's key shape, not for any
+    string: a garbage key on an opencode model is still refused early."""
+    with pytest.raises(ValueError, match="Invalid API key format"):
+        validate_api_key("invalid-key", model_id="opencode-go/beam-free")
+
+
 def test_default_agent_factory_hands_the_name_through_verbatim() -> None:
     """The CLI no longer answers "which Mvge" -- it forwards the name.
 
